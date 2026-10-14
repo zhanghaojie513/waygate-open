@@ -1,0 +1,380 @@
+/* ==========================================================================
+   驿站 · Relay — 控制台视觉锚点 (console-fx.css)
+   加载顺序：tokens.css → motion.css → console-fx.css → app.css → landing/*
+   目的：把"侧栏 + 顶栏 + 卡片"的通用后台模板，换成有品牌识别的控制台。
+   四个锚点：
+     ① 侧栏发光竖条（玻璃）       ② 主区「照明」—— 三束柔光 + 按视图的相机
+     ③ 卡片顶边高光（透光卡面）     ④ 横幅掠光（玻璃）
+   皮肤基线 = v4（装置 → 照明），见 spec-v4-console-skin.md。
+   ========================================================================== */
+
+/* ---------- ① 侧栏：玻璃（三处玻璃之一）+ 激活项发光竖条（本产品最独特的记号） ----------
+   侧栏是「应用」与「场景」之间唯一的一条活界面：把这条留给玻璃，其余全给实心，
+   层级关系就自然成立（design-spec §18.1 ①）。 */
+.sidebar {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--bg-section-a) 80%, transparent) 0%,
+    color-mix(in srgb, var(--bg-page) 86%, transparent) 100%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  backdrop-filter: blur(20px) saturate(150%);
+}
+/* 右缘：渐变发丝线（上亮下暗，与顶栏那条缝在左上角接成一体）。
+   均匀的线读起来是「分界线」，渐变的线读起来是「一条边」—— 后者才像玻璃。 */
+.sidebar::after {
+  content: ""; position: absolute; top: 0; bottom: 0; right: 0; width: 1px; pointer-events: none;
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--iris) 42%, transparent) 0%,
+    color-mix(in srgb, var(--accent-cyan) 20%, transparent) 22%,
+    var(--border-subtle) 58%, transparent 100%);
+}
+.sb-item { position: relative; transition: background var(--d-hover) var(--ease-out), color var(--d-hover) var(--ease-out); }
+.sb-item::before {
+  content: ""; position: absolute; left: 0; top: 50%; transform: translateY(-50%) scaleY(0);
+  width: 3px; height: 56%; border-radius: 0 3px 3px 0;
+  background: linear-gradient(180deg, var(--brand-450), var(--brand-stop-2));
+  box-shadow: 0 0 14px 1px color-mix(in srgb, var(--brand-450) 70%, transparent);
+  transition: transform var(--d-hover) var(--ease-out);
+}
+.sb-item.active::before { transform: translateY(-50%) scaleY(1); }
+.sb-item.active::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: radial-gradient(130px 42px at 10% 50%, color-mix(in srgb, var(--brand-450) 30%, transparent), transparent 72%);
+}
+
+/* ==========================================================================
+   ② 主区「照明」—— 控制台不用「装置」，只用「光」（v4）
+   --------------------------------------------------------------------------
+   控制台每一寸都被面板占满（顶栏 + 侧栏 + 面板），没有任何空区容得下棱镜。
+   满铺式工作界面里**不该有「物体」，只该有「光」**：保留棱镜的光的签名
+   （紫罗兰 → 电光青 → 冷白），去掉它的几何（面、棱、环）。
+   ⛔ 一条纪律：这里**不允许出现任何硬边**。深底上一条清楚的直线一定会被读成划痕。
+   ⛔ 渐变必须**走满半径**（transparent 100%）—— 写成百分比停靠点，元素放大后
+      断裂半径会跟着放大，相对关系根本没变，底部依然是死平的。
+   （折射亮痕做过、删掉了，防止有人再加回来：见 design-spec §23.1。）
+   ========================================================================== */
+
+/* 场景层：固定在视口，随滚动不动 —— 它是「照明」，不是内容。 */
+.scene {
+  position: fixed; inset: 0; z-index: 0;
+  overflow: hidden; pointer-events: none;
+  perspective: var(--prism-persp);
+  perspective-origin: 50% 46%;
+  background: var(--bg-page);
+}
+
+/* 灯光机架：按视图给 --cam-* 值，靠 CSS 过渡平滑漂移。
+   铁律 D：控制台没有滚动、没有 scene.js 每帧写值，所以过渡挂在 .app 上是安全的。
+   乘数（.40/.34/.20/.45/.60/.5）与官网 .rig 同源：把「相机」的位移与转角
+   收敛成工作界面里的「呼吸」，最大位移 ≈27px、最大转角 ≈2.4°。 */
+.lights {
+  position: absolute; inset: 0;
+  transform-origin: 50% 46%;
+  will-change: transform;
+  transform:
+    translate3d(calc(var(--cam-x) * .40), calc(var(--cam-y) * .34), calc(var(--cam-z) * .20))
+    rotateX(calc(var(--cam-rx) * .45))
+    rotateY(calc(var(--cam-ry) * .60))
+    rotateZ(calc(var(--cam-rz) * .5));
+}
+
+/* 三束柔光：光心都压在视口外，所以看不到「一个圆」，只看到从角上漫进来的一片。
+   l1 主光（紫罗兰，1560px）：尺寸要够到视口底部，否则内容不满一屏时底下是死平的。
+   l2 副光（电光青，900px）：与主光错开色相 —— 两束同色只会变成一束更亮的。
+   l3 冷白高光（460px）：全画面唯一的「过曝点」，有它才读得出「谁被照亮了」。 */
+.bloom { position: absolute; pointer-events: none; }
+.bloom.l1 {
+  right: -26%; top: -48%; width: 1560px; height: 1560px;
+  background: radial-gradient(closest-side,
+    color-mix(in srgb, var(--iris) 46%, transparent) 0%,
+    color-mix(in srgb, var(--brand-500) 22%, transparent) 40%,
+    color-mix(in srgb, var(--brand-500) 10%, transparent) 64%,
+    transparent 100%);
+  filter: blur(90px);
+}
+.bloom.l2 {
+  right: -8%; top: -28%; width: 900px; height: 900px;
+  background: radial-gradient(closest-side,
+    color-mix(in srgb, var(--accent-cyan) 34%, transparent) 0%,
+    color-mix(in srgb, var(--accent-cyan) 13%, transparent) 46%,
+    transparent 100%);
+  filter: blur(80px);
+}
+.bloom.l3 {
+  right: 6%; top: -16%; width: 460px; height: 460px;
+  background: radial-gradient(closest-side,
+    color-mix(in srgb, var(--glow-mist) 52%, transparent) 0%,
+    color-mix(in srgb, var(--glow-frost) 18%, transparent) 40%,
+    transparent 100%);
+  filter: blur(48px);
+}
+
+/* 调暗层：按视图给 --scene-dim（0.62 最暗 → 0.86 最亮）。
+   opacity = 1 - dim —— 数值越大场景越亮，与令牌语义一致。 */
+.dimmer {
+  position: absolute; inset: 0; pointer-events: none;
+  background: var(--bg-band);
+  opacity: calc(1 - var(--scene-dim));
+}
+
+/* 噪点：纯柔光在深底上会有色带（banding），一层 3.4% 的颗粒是最便宜的解法。
+   ⛔ 必须保留（design-spec §18.2）。 */
+.noise {
+  position: absolute; inset: 0; pointer-events: none;
+  opacity: .034; mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* 内容层遮罩：「透光的天花板」—— **顶部透、往下实**（与官网相反，design-spec §18.3）。
+   内容铺满全屏、面板又近实心，若这一层再压成均匀深色，背后的光就彻底看不见了。
+   最需要光的位置本来就在上面：顶栏那一带、第一块面板两侧的留白。
+   处方：24% → 76% @30% → 78%；30% 以下与纯深色底观感一致，正文对比度不受影响。 */
+.view-body {
+  position: relative;                       /* 依旧是绝对定位后代的包含块 */
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--bg-band) 24%, transparent) 0%,
+    color-mix(in srgb, var(--bg-band) 76%, transparent) 30%,
+    color-mix(in srgb, var(--bg-band) 78%, transparent) 100%);
+}
+
+/* 内容压在场景之上：场景是 z-index:0 的固定层，侧栏/主区显式抬到 1。
+   [注意 task #34] 这里**不要**给 .sidebar 写 `position: relative`。该选择器是 (0,2,0)，
+   会盖过 tokens.css 的 `.sidebar{position:sticky}`(0,1,0)（且本文件在 tokens.css 之后加载）——
+   侧栏于是退回普通流，页面下滚时它的盒子按 height:100vh 往上走：导航项滚出视口、
+   账号卡浮到屏幕中段（用户实测到的现象）。sticky **本身也是「已定位元素」**，z-index 照样生效，
+   故侧栏只补 z-index（position 仍由 tokens.css 定为 sticky）；主区没有其它定位诉求，用 relative。
+   —— 与 task #31b 的 `.sb-item` 透明底同属一类：为达成 A 而顺手写下的属性，副作用破坏了 B。 */
+.app > .sidebar { z-index: 1; }
+.app > .main { position: relative; z-index: 1; }
+
+/* 相机：按视图切换（值 = web 路由名）。必须挂在 .app 上 —— 值在 .app 上变化，
+   过渡就得声明在同一个元素上。前提：tokens.css 已用 @property 注册
+   （未注册的自定义属性类型是 <custom-ident>，无法插值）。 */
+.app {
+  --scene-dim: 0.86;
+  transition:
+    --cam-x 1100ms var(--ease-out),
+    --cam-y 1100ms var(--ease-out),
+    --cam-z 1100ms var(--ease-out),
+    --cam-rx 1100ms var(--ease-out),
+    --cam-ry 1100ms var(--ease-out),
+    --cam-rz 1100ms var(--ease-out),
+    --scene-dim 1100ms var(--ease-out);
+}
+.app[data-view="overview"] { --scene-dim: 0.86; --cam-x: 0px; --cam-y: 0px; --cam-z: 0px; --cam-rx: 0deg; --cam-ry: 0deg; --cam-rz: 0deg; }
+.app[data-view="usage"]    { --scene-dim: 0.74; --cam-x: -34px; --cam-y: -14px; --cam-z: -70px; --cam-rx: 2deg; --cam-ry: 3.5deg; --cam-rz: -0.6deg; }
+.app[data-view="requests"] { --scene-dim: 0.62; --cam-x: 28px; --cam-y: -22px; --cam-z: -110px; --cam-rx: -3deg; --cam-ry: -4deg; --cam-rz: 0.8deg; }
+.app[data-view="clients"]  { --scene-dim: 0.72; --cam-x: 20px; --cam-y: 12px; --cam-z: -80px; --cam-rx: 2deg; --cam-ry: -3deg; --cam-rz: -0.6deg; }
+.app[data-view="settings"] { --scene-dim: 0.66; --cam-x: 6px; --cam-y: -8px; --cam-z: -30px; --cam-rx: 1deg; --cam-ry: 1.5deg; --cam-rz: -0.4deg; }
+
+/* 无障碍：reduced-motion 下不做过渡，相机直接落在当前机位 ——
+   背景仍是一张完整可看的静态构图（不是黑屏）。 */
+@media (prefers-reduced-motion: reduce) {
+  .app { transition: none; }
+}
+
+/* ---------- 视图填满主区高度 ----------
+   原来 .view.on 是 display:block，内容短时下面会空一大片（概览、密钥管理尤其明显）。
+   改成纵向 flex：视图 → 顶栏(定高) + 内容区(弹性)，再把最后一块标 .grow-row 撑满。 */
+.view.on { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.view-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.grow-row { flex: 1; min-height: 0; }
+.grow-row > .panel { display: flex; flex-direction: column; }
+.grow-row .log { flex: 1; }
+
+/* 阴影堆叠已去掉（v4）：层级靠**材质对比**（玻璃 vs 透光卡面）+ v4.4 的明度阶梯，
+   不靠多层投影叠深度。面板的「被光照到」由 ③ 的顶边高光承担 —— 见 design-spec §18.1 ①。 */
+
+/* ---------- ③ 卡片：透光卡面 + 顶边高光 + 光标聚光 + 悬浮抬升 ----------
+   v4.4 材质重构：从近实心(.92/.96)降到 **84/80**。读数的责任移交给
+   提亮后的卡面令牌（--bg-surface L 0.030，见 tokens.css 头部 v4.4 块）——
+   文字对比度按「84% 合成面」复算过（ghost 4.84:1，全档 ≥ AA）；
+   留下的 16–20% 透明只负责"背后有光"的存在感，不再赌底色透多透少。
+   色标从 surface-3/section-a 换成 surface/surface-deep：
+   上下端明度差 = 受光方向，卡面自己会"被照亮"。 */
+.card, .metric, .client-card, .log {
+  position: relative; overflow: hidden;
+  transition: border-color var(--d-hover);
+}
+/* 面板材质的选择器**带 `.app`**，两个理由：
+   ① 只给控制台的表上色（官网的 `.card` 有自己的材质）；
+   ② 特异度 (0,2,0) 压过 app.css 里后加载的 `.card,.log{background:var(--bg-surface-grad)}`
+      （(0,1,0)）—— 否则那条 tokens-v2 遗留规则会把透光卡面盖回不透明表皮。 */
+.app .card, .app .metric, .app .client-card, .app .log {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--bg-surface) 84%, transparent) 0%,
+    color-mix(in srgb, var(--bg-surface-deep) 80%, transparent) 100%);
+}
+.card::before, .metric::before, .client-card::before, .log::before {
+  content: ""; position: absolute; left: 14px; right: 14px; top: 0; height: 1px;
+  pointer-events: none; opacity: .65; transition: opacity var(--d-hover);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--brand-400) 42%, transparent), transparent);
+}
+.card::after, .metric::after, .client-card::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; opacity: 0;
+  transition: opacity var(--d-hover) var(--ease-out);
+  background: radial-gradient(320px circle at var(--mx, 50%) var(--my, 50%), color-mix(in srgb, var(--brand-500) 17%, transparent), transparent 62%);
+}
+.card:hover, .metric:hover, .client-card:hover { border-color: var(--border-strong); }
+.card:hover::before, .metric:hover::before, .client-card:hover::before { opacity: 1; }
+.card:hover::after, .metric:hover::after, .client-card:hover::after { opacity: 1; }
+
+/* ---------- ④ 积分横幅：玻璃（三处玻璃之一）+ 极光 + 周期性掠光 ----------
+   它是唯一一块「大数字压在光上」的面板 —— 这一页最需要光的地方，把玻璃留给它。 */
+.credit-banner {
+  position: relative; overflow: hidden;
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  backdrop-filter: blur(16px) saturate(150%);
+}
+.credit-banner::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background:
+    radial-gradient(580px 220px at 10% 0%, color-mix(in srgb, var(--brand-450) 32%, transparent), transparent 68%),
+    radial-gradient(500px 200px at 94% 130%, color-mix(in srgb, var(--accent-cyan) 18%, transparent), transparent 70%);
+}
+.credit-banner > * { position: relative; z-index: 1; }
+.credit-banner::after {
+  /* 掠光改走 transform（合成层），不再动画 `left`：
+     `left` 每帧触发布局 + 重绘，且宿主带 backdrop-filter，玻璃区域跟着每帧重合成。
+     伪元素铺满整幅、光带画在它的最右 200px；translateX 的百分比相对自身宽度（= 横幅宽），
+     -100% 时光带右缘贴在横幅左缘外，calc(8% + 200px) 时光带左缘在 108% 处 —— 与原先 -220px → 108% 的行程等价。 */
+  content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 100%; pointer-events: none;
+  background: linear-gradient(90deg, transparent calc(100% - 200px), var(--sheen) calc(100% - 100px), transparent 100%);
+  transform: translateX(-100%);
+  will-change: transform;
+  animation: sheen 7.5s var(--ease-in-out) infinite;
+}
+@keyframes sheen { 0% { transform: translateX(-100%); } 55%, 100% { transform: translateX(calc(8% + 200px)); } }
+
+/* 关键数字：一层很淡的辉光，让"读数"有质感 */
+.cb-num, .metric .vl { text-shadow: 0 0 26px color-mix(in srgb, var(--brand-450) 34%, transparent); }
+
+/* ---------- ⑤ 图表柱体：入场自下而上生长（--i 由 console-fx.js 写入） ---------- */
+.bars30 .b {
+  transform-origin: bottom; transform: scaleY(.05);
+  transition: transform 780ms var(--ease-out);
+  transition-delay: calc(var(--i, 0) * 24ms);
+}
+.bars30.is-in .b { transform: scaleY(1); }
+
+/* ---------- ⑥ 日志行的语义着色（复核 #10 / #11） ----------
+   f = 致命（上游访问密钥失效是这套方案唯一会停摆的状态，给最高权重）
+   q = 本地排队（不是错误，是「还在等」，所以用青而不是琥珀）        */
+.log .f { color: var(--danger-red, var(--danger-red)); }
+.log .q { color: var(--accent-cyan); }
+
+/* ---------- ⑦ P0 补充：#2 密钥行操作 / #3 危险操作二次确认 / #4 手动登记客户端 ---------- */
+
+/* #2 行尾 ⋯ 菜单 */
+.tbl td.acts { position: relative; width: 46px; }
+.dots { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px;
+  border-radius: 8px; color: var(--text-faint); font-size: 14px; line-height: 1; letter-spacing: 1px;
+  transition: background var(--d-hover) var(--ease-out), color var(--d-hover) var(--ease-out); }
+.tbl tr:hover .dots,
+.dots.on { background: var(--bg-surface-3); color: var(--text-secondary); }
+.rowmenu { position: absolute; right: 0; top: calc(100% + 4px); width: 190px; z-index: 20;
+  padding: 8px; border-radius: 12px; display: none;
+  background: var(--bg-surface-2-grad);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 24px 60px -14px var(--shade-menu); }
+.dots.on + .rowmenu,
+.tbl td.acts:hover .rowmenu { display: block; }
+.rowmenu a { display: block; padding: 8px 10px; border-radius: 8px; font-size: 12.5px;
+  color: var(--text-secondary); cursor: pointer; }
+.rowmenu a:hover { background: var(--brand-tint); color: var(--brand-400); }
+.rowmenu a.del { color: var(--warn-amber); }
+.rowmenu a.del:hover { background: color-mix(in srgb, var(--warn-amber) 10%, transparent); }
+.rowmenu i { display: block; font-style: normal; font-size: 10.5px; line-height: 16px;
+  color: var(--text-ghost); padding: 6px 10px 2px; }
+
+/* #3 / #4 遮罩 + 弹层（fixed 定位，不受 .card 的 overflow 影响） */
+.overlay { position: fixed; inset: 0; z-index: 80; display: none;
+  align-items: center; justify-content: center; background: color-mix(in srgb, var(--bg-scrim) 76%, transparent); }
+.overlay.on { display: flex; }
+.ov-modal { width: 460px; padding: 26px; border-radius: 18px; position: relative;
+  display: flex; flex-direction: column; gap: 16px;
+  background: var(--bg-surface-2-grad);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 40px 90px -20px var(--shade-float);
+  animation: ov-in 240ms var(--ease-out) both; }
+@keyframes ov-in { from { opacity: 0; transform: translateY(10px) scale(.985); } to { opacity: 1; transform: none; } }
+.ov-head { display: flex; align-items: center; justify-content: space-between; }
+.ov-head h3 { margin: 0; font-size: 17px; font-weight: 600; color: var(--text-primary); }
+.ov-x { color: var(--text-faint); line-height: 0; cursor: pointer; }
+.ov-sub { margin: 0; font-size: 12.5px; line-height: 21px; color: var(--text-muted); }
+.ov-lose { padding: 13px 15px; border-radius: 10px; font-size: 12px; line-height: 19px;
+  background: color-mix(in srgb, var(--warn-amber) 8%, transparent); border: 1px solid color-mix(in srgb, var(--warn-amber) 22%, transparent); color: var(--text-secondary); }
+.ov-lose b { color: var(--warn-amber); font-weight: 600; }
+.ov-field { display: flex; flex-direction: column; gap: 8px; }
+.ov-field > label { font-size: 12.5px; color: var(--text-secondary); }
+.ov-input { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 12px 14px; border-radius: 11px; background: var(--bg-code);
+  border: 1px solid var(--border-default); font-size: 14px; color: var(--text-primary); }
+.ov-hint { font-size: 11px; line-height: 17px; color: var(--text-faint); }
+
+/* 「指定模型」的勾选清单（新建密钥弹层）。
+   [2026-10-08] 这个清单是为了修一个真 bug 才出现的：该选项此前提交**空白名单**，
+   而服务端明确拒绝（`scope.type=models 时必须提供非空的 scope.value 字符串数组`），
+   于是「指定模型」这个选项**根本建不出密钥**。既然要选，就得能滚动、能勾。
+   限高 + 内滚：模型有十几到几十个，不限高会把弹层撑出屏幕。 */
+.scope-models { display: flex; flex-direction: column; gap: 8px; }
+.scope-models-list {
+  display: flex; flex-direction: column; gap: 1px;
+  max-height: 208px; overflow-y: auto; overscroll-behavior: contain;
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
+  background: var(--bg-code);
+}
+.scope-models-list::-webkit-scrollbar { width: 8px; }
+.scope-models-list::-webkit-scrollbar-thumb { background: var(--wash-7); border-radius: 999px; }
+.scope-model {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; cursor: pointer; font-size: 12px;
+  transition: background var(--d-hover) var(--ease-out);
+}
+.scope-model + .scope-model { border-top: 1px solid var(--border-subtle); }
+.scope-model:hover { background: var(--wash-3); }
+.scope-model input { flex: 0 0 auto; accent-color: var(--brand-500); cursor: pointer; }
+/* 模型 id 是机器标识（等宽芯片），显示名是给人看的 —— 两者并排，与「模型清单」一致 */
+.scope-model i { font-style: normal; color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ov-div { height: 1px; background: var(--border-subtle); }
+.ov-foot { display: flex; justify-content: flex-end; gap: 10px; }
+.btn-danger { padding: 9px 16px; background: color-mix(in srgb, var(--warn-amber) 12%, transparent); color: var(--warn-amber);
+  border: 1px solid color-mix(in srgb, var(--warn-amber) 32%, transparent); }
+.btn-danger:hover { background: color-mix(in srgb, var(--warn-amber) 18%, transparent); }
+.ov-seg { display: flex; gap: 6px; }
+.seg-i { padding: 8px 13px; border-radius: 9px; font-size: 12.5px; cursor: pointer;
+  background: var(--bg-surface-3); color: var(--text-muted); border: 1px solid transparent; }
+.seg-i.on { background: var(--brand-tint); color: var(--brand-400);
+  border-color: color-mix(in srgb, var(--brand-450) 38%, transparent); font-weight: 500; }
+
+/* ---------- ⑧ 复核采纳：未识别卡提前 / 详情卡可切换 ---------- */
+
+/* 未识别客户端改成整行横条 —— 需要用户决策的项不该沉在 3×2 卡片的最后一张 */
+.client-card.unid {
+  display: flex; align-items: center; gap: 14px;
+  padding: 16px 20px; border-color: color-mix(in srgb, var(--warn-amber) 30%, transparent);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--warn-amber) 7%, transparent), color-mix(in srgb, var(--bg-surface-deep) 55%, transparent) 44%);
+}
+.client-card.unid .cc-ico { flex: 0 0 auto; }
+.client-card.unid .nm { flex: 1; min-width: 0; }
+.client-card.unid .nm b { display: block; font-size: 13.5px; color: var(--text-primary); }
+.client-card.unid .nm span { display: block; font-size: 11.5px; color: var(--text-faint); margin-top: 5px; }
+
+/* 请求详情 429 / 401 切换 —— 401 是这套方案唯一会让服务停摆的状态，必须有细节可看 */
+.dsw { display: inline-flex; gap: 3px; padding: 3px; border-radius: 999px; background: var(--bg-surface-3); }
+.dsw i {
+  padding: 4px 12px; border-radius: 999px; font-style: normal; cursor: pointer;
+  font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);
+  transition: background var(--d-hover) var(--ease-out), color var(--d-hover) var(--ease-out);
+}
+.dsw i.on { background: var(--brand-tint); color: var(--brand-400); }
+.dset { display: none; }
+.dset.on { display: block; }
+.dnote {
+  margin-top: 14px; padding: 12px 14px; border-radius: 9px;
+  font-size: 11.5px; line-height: 19px; color: var(--text-muted);
+  background: var(--wash-2); border: 1px solid var(--border-subtle);
+}
+.dnote.fatal { color: var(--text-secondary); background: color-mix(in srgb, var(--danger-red) 7%, transparent); border-color: color-mix(in srgb, var(--danger-red) 26%, transparent); }
+.dnote.fatal b { color: var(--danger-red); font-weight: 600; }
+.upstream.fatal { border-color: color-mix(in srgb, var(--danger-red) 30%, transparent); color: var(--danger-red-lt); }
+/* @zbiti-ai:f:345:5e69d0e9 */

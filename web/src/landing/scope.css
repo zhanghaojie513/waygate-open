@@ -1,0 +1,116 @@
+/* ==========================================================================
+   官网 ↔ 控制台 样式隔离（收尾层，必须最后加载）
+   ==========================================================================
+
+   背景：`web/src/styles/` 下的控制台样式表是**全局**的，而官网与控制台的 class
+   名高度重叠（`.nav` `.section` `.btn` `.pill` `.eyebrow` `.note` `.wrap` …）。
+   官网自己的样式已由 `tools/scope-css.mjs` 加了 `.landing` 前缀（生成期隔离），
+   于是凡是两边都定义的属性，官网侧（0,2,0 起）都压过控制台侧（0,1,0）。
+
+   **本文件只补「控制台定义、而官网没定义」的那批属性** —— 那批属性不会被
+   任何前缀压住，会原样渗进官网。清单不是猜的：以 `index.html` 里出现过的
+   132 个 class 反查四张控制台样式表，逐条比对属性集合得出（见交付报告）。
+   只写有实测差异的项，不做「防御性」大扫除 —— 多写的每一条都是下一次
+   设计稿更新时的假来源。
+
+   反向（官网污染控制台）不需要这里处理：官网所有规则都带 `.landing` /
+   `html.relay-landing` 前缀，结构上不可能命中控制台 DOM。
+   ========================================================================== */
+
+/* ---------- 1 · 横向溢出与粘性列 ----------
+   原型把 `overflow-x: hidden` 写在 `body` 上。按 CSS 语义，当 `html` 的
+   overflow 为 visible 时，`body` 的值会被**提升到视口**，`body` 自身仍算
+   visible —— 所以原型里 `.split-l` 的 `position: sticky` 照常工作。
+   这里 `body` 被映射成了普通 div（`.landing`），提升不再发生：
+   若把 `overflow-x: hidden` 留在 `.landing` 上，它会变成滚动容器，
+   sticky 直接失效（左栏不再吸附）。所以：裁切放 `html`，`.landing` 保持 visible。 */
+html.relay-landing { overflow-x: hidden; }
+.landing { overflow-x: visible; }
+
+/* ---------- 2 · 顶栏 ----------
+   控制台 `.nav`（旧版官网遗留）多给了 4 个官网没有的属性：
+   · height: 76px         → 官网是 padding 撑高（18px 上下），必须还原为 auto
+   · backdrop-filter      → 官网首屏导航是**全透明**的，模糊会在空背景上留下灰雾
+   · background           → 同上，原型首屏顶栏没有任何底色
+   · box-shadow           → 官网用发丝线而非投影
+   `justify-content: space-between` 不必管：官网 brand/nav-links 都带
+   `margin-left: auto`，auto margin 会先把自由空间吃光，justify-content 成为空操作。
+
+   [注意] backdrop-filter 必须**单独成条、且不带 -webkit- 双胞胎**（见 §6 的压缩器陷阱）：
+   若与 -webkit- 相邻，压缩器会合并成只留 -webkit- 的一份。实测后果——标准属性被抹掉，
+   控制台 `.nav { backdrop-filter: blur(14px) }`（0,1,0）反过来生效：首屏未吸顶时
+   顶栏会拖出一层灰雾（Firefox 上更是完全没有兜底）。所以这里只写无前缀一条。 */
+.landing .nav {
+  height: auto;
+  background: none;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+/* 控制台旧版 `.nav::before/::after` 会画发丝线与顶部高光；官网顶栏没有伪元素。 */
+.landing .nav::before,
+.landing .nav::after { content: none; }
+
+/* ---------- 3 · 区块 ----------
+   控制台 `.section { padding: 96px var(--page-gutter) }` 是**简写**：官网只声明了
+   `padding-block`，左右内边距会从简写里漏进来（--page-gutter = 120px）。
+   官网的左右安全边由 `.wrap` 的 `padding-inline` 负责，`.section` 必须归零。 */
+.landing .section { padding-inline: 0; }
+/* 控制台 motion.css 的 `.section::after` 是给旧版官网画顶部渐变线的；
+   官网新版的区块顶边由 `.section::before` 承担，没有 ::after。 */
+.landing .section::after { content: none; }
+
+/* ---------- 4 · 眉标 / 胶囊 / 提示 / 按钮 ----------
+   这四处只差一两个属性，但都是肉眼可见的。 */
+/* 控制台 .eyebrow 是 display 版（字重 600 + 下边距 16px）；
+   官网的是等宽全大写小标，无字重、无下边距。 */
+.landing .eyebrow { margin-bottom: 0; font-weight: 400; }
+/* 控制台 .pill 字重 500，官网继承 400。 */
+.landing .pill { font-weight: 400; }
+/* 控制台 .note 是提示框（flex + 青色描边 + 底色）；
+   官网的 .note 只是转化区里一段居中说明文字，必须还原成裸段落。 */
+.landing .note { display: block; padding: 0; background: none; border: 0; }
+/* 控制台 motion.css 给主按钮加了 hover 上浮 1px；官网原型没有位移，只有变色。 */
+.landing .btn:hover { transform: none; }
+
+/* ---------- 5 · UA 默认边距 ----------
+   原型没有全局 `* { margin: 0; padding: 0 }`（只有 box-sizing），
+   控制台有。被这条重置吃掉的、官网又显式依赖 UA 默认值的只有一个 h5：
+   页脚三列的小标题（`.foot-col h5` 只声明了 margin-bottom，上边距来自 UA）。
+   `revert` 把 margin 退回 UA 来源，等价于原型环境。 */
+.landing h5 { margin: revert; }
+
+
+/* ---------- 6 · 玻璃的 backdrop-filter（压缩器陷阱，必读） ----------
+   实测：Vite 打包时的 CSS 压缩器会把**成对出现的**
+       backdrop-filter: X;  -webkit-backdrop-filter: X;
+   合并成一条，并且只留下 -webkit- 那份。后果是 Chrome / Edge 上
+   `.glass` 的模糊**整个消失**（computed backdrop-filter 变成 none），
+   深色底上「玻璃」会塌成半透明色块 —— 这是肉眼立刻能看出的塌陷。
+
+   解法：在**本文件里补一条只有无前缀、没有 -webkit- 双胞胎的声明**。
+   压缩器没有可合并的对象，于是原样保留；同时生成文件里那份 -webkit- 也还在，
+   两代浏览器都拿得到模糊。
+
+   [注意] 因此本段的写法看着「少了一半」是**故意的**，不是漏写前缀。
+   值必须与 prototype/v4/ui.css 的 .glass / .glass-soft、以及 `.nav.stuck` 一致。 */
+.landing .glass { backdrop-filter: blur(var(--glass-blur)) saturate(150%); }
+.landing .glass-soft { backdrop-filter: blur(calc(var(--glass-blur) * .6)); }
+.landing .nav.stuck { backdrop-filter: blur(16px) saturate(140%); }
+
+/* ---------- 7 · 其余来自控制台的属性泄漏（逐条实测得出） ---------- */
+/* 控制台 .nav 用 space-between 布局；官网靠 brand/nav-links 的 margin-left:auto
+   分配空间，justify-content 必须回到初始值。 */
+.landing .nav { justify-content: normal; }
+/* 控制台 .nav-links 指定了 color；官网该容器只做继承（--text-secondary）。
+   链接自身的颜色由 `.nav-links a` 声明，所以这一条只影响继承链。 */
+.landing .nav-links { color: var(--text-secondary); }
+/* 控制台 motion.css 的 `body .hero > .wrap` 给首屏内容壳加了 position/z-index；
+   官网不需要（层级由 .shell 的 z-index 统一负责）。 */
+.landing .hero > .wrap { position: static; z-index: auto; }
+/* 控制台 .note 是 flex 提示框；官网的 .note 是裸段落，圆角与 gap 一并归零。 */
+.landing .note { border-radius: 0; gap: normal; }
+/* 控制台 `.btn` 多了 `justify-content: center`；原型 `.btn` 是收缩宽度的 inline-flex，
+   主轴对齐取初始值（normal→flex-start）。对单行文字两者在像素上等价，
+   但偏差会掩盖后续「按钮里放图标」的真实回归，故按原型归位。 */
+.landing .btn { justify-content: normal; }
+/* @zbiti-ai:f:115:c8db8d94 */

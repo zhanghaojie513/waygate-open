@@ -1,0 +1,321 @@
+import { CalendarCheck, Plus, RefreshCw, Trash2, Wrench } from 'lucide-react';
+import { Pill } from '../ui/Pill';
+import type { ProviderItem, ProviderUsageRow } from '../../types/api';
+
+import { formatCredits, formatInt, formatRelative } from '../../lib/format';
+import { Tooltip } from '../ui/Tooltip';
+
+/**
+ * 提供商表 —— **一行一家**，行内直接给这家订阅的用量（2026-10-09）。
+ *
+ * ## 为什么没有"客户端子行"
+ * 本项目的形态是**反代客户端订阅**：**客户端 ≡ 提供商**，一家订阅就是一个客户端。
+ * 曾经把客户端做成缩进子行，结果是**同一串数字出现两次**（提供商行是它的合计，
+ * 子行是它自己）——名字也只差大小写。用户判定为累赘并已去掉。
+ * 只有当"一家提供商下挂着多个客户端"时子行才有信息量，而本形态不产生那种数据。
+ *
+ * ## 用量数字从哪来
+ * `requests` 表**没有** provider 维度 —— 逐条请求归属不了某一家（日志里也不显示）。
+ * 数字来自 `api.clients(窗口)` 的 **`byProvider`**：服务端把窗口内请求按
+ * 「模型 id → 生效目录的 provider」归因聚合（与请求日志「提供商」列、概览 byClient 同源）。
+ * 多生效下每家各报各的，**不再需要**「只有一家启用才可归属」的保守门槛（v0.6.0 修）。
+ * 目录外的模型的请求归到 `providerId=null` 桶，不显示在任何一行上（不冒充）。
+ *
+ * ## 末列的操作只有「改配置」
+ * 改：`配置` / `模型列表` / `启用或停用` / `删除`。
+ * 查（API Keys / 请求日志）都不在这一行：侧栏有自己的导航入口，
+ * 这行再放等于重复导航（2026-10-09 / 2026-10-10 两次用户要求去掉）。
+ *
+ * [v1.6.4] 「修改」→「配置」：对 MiniMax / Qoder 它改不了凭证（凭证是客户端登录态里的
+ *   令牌，用户无从手填），叫「修改」会让人以为能在那里改密钥 —— 与抽屉里的实际内容对不上。
+ */
+export function ProviderTable({
+  rows,
+  byProvider,
+  busyId,
+  onEdit,
+  onModels,
+  onSignin,
+  onGrowthRun,
+  onOauthImport,
+  onActivate,
+  onDeactivate,
+  onDelete,
+}: {
+  rows: ProviderItem[];
+  /** [v0.6.0] 按提供商聚合的用量（服务端归因，窗口同上）——本表三列用量直接用。 */
+  byProvider?: ProviderUsageRow[];
+  /** 活提供商的模型目录（非活的行没有清单，见下方「模型列表」的禁用理由）。 */
+  busyId: string | null;
+  onEdit: (row: ProviderItem) => void;
+  onModels: (row: ProviderItem) => void;
+  /** [v0.5.6] 立即签到（仅 MiniMax oauth 提供商有按钮）。 */
+  onSignin: (row: ProviderItem) => void;
+  /** [v1.4.0] 手动跑一轮 WorkBuddy 领取（签到+任务+兑换）。 */
+  onGrowthRun: (row: ProviderItem) => void;
+  /** [v1.4.4] 打开任务面板（只读：完成态/进度/奖励）。 */
+  /** [v1.4.0] 导入 WorkBuddy OAuth 凭证。 */
+  onOauthImport: (row: ProviderItem) => void;
+  onActivate: (row: ProviderItem) => void;
+  /** [v0.5.1] 停用（多生效切换的另一侧）。 */
+  onDeactivate: (row: ProviderItem) => void;
+  onDelete: (row: ProviderItem) => void;
+}) {
+  /* 与服务端 localDate 同口径：Asia/Shanghai 日历日（YYYY-MM-DD）。 */
+  const todayIso = () =>
+    new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+
+  /* [v0.6.0] 用量按**目录归属的提供商**取（服务端 byProvider，与请求日志「提供商」同源）——
+     取代此前的「只有一家启用时可归属」保守门槛：多生效下也能精确归属。
+     目录外的模型归到 providerId=null 桶，不在任何提供商行上显示（不冒充）。 */
+  const usageByProvider = new Map((byProvider ?? []).map((b) => [b.providerId ?? '', b]));
+
+  /* [2026-10-10] 「API Keys」跳转按钮已删（用户要求）—— 唯一消费者是它的 href，
+     `sole`（唯一客户端时的过滤参数）随之退役。 */
+
+  return (
+    /* [task#60] 同 `.tbl` 族的横向滚动防护：多列 nowrap，窄容器下必须能横滚而不是被裁掉。 */
+    <div className="tbl-scroll">
+      <table className="tbl">
+        <caption className="sr-only">提供商列表，共 {rows.length} 家提供商</caption>
+        <thead>
+          <tr>
+            <th scope="col">提供商</th>
+            {/* [2026-10-10 用户要求] 密钥独立成列 —— 它是要核对/登记的对象，
+                不是可比较的量纲，但也不该和地址/模型数挤在名称副行里被埋掉。 */}
+            <th scope="col">密钥</th>
+            <th scope="col" className="r">请求次数</th>
+            <th scope="col" className="r">消耗积分</th>
+            <th scope="col" className="r">最后活跃</th>
+            <th scope="col" className="r">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((p) => {
+            const busy = busyId === p.id;
+            return (
+              <tr className="prov-row" key={p.id}>
+                <td className="td-strong">
+                  {p.name}
+                  {p.active ? <Pill tone="live">已启用</Pill> : <Pill tone="ghost">未启用</Pill>}
+                  {/* [v0.5.0] 协议徽标：一眼区分 WorkBuddy（OpenAI 方言）与 MiniMax（Anthropic 方言）。
+                      [v0.6.0] Qoder CN（COSY 协议，免费档）。 */}
+                  {p.protocol === 'anthropic' ? (
+                    <Tooltip content="Anthropic Messages 方言（mavis 网关）：模型目录用内置清单，凭证为 refresh token 自动换新">
+                      <span className="pill pill-ghost">Anthropic</span>
+                    </Tooltip>
+                  ) : p.protocol === 'qoder' ? (
+                    <Tooltip content="Qoder CN 网关（COSY 协议）：免费档 billable:false 实扣 0；目录从网关 /model/list 拉取；凭证为客户端身份 JSON（不自动刷新）">
+                      <span className="pill pill-ghost">Qoder</span>
+                    </Tooltip>
+                  ) : null}
+                  {/* [2026-10-12 用户要求] 行内只留「N 个模型」，地址 / 启用数 / 积分账本
+                      全部移入悬停提示 —— 第二行原来串了四段信息，扫读时被地址顶长。 */}
+                  <div className="td-sub td-mono">
+                    <Tooltip
+                      content={
+                        <>
+                          <div className="client-model-tip">
+                            <div className="client-model-tip-head">
+                              <div className="client-model-tip-title">
+                                <strong>{p.name}</strong>
+                                <span>{p.baseUrl}</span>
+                              </div>
+                              <span className="client-model-tip-tag">{p.active ? '已启用' : '未启用'}</span>
+                            </div>
+                            <div className="client-model-tip-summary">
+                              <div>
+                                <span>模型总数</span>
+                                <b>{formatInt(p.modelCount ?? 0)}</b>
+                              </div>
+                              <div>
+                                <span>已启用</span>
+                                <b>{formatInt(p.modelEnabled ?? 0)}</b>
+                              </div>
+                            </div>
+                            {p.credits?.available ? (
+                              <div className="client-metric-tip-total">
+                                <span>剩余积分</span>
+                                <b>
+                                  {formatCredits(p.credits.remaining ?? 0)} <em>已用 {formatCredits(p.credits.consumed ?? 0)}</em>
+                                </b>
+                              </div>
+                            ) : null}
+                            {p.credits?.stale ? (
+                              <div className="client-model-tip-note">⚠ 积分数据偏旧（账本快照超时）</div>
+                            ) : null}
+                          </div>
+                        </>
+                      }
+                    >
+                      <span className="prov-model-count">{formatInt(p.modelCount ?? 0)} 个模型</span>
+                    </Tooltip>
+                  </div>
+                </td>
+                <td className="td-cred">
+                  <Tooltip content="供应商访问密钥（掩码显示；全量只存在服务器上）">
+                    <span className="cred-mask">{p.credentialMask}</span>
+                  </Tooltip>
+                  <span className={`up-badge${p.configured ? '' : ' warn'}`}>
+                    {p.configured ? '有效' : '未配置'}
+                  </span>
+                </td>
+                <td className="r td-mono">{p.active ? formatInt(usageByProvider.get(p.id)?.requests ?? 0) : '—'}</td>
+                <td className="r td-mono">{p.active ? formatCredits(usageByProvider.get(p.id)?.credits ?? 0) : '—'}</td>
+                <td className="r td-mono">
+                  {p.active ? formatRelative(usageByProvider.get(p.id)?.lastSeenAt ?? null) : '—'}
+                </td>
+                <td className="r">
+                  <span className="prov-row-actions">
+                    {/* 「API Keys」不在这一行（2026-10-10 用户要求去掉）：
+                        侧栏本来就有「API Keys」入口，这行再放一个是重复导航。
+                        「请求日志」也不在这一行（2026-10-09 同理由去掉）。 */}
+                    <Tooltip content="改名称；WorkBuddy 可换密钥。MiniMax / Qoder 的凭证在客户端登录态里，抽屉内给导入指引">
+                      <button type="button" className="mini-pill" disabled={busy} onClick={() => onEdit(p)}>
+                        <Wrench size={12} />
+                        配置
+                      </button>
+                    </Tooltip>
+                    <Tooltip content="查看这家自己的模型清单（启停只作用于该提供商分区）">
+                      {/* 元素类型/属性恒定（不翻 disabled、不换 span 包裹）——理由见签到按钮注释。 */}
+                      <button
+                        type="button"
+                        className="mini-pill"
+                        aria-disabled={busy || !p.active}
+                        /* 契约 §3.12：模型目录**属于活提供商**，非活的那家服务端没有清单 ——
+                           给它一个能点的按钮，点开只会是空表或上一家的清单（那是编出来的数据）。 */
+                        onClick={() => { if (!busy && p.active) onModels(p); }}
+                      >
+                        <RefreshCw size={12} />
+                        模型列表
+                      </button>
+                    </Tooltip>
+                    {/* [v0.5.6] 签到（仅 MiniMax Code 客户端订阅）：显示今日状态，一键补签。
+                        [v1.3.0] 实证 WorkBuddy 上游不允许 ck_ 代领（403），不做其签到按钮 ——
+                        它的签到状态在设置页「提供商健康」卡同步展示。 */}
+                    {/* [v1.6.0] 签到按钮：MiniMax（oauth）与 Qoder（cosy，v1.6.0 起支持）共用同一套 signin_* 状态。 */}
+                    {p.credKind === 'oauth_minimax' || p.protocol === 'qoder' ? (
+                      <Tooltip
+                        content={
+                          p.signin?.checkedOn
+                            ? `最近签到 ${p.signin.checkedOn}${p.signin.lastPoints ? ` · +${p.signin.lastPoints} 积分` : ''}（relay 每天 08:05 自动签）`
+                            : '今天还没签到 —— 点一下立即签（relay 每天 08:05 也会自动签）'
+                        }
+                      >
+                        {/* ⚠️ 这里**不能**翻 `disabled`：Tooltip 在被包裹元素 `disabled` 时
+                            会改用一层 `<span class="tooltip-anchor">` 承载交互（原生 disabled
+                            元素收不到 hover/focus），非禁用时则返回裸 trigger —— 于是
+                            `disabled` 一变，Tooltip 的分支就变、两棵不同的树互换 = 整棵重挂。
+                            点「已签到」时 busy 翻一次、刷新回来再翻一次，用户看到的就是"闪一下"。
+                            改用 `aria-disabled`（Tooltip 不据它分支，树恒定）+ 守卫点击；
+                            外观由 CSS 的 `.mini-pill[aria-disabled='true']` 表达。 */}
+                        {/* 禁用条件 = 忙碌 **或今天已签到** —— 已签到是终态，不该再发请求
+                            （服务端幂等但没必要打这一枪）。用 `aria-disabled` 而非 `disabled`
+                            的原因见上：Tooltip 对被包裹元素的 `disabled` 敏感，会换分支重挂。 */}
+                        <button
+                          type="button"
+                          className="mini-pill"
+                          aria-disabled={busy || p.signin?.checkedOn === todayIso()}
+                          onClick={() => {
+                            if (busy || p.signin?.checkedOn === todayIso()) return;
+                            onSignin(p);
+                          }}
+                        >
+                          <CalendarCheck size={12} />
+                          {p.signin?.checkedOn === todayIso() ? '已签到' : '签到'}
+                        </button>
+                      </Tooltip>
+                    ) : null}
+                    {/* [v1.4.0] WorkBuddy 领取域（OAuth）：导入凭证 + 手动签到。
+                        [v1.4.4] 今日已跑过即禁用（服务端幂等但没必要白打 17 个任务接口）。
+                        [v1.4.5] 按钮改叫「签到」（用户口径）；任务面板移至设置页「提供商健康」。 */}
+                    {p.protocol === 'openai' ? (
+                      p.wbOAuth?.configured ? (
+                        <Tooltip
+                          content={
+                            p.wbSignin?.checkedOn === todayIso()
+                              ? '今天已签到过（明天 08:05 自动跑；任务面板在设置 → 提供商健康）'
+                              : '立即签到 + 顺带跑一轮成长任务与连登兑换（每天 08:05 也会自动跑）。转发不受影响。'
+                          }
+                        >
+                          <button
+                            type='button'
+                            className='mini-pill'
+                            aria-disabled={busy || p.wbSignin?.checkedOn === todayIso()}
+                            onClick={() => { if (!busy && p.wbSignin?.checkedOn !== todayIso()) onGrowthRun(p); }}
+                          >
+                            <CalendarCheck size={12} />
+                            {p.wbSignin?.checkedOn === todayIso() ? '已签到' : '签到'}
+                          </button>
+                        </Tooltip>
+                      ) : (
+                        <Tooltip content={'导入桌面端 OAuth 凭证后可代领签到/任务（上游不允许 API 密钥代领）。粘贴 tools/wb-oauth-export.mjs 的输出；转发仍走 API 密钥。'}>
+                          <button
+                            type='button'
+                            className='mini-pill'
+                            aria-disabled={busy}
+                            onClick={() => { if (!busy) onOauthImport(p); }}
+                          >
+                            <CalendarCheck size={12} />
+                            导入OAuth
+                          </button>
+                        </Tooltip>
+                      )
+                    ) : null}
+                    {/* [v0.5.1] 多生效：启用/停用切换（最后一个生效的不可停 —— 服务端把关）。 */}
+                    {p.active ? (
+                      <Tooltip content="退出出站路由（目录与凭证保留，可再启用）">
+                        {/* 同签到按钮：不翻 disabled，避免 Tooltip 换分支重挂。 */}
+                        <button
+                          type="button"
+                          className="mini-pill"
+                          aria-disabled={busy}
+                          onClick={() => { if (!busy) onDeactivate(p); }}
+                        >
+                          停用
+                        </button>
+                      </Tooltip>
+                    ) : (
+                      <button type="button" className="mini-pill" disabled={busy} onClick={() => onActivate(p)}>
+                        启用
+                      </button>
+                    )}
+                    <Tooltip
+                      content={
+                        p.active
+                          ? '不能删除已启用的提供商 —— 先停用它'
+                          : rows.length <= 1
+                          ? '至少保留一个提供商'
+                          : '删除这个提供商（凭证文件一并删除）'
+                      }
+                    >
+                      <button
+                        type="button"
+                        className="mini-pill danger"
+                        aria-disabled={busy || p.active || rows.length <= 1}
+                        onClick={() => { if (!busy && !p.active && rows.length > 1) onDelete(p); }}
+                      >
+                        <Trash2 size={12} />
+                        删除
+                      </button>
+                    </Tooltip>
+                  </span>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** 「新增提供商」——放在表格卡片的右上角（与「密钥列表」的「新建API Key」同一位置规矩）。 */
+export function AddProviderButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button type="button" className="btn btn-primary btn-sm" onClick={onClick}>
+      <Plus size={14} />
+      新增提供商
+    </button>
+  );
+}

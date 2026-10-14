@@ -1,0 +1,1411 @@
+openapi: 3.0.3
+
+info:
+  title: 驿站 · Relay API
+  version: 0.4.1
+  description: |
+    把 WorkBuddy 客户端订阅通过自签发 ck_ 密钥转成自托管 OpenAI 兼容端点 + 控制台。纯自用，不对外提供服务。
+
+    **两套响应体不要混**：
+    - `/v1/*` 用 OpenAI 原生形状（成功是 chat.completion / SSE chunk，失败是 {error: {...}}）
+    - `/api/*` 用统一信封 {code, data, message}
+
+    上游实测约束（probe/03-upstream-verified.md）：必须 stream:true (11101)；首条必须 system (11128)；
+    未知模型 (11102)；max_tokens 过小 (11133)。额度接口与模型目录接口均未找到（6 个候选路径全 404）。
+  license:
+    name: 个人自用工具，与 WorkBuddy / 腾讯无隶属关系
+
+servers:
+  - url: https://relay.example.com
+    description: 公网入口（经 Nginx TLS 终止，控制台 /api/* 默认不在此暴露，见 ADR-006）
+  - url: http://127.0.0.1:8787
+    description: 本机回环（SSH 隧道后可访问控制台）
+
+tags:
+  - name: proxy
+    description: OpenAI 兼容反代，鉴权为 sk-waygate- 密钥（旧前缀 sk-relay- 已退役，不再接受）
+  - name: health
+    description: 健康检查，不鉴权
+  - name: console
+    description: 控制台，鉴权为会话 cookie
+
+# ---------------------------------------------------------------- 安全方案
+components:
+
+  securitySchemes:
+    ClientKey:
+      type: http
+      scheme: bearer
+      bearerFormat: sk-waygate-<24 hex>（旧前缀 sk-relay-<24 hex> 已退役）
+      description: |
+        本机自签发密钥。格式 `sk-waygate-` + 24 位小写十六进制（全长 35 字符）。
+        前缀只用于快速识别与快速拒绝，强度全在后面的随机段。
+        ⚠️ **更名期为平滑过渡曾短暂并存接受旧前缀 `sk-relay-`（9 + 24 = 33 字符）；
+        2026-10-11 晚存量密钥全部重签后已收窄，旧前缀不再被接受。** 新建与校验一律用 `sk-waygate-`。
+    AnthropicApiKey:
+      type: apiKey
+      in: header
+      name: x-api-key
+      description: |
+        Anthropic SDK 默认的密钥头（值同 ClientKey，`sk-waygate-…`）。
+        仅供 `POST /v1/messages` 使用；等价于 `Authorization: Bearer <key>`，二选一即可。
+    SessionCookie:
+      type: apiKey
+      in: cookie
+      name: relay_sid
+      description: |
+        HMAC 签名会话令牌（base64url(payload).base64url(hmac)），无服务端状态。
+        Cookie 属性：HttpOnly; Secure; SameSite=Strict; Path=/api; Max-Age=43200。
+        写方法（POST/PUT/PATCH/DELETE）额外要求 Origin 头同源。
+
+  schemas:
+
+    # ---------------- 通用 /api 信封
+    ApiEnvelope:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: integer
+          description: 0 成功；非 0 见错误码表
+          example: 0
+        data:
+          description: 业务数据，类型由各端点定义
+          nullable: true
+        message:
+          type: string
+          description: 错误时的人类可读描述（含下一步动作）；成功时为空串
+          example: ''
+        traceId:
+          type: string
+          description: 仅 5xxxx 错误携带，排障用
+          nullable: true
+
+    PageMeta:
+      type: object
+      required: [items, total, page, limit, hasMore]
+      properties:
+        total:   { type: integer, example: 1284 }
+        page:    { type: integer, example: 1 }
+        limit:   { type: integer, example: 20 }
+        hasMore: { type: boolean, example: true }
+
+    # ---------------- OpenAI 兼容
+    Message:
+      type: object
+      required: [role, content]
+      properties:
+        role:
+          type: string
+          enum: [system, user, assistant, tool, developer]
+        content:
+          type: string
+        name:
+          type: string
+        tool_calls:
+          type: array
+          items: { $ref: '#/components/schemas/ToolCall' }
+
+    ToolCall:
+      type: object
+      properties:
+        index: { type: integer }
+        id:    { type: string }
+        type:  { type: string, enum: [function] }
+        function:
+          type: object
+          properties:
+            name:      { type: string }
+            arguments: { type: string }
+
+    ChatCompletionRequest:
+      type: object
+      required: [model, messages]
+      properties:
+        model:
+          type: string
+          description: |
+            可接受 API ID（kimi-k2.7）或显示名（Kimi-K2.7-Code / GLM-5.3）。
+            服务端按 model_catalog 三级查找映射；未命中返回 400 model_not_found 且不转发上游。
+          example: kimi-k2.7
+        messages:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/Message' }
+          description: 首条不必是 system，服务端会自动补
+        stream:
+          type: boolean
+          description: |
+            无论传什么，向上游恒为 true。传 false 时服务端聚合后返回 chat.completion 对象。
+          example: true
+        max_tokens:
+          type: integer
+          description: 低于 limits.minMaxTokens（默认 64）时提升到 64
+          example: 200
+        temperature:        { type: number, nullable: true }
+        top_p:              { type: number, nullable: true }
+        n:                  { type: integer, nullable: true }
+        stop:               { oneOf: [{ type: string }, { type: array, items: { type: string } }], nullable: true }
+        presence_penalty:   { type: number, nullable: true }
+        frequency_penalty:  { type: number, nullable: true }
+        logprobs:           { type: boolean, nullable: true }
+        top_logprobs:       { type: integer, nullable: true }
+        response_format:    { type: object, nullable: true }
+        seed:               { type: integer, nullable: true }
+        tools:              { type: array, items: { type: object }, nullable: true }
+        tool_choice:        { nullable: true }
+        parallel_tool_calls: { type: boolean, nullable: true }
+        user:               { type: string, nullable: true }
+        stream_options:
+          type: object
+          nullable: true
+          description: |
+            由服务端消费并删除，不转发上游（上游不认该字段）。
+            上游每个 chunk 自带 usage，include_usage 语义天然满足。
+
+    Usage:
+      type: object
+      properties:
+        prompt_tokens:     { type: integer, example: 16 }
+        completion_tokens: { type: integer, example: 384 }
+        total_tokens:      { type: integer, example: 400 }
+
+    ChatCompletion:
+      type: object
+      description: 非流式请求的响应（服务端由上游 SSE 聚合而成）
+      properties:
+        id:      { type: string, example: '01497f24' }
+        object:  { type: string, enum: [chat.completion] }
+        created: { type: integer, example: 1791014749 }
+        model:   { type: string, example: deepseek-v3 }
+        choices:
+          type: array
+          items:
+            type: object
+            properties:
+              index:         { type: integer, example: 0 }
+              finish_reason: { type: string, enum: [stop, length, tool_calls, content_filter], nullable: true }
+              logprobs:      { type: object, nullable: true }
+              message:
+                type: object
+                properties:
+                  role:              { type: string, enum: [assistant] }
+                  content:           { type: string }
+                  reasoning_content: { type: string, nullable: true }
+                  tool_calls:
+                    type: array
+                    items: { $ref: '#/components/schemas/ToolCall' }
+        usage: { $ref: '#/components/schemas/Usage' }
+
+    ChatCompletionChunk:
+      type: object
+      description: 流式 SSE 的 data 载荷（上游 chunk 原样透传，不改写内容）
+      properties:
+        id:      { type: string }
+        object:  { type: string, enum: [chat.completion.chunk] }
+        created: { type: integer }
+        model:   { type: string }
+        choices:
+          type: array
+          items:
+            type: object
+            properties:
+              index: { type: integer }
+              delta:
+                type: object
+                properties:
+                  role:              { type: string, nullable: true }
+                  content:           { type: string, nullable: true }
+                  reasoning_content: { type: string, nullable: true }
+                  tool_calls:
+                    type: array
+                    items: { $ref: '#/components/schemas/ToolCall' }
+              finish_reason: { type: string, nullable: true }
+              logprobs:      { type: object, nullable: true }
+        usage: { $ref: '#/components/schemas/Usage' }
+
+    # ---------------- Anthropic Messages（本服务新增的翻译层，见 api-contract §2.4）
+    AnthropicMessageRequest:
+      type: object
+      required: [model, max_tokens, messages]
+      properties:
+        model:      { type: string, example: kimi-k2.7, description: 同 ChatCompletionRequest.model 的三级查找 }
+        max_tokens: { type: integer, example: 200 }
+        system:
+          description: 字符串或 text block 数组；翻译为首条 role:system
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: object
+                properties:
+                  type: { type: string, enum: [text] }
+                  text: { type: string }
+        messages:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [role, content]
+            properties:
+              role: { type: string, enum: [user, assistant] }
+              content:
+                description: 字符串或 content block 数组（text / image / tool_use / tool_result）
+                oneOf:
+                  - type: string
+                  - type: array
+                    items: { type: object }
+        tools:
+          type: array
+          items:
+            type: object
+            required: [name]
+            properties:
+              name:         { type: string }
+              description:  { type: string }
+              input_schema: { type: object }
+        tool_choice:
+          type: object
+          properties:
+            type: { type: string, enum: [auto, any, tool, none] }
+            name: { type: string }
+        stop_sequences:
+          type: array
+          items: { type: string }
+        stream:      { type: boolean, description: true → Anthropic SSE；false/缺省 → 单个 message 对象 }
+        temperature: { type: number, nullable: true }
+        top_p:       { type: number, nullable: true }
+
+    AnthropicUsage:
+      type: object
+      properties:
+        input_tokens:  { type: integer, example: 5 }
+        output_tokens: { type: integer, example: 2 }
+
+    AnthropicContentBlock:
+      type: object
+      description: text 块或 tool_use 块
+      properties:
+        type:  { type: string, enum: [text, tool_use] }
+        text:  { type: string, nullable: true }
+        id:    { type: string, nullable: true }
+        name:  { type: string, nullable: true }
+        input: { nullable: true, description: tool_use 的入参对象 }
+
+    AnthropicMessage:
+      type: object
+      description: 非流式响应（Anthropic message 对象）
+      properties:
+        id:      { type: string, example: 'msg_0123abcd' }
+        type:    { type: string, enum: [message] }
+        role:    { type: string, enum: [assistant] }
+        model:   { type: string }
+        content:
+          type: array
+          items: { $ref: '#/components/schemas/AnthropicContentBlock' }
+        stop_reason:   { type: string, nullable: true, enum: [end_turn, max_tokens, tool_use, stop_sequence, refusal] }
+        stop_sequence: { type: string, nullable: true }
+        usage:         { $ref: '#/components/schemas/AnthropicUsage' }
+
+    AnthropicError:
+      type: object
+      description: Anthropic 错误形状（与 OpenAI 的 {error:{...}} 不同，见 api-contract §2.4.4）
+      required: [type, error]
+      properties:
+        type: { type: string, enum: [error] }
+        error:
+          type: object
+          required: [type, message]
+          properties:
+            type:
+              type: string
+              enum: [invalid_request_error, authentication_error, permission_error, not_found_error, request_too_large, rate_limit_error, overloaded_error, api_error]
+            message: { type: string, example: 'Invalid API key provided. 请检查密钥是否有效、是否被停用或已过期。' }
+
+    OpenAIError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [message, type, code]
+          properties:
+            message: { type: string, example: 'Invalid API key provided.' }
+            type:
+              type: string
+              enum: [invalid_request_error, authentication_error, permission_error, rate_limit_error, upstream_error, server_error, timeout_error]
+            code:
+              type: string
+              enum:
+                - invalid_api_key
+                # key_disabled 已弃用：停用/过期统一回 invalid_api_key（防密钥枚举，见 api-contract §1.2）
+                - model_not_found
+                - model_not_available
+                - model_not_allowed
+                - invalid_max_tokens
+                - invalid_request_body
+                - rate_limited
+                - upstream_error
+                - upstream_11101
+                - upstream_11128
+                - upstream_credential_invalid
+                - upstream_unreachable
+                - upstream_timeout
+                - internal_error
+            param: { type: string, nullable: true }
+        traceId: { type: string, nullable: true }
+
+    ModelObject:
+      type: object
+      properties:
+        id:           { type: string, example: kimi-k2.7 }
+        object:       { type: string, enum: [model] }
+        created:      { type: integer }
+        owned_by:     { type: string, example: relay }
+        display_name: { type: string, example: Kimi-K2.7-Code }
+        family:       { type: string, example: kimi, description: id 的第一个 '-' 分段，用于 scope 判定 }
+        tag:          { type: string, nullable: true, example: 订阅优先 }
+        multiplier:   { type: number, nullable: true, example: 0.57, description: 计费权重；0.00 = 窗口期内免费；null = 倍率未知（上游目录不含倍率，本地映射缺失时不编造） }
+        source:       { type: string, enum: [upstream, seed, observed, manual], description: upstream=上游目录 / seed=本地种子 / observed=实际成功调用过 / manual=人工写入；同 id 取更硬者 }
+        verified:     { type: integer, enum: [0, 1], description: 1 = 最近一次实测通过 }
+
+    # ---------------- 控制台
+    QuotaState:
+      type: object
+      description: |
+        剩余积分：上游不提供该数据（额度端点 GET <upstream.baseUrl>/v2/billing/meter/get-user-resource
+        实测 404、同级候选路径亦无路由）→ 当前恒 available=false / reason=upstream_not_provided。
+        404 判为「上游未提供」并退避到每天一次；网络类失败仍按退避重试。
+        available=false 时前端必须渲染 '--' + message，禁止用 0 或任何占位数字。
+      properties:
+        available: { type: boolean, example: false }
+        reason:    { type: string, enum: [upstream_not_provided, upstream_credential_missing, fetch_failed, pending, ok, stale], example: upstream_not_provided }
+        remain:    { type: number, nullable: true }
+        total:     { type: number, nullable: true, description: 上游不含总量时为 null；绝不由 remain/used 推算 }
+        resetAt:   { type: string, format: date-time, nullable: true }
+        stale:     { type: boolean, description: true = 上次成功值已过期（拉取失败时保留旧值并标记） }
+        low:       { type: boolean, description: true = remain < quota.warnBelow（阈值） }
+        message:   { type: string }
+
+    OverviewMetrics:
+      type: object
+      properties:
+        requests:       { type: integer, example: 1284 }
+        creditsUsed:
+          type: number
+          example: 1158.0
+          description: |
+            [v0.5.8] 本窗口积分合计 = SUM(requests.credits)，**只含上游实扣**（usage.credit）。
+            上游未回报的行（credits IS NULL）对合计贡献 0，其条数见 creditsUnknownCount。
+        successRate:    { type: number, example: 0.982 }
+        avgLatencyMs:   { type: integer, example: 1840 }
+        activeClients:  { type: integer, example: 4 }
+        # task#62：替换上游取不到的「订阅剩余积分」，改用本地可算的 tokens 指标。
+        promptTokens:     { type: integer, example: 1052880 }
+        completionTokens: { type: integer, example: 269640 }
+        totalTokens:      { type: integer, example: 1322520 }
+        cachedTokens:
+          type: integer
+          example: 389566
+          description: |
+            缓存命中的 prompt tokens 合计。真值取自 usage.prompt_tokens_details.cached_tokens
+            （回落 usage.prompt_cache_hit_tokens）；⚠️ 顶层 usage.cached_tokens 恒 0 是假的，绝不使用。
+        cacheHitRate:
+          type: number
+          example: 0.37
+          description: |
+            命中率 = cachedTokens / promptTokens，取值 0..1。
+            **为 0 就是 0**（真值，不是「上游未提供」）；promptTokens 为 0 时定义为 0。
+        creditsUnknownCount:
+          type: integer
+          example: 37
+          description: |
+            [v0.5.8] 本窗口内 requests.credits IS NULL 的行数 —— 即「上游没回报积分、
+            本服务不估算」的请求条数。必须与 creditsUsed 一起展示，否则合计看起来
+            像「全部消耗」，其实只是**已知部分**。
+
+    ConcurrencyState:
+      type: object
+      description: |
+        并发闸的当前占用与上限（task#37）。暴露它是为了让「槽位泄漏 → active 单调上涨 → 永久 429」
+        这种从外部看不见的失败状态变为可观测。只挂会话保护端点，不进公开的 /healthz。
+      properties:
+        active: { type: integer, example: 2, description: '当前在途（已占用并发槽位）的代理请求数' }
+        limit:  { type: integer, example: 8, description: '当前生效的并发上限（limits.concurrency 封顶在硬上限 32）' }
+
+    TrendPoint:
+      type: object
+      properties:
+        bucket:   { type: string, example: '2026-10-03T00' }
+        requests: { type: integer }
+        credits:  { type: number }
+        tokens:
+          type: integer
+          description: |
+            [v0.5.11] 本桶总 tokens —— 趋势图的**主量纲**（积分对 MiniMax 是未知/免费，
+            credits=null 不进合计；token 才是跨提供商的普适量纲）。
+        errors:   { type: integer }
+        models:
+          type: array
+          description: |
+            [v0.5.11] 本桶按模型 token 消耗的前 5 名（服务端排好序，tooltip 用）。
+            top-5 **截断**：Σmodels ≤ 该桶 tokens（截断只许少，超出即编数）。
+          items:
+            type: object
+            properties:
+              model:  { type: string }
+              tokens: { type: integer }
+
+    BreakdownItem:
+      type: object
+      properties:
+        model:       { type: string, nullable: true }
+        displayName: { type: string, nullable: true }
+        client:      { type: string, nullable: true }
+        requests:    { type: integer }
+        tokens:      { type: integer, description: '[v0.5.18] 该行总 tokens（prompt+completion）；share 的分母是 metrics.totalTokens' }
+        credits:     { type: number }
+        share:
+          type: number
+          description: |
+            **Token 占比** 0~1 = 该行 `tokens` ÷ `metrics.totalTokens`。
+            [v0.5.18 改口径] 原为积分占比（credits ÷ creditsUsed）；因模型/客户端表按 tokens 排序，
+            积分占比会与排序键错位（百分比不单调、条形与排序矛盾），故统一为 token 口径。
+            `credits` 字段语义不变（仍是上游实扣）。
+
+    ModelBreakdownItem:
+      description: byModel 明细行。较 BreakdownItem 多一个 multiplier
+      allOf:
+        - $ref: '#/components/schemas/BreakdownItem'
+        - type: object
+          properties:
+            multiplier:
+              type: number
+              nullable: true
+              example: 1.62
+              description: |
+                该模型当前倍率；null = 倍率未知（上游目录不含倍率、本地映射缺失，或目录里没有该模型）。
+                [v0.5.8] 它**只描述倍率本身**：积分一律取上游实扣（usage.credit），不再依赖倍率，
+                故倍率未知**不代表**该行 credits 是估的 —— credits 可不可信只看它是不是 null。
+                前端仍应把 null 标成「倍率未知」，但不得渲染成某个具体倍率（如 1.0）。
+
+    RequestLogRow:
+      type: object
+      properties:
+        id:                { type: integer, example: 10241 }
+        ts:                { type: string, format: date-time }
+        client:            { type: string, example: Claude Code }
+        model:             { type: string, example: kimi-k3 }
+        modelDisplay:      { type: string, example: Kimi-K3 }
+        status:            { type: integer, example: 200 }
+        upstreamCode:      { type: integer, nullable: true, example: 11102 }
+        ms:                { type: integer, description: 总耗时 }
+        queuedMs:          { type: integer }
+        firstByteMs:       { type: integer, nullable: true }
+        promptTokens:      { type: integer }
+        completionTokens:  { type: integer }
+        credits:
+          type: number
+          nullable: true
+          description: |
+            [v0.5.8] 本行积分 = 上游实扣（usage.credit）。**null = 上游未回报该次费用（未知），不是 0**
+            —— 前端渲染 `--`（并保留 note 里的 credits_unknown 供排查），本服务不估算。
+        stream:            { type: boolean }
+        retryCount:        { type: integer }
+        note:              { type: string, description: '逗号分隔标记，如 system_injected,retried,usage_missing,credits_unknown（credits_unknown = 上游未回报积分，本行 credits 为 null）' }
+        keyHint:           { type: string, example: 'sk-waygate-4f9c…7a2e' }
+
+    KeyScope:
+      oneOf:
+        - type: object
+          properties: { type: { type: string, enum: [all] } }
+        - type: object
+          required: [type, value]
+          properties:
+            type:  { type: string, enum: [family] }
+            value: { type: string, example: kimi }
+        - type: object
+          required: [type, value]
+          properties:
+            type:  { type: string, enum: [tag] }
+            value: { type: string, example: 夜间折扣 }
+        - type: object
+          required: [type, value]
+          properties:
+            type:  { type: string, enum: [models] }
+            value: { type: array, items: { type: string } }
+
+    ClientKeyRow:
+      type: object
+      properties:
+        id:          { type: string, example: k_8f21 }
+        name:        { type: string, example: 'Claude Code 主力' }
+        hint:        { type: string, example: 'sk-waygate-4f9c…7a2e' }
+        scope:       { $ref: '#/components/schemas/KeyScope' }
+        client:      { type: string, nullable: true, description: 创建时绑定的客户端名（识别规则第 2 级） }
+        enabled:     { type: boolean }
+        expiresAt:   { type: string, format: date-time, nullable: true }
+        createdAt:   { type: string, format: date-time }
+        lastSeenAt:  { type: string, format: date-time, nullable: true }
+        requests24h: { type: integer }
+
+    SettingItem:
+      type: object
+      properties:
+        key:             { type: string, example: limits.concurrency }
+        label:           { type: string, example: 并发上限 }
+        value:           { description: 值，类型由 type 决定 }
+        type:            { type: string, enum: [text, number, switch, select, badge, action, mapping] }
+        why:             { type: string, description: 写「为什么」，不写「是什么」 }
+        options:         { type: array, items: { type: object } }
+        readonly:        { type: boolean }
+        requiresRestart: { type: boolean }
+        tone:            { type: string, enum: [normal, warn] }
+
+    SettingGroup:
+      type: object
+      properties:
+        id:    { type: string, example: limits }
+        label: { type: string, example: 限流与重试 }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/SettingItem' }
+
+    CredentialTestResult:
+      type: object
+      description: |
+        「试通一把尚未保存的凭证」（POST /api/settings/credential/test）的结论。
+        ⚠️ httpStatus 用于区分「上游拒签了这把凭证」（有响应，如 401）与「连不上上游」（null）。
+      required: [ok, model, elapsedMs, upstreamCode, httpStatus, reason]
+      properties:
+        ok:           { type: boolean }
+        model:        { type: string, example: hunyuan-lite }
+        elapsedMs:    { type: integer, example: 312 }
+        upstreamCode: { type: integer, nullable: true, example: 11102, description: '上游业务码；仅当拿到了响应但 body 无可提取业务码时为 null' }
+        httpStatus:
+          type: integer
+          nullable: true
+          example: 401
+          description: |
+            本次拿到的 HTTP 状态码。
+            null ⇔ 根本没拿到响应（网络失败 / 超时 / 中断）；
+            为数字 ⇔ 上游确实回了响应（2xx 也填，通常 200；否则为 401/403/500…）。
+        reason:       { type: string, nullable: true, example: 'HTTP 401' }
+
+  responses:
+    UnauthorizedOpenAI:
+      description: 密钥缺失 / 格式错 / 未知 / 停用 / 过期（统一回 invalid_api_key，不区分原因，防枚举）
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/OpenAIError' }
+    UnauthorizedAnthropic:
+      description: 密钥缺失 / 格式错 / 未知 / 停用 / 过期 —— Anthropic 形状（type=authentication_error）
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/AnthropicError' }
+    SessionUnauthorized:
+      description: 会话缺失或过期
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/ApiEnvelope'
+              - type: object
+                properties:
+                  code: { type: integer, example: 40102 }
+
+# ================================================================ 路径
+paths:
+
+  # ------------------------------------------------------------- 健康检查
+  /healthz:
+    get:
+      tags: [health]
+      summary: 健康检查（不鉴权，信息最小化）
+      security: []
+      responses:
+        '200':
+          description: 服务存活
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:  { type: string, example: ok }
+                  version: { type: string, example: 0.4.1 }
+
+  # ------------------------------------------------------------- 代理
+  /v1/chat/completions:
+    post:
+      tags: [proxy]
+      summary: 转发上游聊天补全（流式透传 / 非流式自动改写为流式再拼接）
+      security:
+        - ClientKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChatCompletionRequest' }
+      parameters:
+        - name: X-Relay-Client
+          in: header
+          required: false
+          schema: { type: string }
+          description: |
+            显式声明客户端名（识别规则第 1 级，优先级最高）。
+            该头被本服务消费，**不出站**。例：X-Relay-Client: Cherry Studio
+      responses:
+        '200':
+          description: |
+            两种形态，由请求体 stream 决定：
+            - stream=true  -> text/event-stream，逐帧 data: {chunk}，结束 data: [DONE]；空档 >15s 发 `: ping`
+            - stream=false -> application/json，返回聚合后的 chat.completion 对象
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChatCompletion' }
+            text/event-stream:
+              schema:
+                type: string
+                description: 'data: <ChatCompletionChunk>\n\n ... data: [DONE]\n\n'
+        '400':
+          description: model_not_found / model_not_available / invalid_max_tokens / invalid_request_body
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OpenAIError' }
+        '401':
+          $ref: '#/components/responses/UnauthorizedOpenAI'
+        '403':
+          description: 'model_not_allowed（命中 scope 限制）。密钥停用 / 过期统一回 401 invalid_api_key（防枚举，见 api-contract §1.2），不再产出 403 key_disabled'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OpenAIError' }
+        '429':
+          description: rate_limited（上游 429 且重试次数已尽）
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OpenAIError' }
+        '502':
+          description: |
+            upstream_error / upstream_11101 / upstream_11128 / upstream_credential_invalid / upstream_unreachable。
+            注：上游 401 一律映射为 502 upstream_credential_invalid，不原样返回 401（避免客户端误判成自己密钥错了）。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OpenAIError' }
+        '504':
+          description: upstream_timeout（首字超时 / 连接超时）
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OpenAIError' }
+
+  /v1/models:
+    get:
+      tags: [proxy]
+      summary: 返回模型表（上游拉取优先，失败回落本地种子表，见 ADR-005）
+      security:
+        - ClientKey: []
+      responses:
+        '200':
+          description: 模型列表。扩展字段 display_name/family/tag/multiplier/source/verified 会被 OpenAI 客户端忽略
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  object: { type: string, enum: [list] }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/ModelObject' }
+        '401':
+          $ref: '#/components/responses/UnauthorizedOpenAI'
+
+  /v1/messages:
+    post:
+      tags: [proxy]
+      summary: Anthropic Messages 适配（翻译成 OpenAI 打上游，响应再翻回 Anthropic）
+      description: |
+        ⚠️ Anthropic 形状是本服务**新增的翻译层**，不是上游能力：上游订阅侧只有 OpenAI
+        Chat Completions（`/v2/messages`、`/v2/responses` 实测 404；`/v2/chat/completions`
+        只接受流式）。详见 api-contract §2.4。
+      security:
+        - ClientKey: []
+        - AnthropicApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AnthropicMessageRequest' }
+      responses:
+        '200':
+          description: |
+            stream=true -> text/event-stream，事件序列（必带 event: 行）：
+              message_start → content_block_start → content_block_delta* → content_block_stop
+              → message_delta → message_stop；
+            工具调用走 content_block_start{type:"tool_use"} + content_block_delta{input_json_delta}；
+            空档 >15s 发 `: ping`。逐块透传不缓冲。
+            stream=false/缺省 -> application/json，返回聚合后的 Anthropic message 对象。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnthropicMessage' }
+            text/event-stream:
+              schema:
+                type: string
+                description: 'event: <name>\ndata: <json>\n\n ...（见 api-contract §2.4.3）'
+        '400':
+          description: invalid_request_error（请求体不合法 / 模型未命中）
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnthropicError' }
+        '401':
+          $ref: '#/components/responses/UnauthorizedAnthropic'
+        '403':
+          description: permission_error（命中 scope 限制 / 模型已下架）
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnthropicError' }
+        '429':
+          description: rate_limit_error（上游 429 或本机并发闸）
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnthropicError' }
+        '502':
+          description: api_error（含上游 401/403 映射来的 502，见 api-contract §2.1.5 / §2.4.4）
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnthropicError' }
+        '504':
+          description: api_error（首字超时）
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnthropicError' }
+
+  # ------------------------------------------------------------- 控制台
+  /api/auth/login:
+    post:
+      tags: [console]
+      summary: 管理口令换会话 cookie
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password: { type: string }
+      responses:
+        '200':
+          description: '登录成功，Set-Cookie: relay_sid=…; HttpOnly; Secure; SameSite=Strict; Path=/api; Max-Age=43200'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          expiresAt: { type: string, format: date-time }
+        '401':
+          description: 口令不正确（code 40101）
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+        '429':
+          description: 失败限流（code 40290，10 分钟内失败 ≥10 次锁定 10 分钟）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          retryAfterSeconds: { type: integer, example: 600 }
+
+  /api/auth/logout:
+    post:
+      tags: [console]
+      summary: 清会话 cookie（令牌无状态，服务端无需作废操作）
+      responses:
+        '200':
+          description: 已登出
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+
+  /api/auth/session:
+    get:
+      tags: [console]
+      summary: 查询当前会话状态（前端首屏用；未登录返回 authenticated=false 而不是 401）
+      security: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          authenticated: { type: boolean }
+                          expiresAt:     { type: string, format: date-time, nullable: true }
+
+  /api/auth/password/reset:
+    post:
+      tags: [console]
+      summary: 重置管理口令（服务端随机生成 16 位，响应回显明文一次）
+      description: |
+        必须在已登录会话内调用（SessionGuard）。无请求体 —— 新口令由服务端随机生成。
+        响应里的 data.password 是**唯一一次**能看到明文的机会；服务端不落盘、不进日志。
+      responses:
+        '200':
+          description: 重置成功（**注意：Nest 默认 @Post 回 201，本端点显式 @HttpCode(200)**）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          password:  { type: string, description: '新的 16 位口令明文，只出现一次' }
+                          persisted: { type: boolean, description: 'true=已落库；false=仅内存，重启回到旧口令' }
+        '401':
+          description: 未登录（code 40102）
+
+  /api/auth/password:
+    put:
+      tags: [console]
+      summary: 手动设定管理口令（用户输入，响应不回显明文）
+      description: |
+        必须在已登录会话内调用（SessionGuard）。请求体携带用户输入的明文新口令。
+        校验：非空、非纯空白、长度 ∈ [8,128]；失败 → 400 / code 40001。
+        改密**不影响当前会话**（会话是 HMAC(RELAY_SECRET) 的自包含 cookie，与口令哈希无关）。
+        响应**不含**明文 —— 用户本就知道自己输入的口令。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password:
+                  type: string
+                  minLength: 8
+                  maxLength: 128
+                  example: my-easy-to-remember-pw
+      responses:
+        '200':
+          description: 设定成功（显式 @HttpCode(200)）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          persisted: { type: boolean, description: 'true=已落库；false=仅内存，重启回到旧口令' }
+        '400':
+          description: 口令不合格（code 40001，message 指明具体问题，如「至少 8 个字符，当前 7 个」）
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+        '401':
+          description: 未登录（code 40102）
+
+  /api/overview:
+    get:
+      tags: [console]
+      summary: 概览聚合数据
+      security:
+        - SessionCookie: []
+      parameters:
+        - name: window
+          in: query
+          schema: { type: string, enum: [1h, 24h, 7d, 30d], default: 24h }
+          description: 统计窗口跟随筛选条，服务端不写死
+      responses:
+        '200':
+          description: |
+            byModel / byClient / metrics.creditsUsed 三者由服务端同一次聚合查询产出并断言相等；
+            前端禁止自行求和渲染，只能渲染服务端给的字段。
+            byModel/byClient/byTool 的 share 均为 **Token 占比**（= 该行 tokens ÷ metrics.totalTokens，
+            v0.5.18 起，原为积分占比），与「按 tokens 排序」同源；credits 语义不变。
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          window:      { type: string, example: 24h }
+                          generatedAt: { type: string, format: date-time }
+                          quota:       { $ref: '#/components/schemas/QuotaState' }
+                          metrics:     { $ref: '#/components/schemas/OverviewMetrics' }
+                          concurrency: { $ref: '#/components/schemas/ConcurrencyState' }
+                          trend:
+                            type: array
+                            items: { $ref: '#/components/schemas/TrendPoint' }
+                          byModel:
+                            type: array
+                            items: { $ref: '#/components/schemas/ModelBreakdownItem' }
+                          byClient:
+                            type: array
+                            items: { $ref: '#/components/schemas/BreakdownItem' }
+                          recent:
+                            type: array
+                            items: { $ref: '#/components/schemas/RequestLogRow' }
+                          provenance:
+                            type: object
+                            description: 强制字段。每个数字都必须标明来源，前端不得省略
+                            properties:
+                              creditsUsed:  { type: string, example: local }
+                              quotaRemain:  { type: string, description: "upstream = 来自上游额度接口；none = 上游未提供 / 未取到", example: none }
+                              note:         { type: string }
+        '401':
+          $ref: '#/components/responses/SessionUnauthorized'
+
+  /api/clients:
+    get:
+      tags: [console]
+      summary: 客户端列表与统计
+      security:
+        - SessionCookie: []
+      parameters:
+        - name: window
+          in: query
+          schema: { type: string, enum: [1h, 24h, 7d, 30d], default: 24h }
+      responses:
+        '200':
+          description: |
+            rule=4（未识别）是正常分支不是错误 —— 前端用琥珀描边卡，不告警、不阻断。
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                client:       { type: string, example: Claude Code }
+                                rule:         { type: integer, enum: [1, 2, 3, 4] }
+                                ruleLabel:    { type: string, example: 密钥归属 }
+                                requests:     { type: integer }
+                                credits:      { type: number }
+                                models:       { type: array, items: { type: string } }
+                                lastSeenAt:   { type: string, format: date-time, nullable: true }
+                                boundKeyIds:  { type: array, items: { type: string } }
+                                named:        { type: boolean }
+        '401':
+          $ref: '#/components/responses/SessionUnauthorized'
+
+  /api/requests:
+    get:
+      tags: [console]
+      summary: 请求日志分页
+      security:
+        - SessionCookie: []
+      parameters:
+        - { name: page,   in: query, schema: { type: integer, default: 1 } }
+        - { name: limit,  in: query, schema: { type: integer, default: 20, maximum: 200 } }
+        - { name: status, in: query, schema: { type: string }, description: 'all | success | error | 具体数字' }
+        - { name: client, in: query, schema: { type: string } }
+        - { name: model,  in: query, schema: { type: string } }
+        - { name: q,      in: query, schema: { type: string }, description: '对 model / client / note 做 LIKE 模糊匹配' }
+        - { name: from,   in: query, schema: { type: string, format: date-time } }
+        - { name: to,     in: query, schema: { type: string, format: date-time } }
+        - { name: sort,   in: query, schema: { type: string, enum: [ts, ms, credits], default: ts } }
+        - { name: order,  in: query, schema: { type: string, enum: [asc, desc], default: desc } }
+      responses:
+        '200':
+          description: 列表不返回 requestBody / responseBody（体积大且默认关闭），仅详情端点按开关返回
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        allOf:
+                          - $ref: '#/components/schemas/PageMeta'
+                          - type: object
+                            properties:
+                              items:
+                                type: array
+                                items: { $ref: '#/components/schemas/RequestLogRow' }
+        '401':
+          $ref: '#/components/responses/SessionUnauthorized'
+
+  /api/requests/{id}:
+    get:
+      tags: [console]
+      summary: 请求详情（耗时拆三段：排队 / 上游 / 首字）
+      security:
+        - SessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: |
+            requestBody / responseBody 仅在 logs.recordRequestBody / logs.recordResponseBody 为 true 时有值，
+            否则恒 null。
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        allOf:
+                          - $ref: '#/components/schemas/RequestLogRow'
+                          - type: object
+                            properties:
+                              messages:
+                                type: array
+                                items: { $ref: '#/components/schemas/Message' }
+                              assistantPreview: { type: string, nullable: true }
+                              requestBody:      { type: string, nullable: true }
+                              responseBody:     { type: string, nullable: true }
+        '401': { $ref: '#/components/responses/SessionUnauthorized' }
+        '404': { $ref: '#/components/responses/SessionUnauthorized' }
+
+  /api/settings:
+    get:
+      tags: [console]
+      summary: 读取设置（7 组 / 23 项 = 20 个设置项 + 3 个危险操作）
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          groups:
+                            type: array
+                            items: { $ref: '#/components/schemas/SettingGroup' }
+                          version: { type: integer, example: 3 }
+        '401': { $ref: '#/components/responses/SessionUnauthorized' }
+    put:
+      tags: [console]
+      summary: |
+        全量替换设置（前端总是先 GET 再 PUT）。danger 组不参与 PUT，走 POST /api/settings/danger。
+        只提交 readonly:false 且 type!=action 的项；readonly 项（service.autostart / service.forceStreamRewrite /
+        limits.retryOn429 / limits.retryCreditToOwner / logs.dir）提交即 400。可写集合的单一事实来源是
+        EDITABLE_KEYS（config/settings.defaults.ts），与契约 §3.8.3 逐项同源。
+      security:
+        - SessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [settings]
+              properties:
+                settings:
+                  type: array
+                  items:
+                    type: object
+                    required: [key, value]
+                    properties:
+                      key:   { type: string, example: limits.concurrency }
+                      value: { description: 值，类型由该项 type 决定 }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          requiresRestart: { type: boolean }
+                          applied:         { type: integer }
+                          version:         { type: integer }
+        '400':
+          description: |
+            参数校验失败（code 40001）。服务端校验（不信任前端）：
+            listenHost 非回环需 RELAY_ALLOW_PUBLIC_BIND=1；listenPort 1~65535；
+            concurrency 1~32；firstByteTimeoutMs 1000~600000；pollSeconds ≥5；backoffMaxSeconds 5~3600；
+            retainDays 1~3650；upstream.baseUrl 必须 https://。
+            只提交 readonly:true / type:'action' / 不在可写集合（EDITABLE_KEYS）内的 key 一律 400。
+            当前 readonly 项：service.autostart、service.forceStreamRewrite、limits.retryOn429、
+            limits.retryCreditToOwner、logs.dir（详见契约 §3.8.3）。
+            权威实现见 server/src/config/settings.validate.ts（第二道闸）与 settings.defaults.ts（EDITABLE_KEYS）。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+        '401': { $ref: '#/components/responses/SessionUnauthorized' }
+
+  /api/settings/danger:
+    post:
+      tags: [console]
+      summary: |
+        危险操作（清空全部日志 / 重置全部密钥 / 恢复默认配置）。
+        前端必须先弹层展示「会失去什么」并让用户输入「确认」；破坏性按钮用琥珀描边，安全选项才是主按钮。
+      security:
+        - SessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action, confirm]
+              properties:
+                action:
+                  type: string
+                  enum: [clearLogs, resetKeys, restoreDefaults]
+                confirm:
+                  type: string
+                  description: 必须严格等于字符串「确认」
+                  example: 确认
+      responses:
+        '200':
+          description: 已执行，data.affected 量化后果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          affected:
+                            type: object
+                            properties:
+                              logs: { type: integer, example: 1284 }
+                              keys: { type: integer, nullable: true }
+        '400': { description: 'confirm 不匹配（code 40002）', content: { application/json: { schema: { $ref: '#/components/schemas/ApiEnvelope' } } } }
+        '401': { $ref: '#/components/responses/SessionUnauthorized' }
+
+  /api/settings/credential/test:
+    post:
+      tags: [console]
+      summary: 试通一把尚未保存的上游访问密钥（不落库、不改变当前生效的凭证）
+      security:
+        - SessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [key]
+              properties:
+                key: { type: string, description: '待测的上游访问密钥明文（ck_…）：只在该请求栈内存活，不落盘、不进日志、不回显', example: 'ck_xxxxxxxxxxxxxxxxxxxxxxxxxxxx' }
+      responses:
+        '200':
+          description: 试通结论（形状见 CredentialTestResult）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/CredentialTestResult' }
+        '400': { description: 'key 格式非法（code 40001）', content: { application/json: { schema: { $ref: '#/components/schemas/ApiEnvelope' } } } }
+        '401': { $ref: '#/components/responses/SessionUnauthorized' }
+
+  /api/keys:
+    get:
+      tags: [console]
+      summary: 密钥列表（永不返回明文，只有 hint）
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items:
+                            type: array
+                            items: { $ref: '#/components/schemas/ClientKeyRow' }
+        '401': { $ref: '#/components/responses/SessionUnauthorized' }
+    post:
+      tags: [console]
+      summary: |
+        创建密钥。明文只在此次响应里出现一次（AC-08），库中只存 HMAC + hint。
+      security:
+        - SessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, scope]
+              properties:
+                name:      { type: string, example: 'Cherry Studio' }
+                scope:     { $ref: '#/components/schemas/KeyScope' }
+                client:    { type: string, nullable: true, description: 绑定客户端名 —— 识别规则第 2 级唯一的设置入口 }
+                expiresAt: { type: string, format: date-time, nullable: true }
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        allOf:
+                          - $ref: '#/components/schemas/ClientKeyRow'
+                          - type: object
+                            properties:
+                              key:
+                                type: string
+                                description: 明文，仅此一次
+                                example: sk-waygate-4f9c2a7e1b83d04f391c7a2e
+                              warning:
+                                type: string
+                                example: 关掉这页又没保存，只能删除重建。此明文不会再出现。
+        '401': { $ref: '#/components/responses/SessionUnauthorized' }
+        '409': { description: '同名密钥已存在（code 40901）', content: { application/json: { schema: { $ref: '#/components/schemas/ApiEnvelope' } } } }
+
+  /api/keys/{id}:
+    patch:
+      tags: [console]
+      summary: 改名 / 启用 / 停用（不返回明文）
+      security:
+        - SessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, example: k_8f21 }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:    { type: string }
+                enabled: { type: boolean }
+      responses:
+        '200': { description: 已更新，data 为 ClientKeyRow, content: { application/json: { schema: { $ref: '#/components/schemas/ApiEnvelope' } } } }
+        '401': { $ref: '#/components/responses/SessionUnauthorized' }
+        '404': { description: '密钥不存在（code 40401）', content: { application/json: { schema: { $ref: '#/components/schemas/ApiEnvelope' } } } }
+    delete:
+      tags: [console]
+      summary: 删除密钥（前端必须二次确认）
+      security:
+        - SessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, example: k_8f21 }
+      responses:
+        '200': { description: 已删除, content: { application/json: { schema: { $ref: '#/components/schemas/ApiEnvelope' } } } }
+        '401': { $ref: '#/components/responses/SessionUnauthorized' }
+        '404': { description: '密钥不存在（code 40401）', content: { application/json: { schema: { $ref: '#/components/schemas/ApiEnvelope' } } } }
+
+  /api/models/catalog:
+    get:
+      tags: [console]
+      summary: 查看模型表（含来源与实测状态）
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          source:             { type: string, enum: [upstream, seed, observed, manual] }
+                          fetchedAt:          { type: string, format: date-time }
+                          upstreamReachable:  { type: boolean }
+                          models:
+                            type: array
+                            items:
+                              allOf:
+                                - $ref: '#/components/schemas/ModelObject'
+                                - type: object
+                                  properties:
+                                    enabled:        { type: boolean }
+                                    lastVerifiedAt: { type: string, format: date-time, nullable: true }
+        '401': { $ref: '#/components/responses/SessionUnauthorized' }
+
+    post:
+      tags: [console]
+      summary: |
+        手动刷新：拉取 + 逐项实测校验（17 项，每项 1 token，串行，200ms 间隔，同一分钟内只生效一次）。
+        失败项标 verified=0，不删除（可用性按账号配置，会变）。
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          checked: { type: integer, example: 31 }
+                          ok:      { type: integer, example: 29 }
+                          failed:  { type: array, items: { type: string }, example: ['glm-5.1', 'hy3'] }
+                          source:  { type: string, enum: [upstream, seed, observed, manual] }
+                          pulled:  { type: boolean, description: 上游目录是否拉到（false = 走 seed + observed 回落） }
+                          added:   { type: integer, description: 本次同步新增的模型数（上游新模型 + 首次观测到的模型） }
+        '401': { $ref: '#/components/responses/SessionUnauthorized' }
+        '429': { description: '刷新节流（同一分钟内只生效一次）', content: { application/json: { schema: { $ref: '#/components/schemas/ApiEnvelope' } } } }

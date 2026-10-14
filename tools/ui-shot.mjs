@@ -1,0 +1,172 @@
+/**
+ * 用 Chrome DevTools Protocol 驱动已有 Chromium 截图的小工具。
+ *
+ * 为什么不用 agent-browser：它自带的 Chromium 下载在本机网络环境下失败
+ * （googlechromelabs.github.io TLS handshake eof），而本机已有 Playwright
+ * 的 Chromium；agent-browser 的守护进程又一直卡在启动阶段。
+ * CDP 是同一套浏览器，但少一层依赖。
+ *
+ * 用法：node ui-shot.mjs <url> <out.png> [步骤 JSON]
+ * 步骤形如 [{"type":"fill","sel":"#cred-value","value":"ck_..."},{"type":"click","sel":"button"}]
+ */
+
+import { spawn } from 'node:child_process';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
+
+const CHROME =
+  process.env.CHROME_PATH ??
+  'C:/Users/haiha/AppData/Local/ms-playwright/chromium-1243/chrome-win64/chrome.exe';
+
+const [url, outPath, stepsRaw] = process.argv.slice(2);
+const steps = stepsRaw ? JSON.parse(stepsRaw) : [];
+
+async function main() {
+  const profile = mkdtempSync(join(tmpdir(), 'cdp-profile-'));
+  const port = 9333 + Math.floor(Math.random() * 400);
+  const child = spawn(
+    CHROME,
+    [
+      `--remote-debugging-port=${port}`,
+      `--user-data-dir=${profile}`,
+      '--headless=new',
+      '--no-sandbox',
+      '--disable-gpu',
+      '--disable-dev-shm-usage',
+      '--hide-scrollbars',
+      '--window-size=1440,1080',
+      // 自签证书不在 Chrome 的信任库里。截图只是为了看**界面渲染**，
+      // 不是校验 TLS（TLS 已由 tools/verify-tls.mjs 用真 CA 严格验证过），
+      // 所以这里允许忽略证书错误是合理的取舍。
+      '--ignore-certificate-errors',
+      'about:blank',
+    ],
+    { stdio: 'ignore' },
+  );
+
+  const wsUrl = await waitForTarget(port);
+  const ws = new WebSocket(wsUrl);
+  await new Promise((res, rej) => {
+    ws.onopen = res;
+    ws.onerror = rej;
+  });
+
+  let id = 0;
+  const pending = new Map();
+  ws.onmessage = (ev) => {
+    const msg = JSON.parse(ev.data);
+    if (msg.id && pending.has(msg.id)) {
+      const { resolve, reject } = pending.get(msg.id);
+      pending.delete(msg.id);
+      msg.error ? reject(new Error(JSON.stringify(msg.error))) : resolve(msg.result);
+    }
+  };
+  const send = (method, params = {}) =>
+    new Promise((resolve, reject) => {
+      const mid = ++id;
+      pending.set(mid, { resolve, reject });
+      ws.send(JSON.stringify({ id: mid, method, params }));
+    });
+
+  await send('Page.enable');
+  await send('Runtime.enable');
+  await send('Emulation.setDeviceMetricsOverride', {
+    width: 1440,
+    height: 1080,
+    deviceScaleFactor: 2,
+    mobile: false,
+  });
+
+  await send('Page.navigate', { url });
+  await delay(2500);
+
+  for (const step of steps) {
+    if (step.type === 'fill') {
+      await evalJs(`(() => {
+        const el = document.querySelector(${JSON.stringify(step.sel)});
+        if (!el) return 'missing';
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+        setter.call(el, ${JSON.stringify(step.value)});
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        return 'ok';
+      })()`);
+    } else if (step.type === 'click') {
+      await evalJs(`(() => {
+        const el = document.querySelector(${JSON.stringify(step.sel)});
+        if (!el) return 'missing';
+        el.click();
+        return 'ok';
+      })()`);
+    } else if (step.type === 'clickText') {
+      await evalJs(`(() => {
+        const els = [...document.querySelectorAll(${JSON.stringify(step.sel ?? 'button')})];
+        const el = els.find((e) => e.textContent.includes(${JSON.stringify(step.text)}));
+        if (!el) return 'missing';
+        el.click();
+        return 'ok';
+      })()`);
+    } else if (step.type === 'wait') {
+      await delay(step.ms ?? 1000);
+    } else if (step.type === 'eval') {
+      /* 调试/探针：执行表达式并把结果打到 stdout（如探测元素是否存在、当前 hash）。 */
+      console.log(`[eval] ${step.expr} =>`, JSON.stringify(await evalJs(step.expr)));
+    } else if (step.type === 'hover') {
+      /* 真 CDP 鼠标事件（el.click() 合成事件不触发 React 的 onMouseEnter）：
+         轮询等元素出现（路由/懒加载时序抖动）→ 移到中心 → 停留等浮层/过渡。 */
+      let rect = null;
+      for (let i = 0; i < 40 && !rect; i += 1) {
+        rect = await evalJs(`(() => {
+          const el = document.querySelector(${JSON.stringify(step.sel)});
+          if (!el) return null;
+          const r = el.getBoundingClientRect();
+          if (r.width === 0 || r.height === 0) return null;
+          return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+        })()`);
+        if (!rect) await delay(150);
+      }
+      if (!rect) throw new Error(`hover 目标不存在: ${step.sel}`);
+      await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: rect.x, y: rect.y });
+      await delay(step.ms ?? 600);
+    }
+  }
+
+  async function evalJs(expr) {
+    const r = await send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true });
+    return r?.result?.value;
+  }
+
+  const shot = await send('Page.captureScreenshot', { format: 'png' });
+  writeFileSync(outPath, Buffer.from(shot.data, 'base64'));
+  console.log(`saved ${outPath}`);
+
+  ws.close();
+  child.kill();
+  await delay(300);
+  process.exit(0);
+}
+
+async function waitForTarget(port) {
+  // 注意要拿**页面级** target 的 ws 地址，不是 /json/version 的浏览器级地址 ——
+  // 浏览器级连接不接受 Page.navigate / Runtime.evaluate 这类域命令。
+  for (let i = 0; i < 60; i += 1) {
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/json/list`);
+      if (res.ok) {
+        const list = await res.json();
+        const page = list.find((t) => t.type === 'page' && t.webSocketDebuggerUrl);
+        if (page) return page.webSocketDebuggerUrl;
+      }
+    } catch {
+      /* 还没起来 */
+    }
+    await delay(300);
+  }
+  throw new Error('Chrome DevTools 页面端点未就绪');
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

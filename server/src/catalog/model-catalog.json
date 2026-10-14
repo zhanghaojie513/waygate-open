@@ -1,0 +1,144 @@
+{
+  "$description": "驿站 · Relay 模型目录种子。17 项全部经上游实测 HTTP 200 验证（2026-10-03）。运行时清单 = 上游目录 ∪ 本文件（种子）∪ 实际请求过的模型；上游拉取失败静默回落。",
+  "$updatedAt": "2026-10-05",
+  "$source": {
+    "清单来源": "WorkBuddy 客户端订阅模型列表（用户提供截图，去重后 17 项）",
+    "验证方式": "probe/upstream-modelcheck.mjs 逐个打 /v2/chat/completions，全部 200",
+    "端点": "https://copilot.tencent.com/v2/chat/completions",
+    "上游目录端点": "https://copilot.tencent.com/v2/enterprises/personal/models（2026-10-05 确证，见 probe/04-catalog-recheck.md）"
+  },
+  "$pullPolicy": {
+    "第一优先": "运行时从上游目录端点拉取清单并合入（source=upstream）",
+    "第二优先": "并上「实际成功调用过」的模型（requests.status=200，source=observed）",
+    "回落": "上游拉取失败时使用本文件（种子，source=seed）",
+    "警告": "显示名 → API ID 不能纯推导。已知反例：Kimi-K2.7-Code → kimi-k2.7（客户端显示名多 -Code 后缀）；Hy4 preview → hy4-preview（空格转连字符）。拉取到的每一项都必须过一遍本表映射并实测校验。上游目录不含倍率，本表缺项时倍率标「未知」（null），不编造。"
+  },
+  "$tagLegend": {
+    "限时免费": "0 费率窗口期",
+    "限时折扣": "有限期折扣",
+    "夜间折扣": "夜间时段折扣",
+    "订阅优先": "订阅档位优先路由"
+  },
+  "$multiplierNote": "倍率为计费权重：消耗积分 ≈ 基准单价 × 倍率。0.00x = 窗口期内免费。",
+  "models": [
+    {
+      "displayName": "Hy4 preview",
+      "id": "hy4-preview",
+      "tag": "限时免费",
+      "multiplier": 0,
+      "family": "hy4"
+    },
+    {
+      "displayName": "Hy3",
+      "id": "hy3",
+      "tag": "限时免费",
+      "multiplier": 0,
+      "family": "hy3"
+    },
+    {
+      "displayName": "Space-Bunny",
+      "id": "space-bunny",
+      "tag": "限时折扣",
+      "multiplier": 0.03,
+      "family": "space"
+    },
+    {
+      "displayName": "Deepseek-V4.1-Flash",
+      "id": "deepseek-v4.1-flash",
+      "tag": null,
+      "multiplier": 0.11,
+      "family": "deepseek"
+    },
+    {
+      "displayName": "Deepseek-V4-Pro",
+      "id": "deepseek-v4-pro",
+      "tag": null,
+      "multiplier": 0.51,
+      "family": "deepseek"
+    },
+    {
+      "displayName": "GLM-5.3",
+      "id": "glm-5.3",
+      "tag": "订阅优先",
+      "multiplier": 0.79,
+      "family": "glm"
+    },
+    {
+      "displayName": "GLM-5.3-Flash",
+      "id": "glm-5.3-flash",
+      "tag": "订阅优先",
+      "multiplier": 0.06,
+      "family": "glm"
+    },
+    {
+      "displayName": "GLM-5.3-FlashX",
+      "id": "glm-5.3-flashx",
+      "tag": "订阅优先",
+      "multiplier": 0.14,
+      "family": "glm"
+    },
+    {
+      "displayName": "GLM-5.2",
+      "id": "glm-5.2",
+      "tag": null,
+      "multiplier": 0.79,
+      "family": "glm"
+    },
+    {
+      "displayName": "GLM-5.1",
+      "id": "glm-5.1",
+      "tag": null,
+      "multiplier": 0.79,
+      "family": "glm"
+    },
+    {
+      "displayName": "GLM-5v-Turbo",
+      "id": "glm-5v-turbo",
+      "tag": null,
+      "multiplier": 0.71,
+      "family": "glm"
+    },
+    {
+      "displayName": "MiniMax-M3",
+      "id": "minimax-m3",
+      "tag": null,
+      "multiplier": 0.25,
+      "family": "minimax"
+    },
+    {
+      "displayName": "Kimi-K3",
+      "id": "kimi-k3",
+      "tag": "订阅优先",
+      "multiplier": 1.62,
+      "family": "kimi"
+    },
+    {
+      "displayName": "Kimi-K2.8-Preview",
+      "id": "kimi-k2.8-preview",
+      "tag": "订阅优先",
+      "multiplier": 0.77,
+      "family": "kimi"
+    },
+    {
+      "displayName": "Kimi-K2.7-Code",
+      "id": "kimi-k2.7",
+      "tag": null,
+      "multiplier": 0.57,
+      "family": "kimi"
+    },
+    {
+      "displayName": "Kimi-K2.6",
+      "id": "kimi-k2.6",
+      "tag": null,
+      "multiplier": 0.52,
+      "family": "kimi"
+    },
+    {
+      "displayName": "Step-5-Preview",
+      "id": "step-5-preview",
+      "tag": "订阅优先",
+      "multiplier": 0.43,
+      "family": "step"
+    }
+  ]
+}

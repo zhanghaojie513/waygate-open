@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>途关 Waygate · 技术架构</title>
+<style>
+  :root {
+    --bg: #F7F6FC;
+    --surface: #FFFFFF;
+    --fg: #171334;
+    --muted: #655E88;
+    --faint: #9B94BC;
+    --line: #E4E1F2;
+    --accent: #4A38C0;
+    --accent-soft: #EDEBFB;
+    --accent-line: #C9C0F0;
+    --shadow: 0 1px 2px rgba(23,19,52,.05), 0 6px 18px rgba(23,19,52,.06);
+    --edge: #B9B3D6;
+    --edge-main: #4A38C0;
+    --band-label: #A29BC4;
+    --store: #0A6A87;
+  }
+  [data-theme="dark"] {
+    --bg: #0F0D1E;
+    --surface: #1A1630;
+    --fg: #EDEAF8;
+    --muted: #A29BC4;
+    --faint: #6E6790;
+    --line: #2E2851;
+    --accent: #9C8FFF;
+    --accent-soft: #241F3D;
+    --accent-line: #4A38C0;
+    --shadow: 0 1px 2px rgba(0,0,0,.5), 0 6px 20px rgba(0,0,0,.4);
+    --edge: #4B4470;
+    --edge-main: #9C8FFF;
+    --band-label: #6E6790;
+    --store: #3FB6DE;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0F0D1E; --surface: #1A1630; --fg: #EDEAF8; --muted: #A29BC4;
+      --faint: #6E6790; --line: #2E2851; --accent: #9C8FFF; --accent-soft: #241F3D;
+      --accent-line: #4A38C0; --shadow: 0 1px 2px rgba(0,0,0,.5), 0 6px 20px rgba(0,0,0,.4);
+      --edge: #4B4470; --edge-main: #9C8FFF; --band-label: #6E6790; --store: #3FB6DE;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 400 15px/1.55 system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page { max-width: 1080px; margin: 0 auto; padding: 44px 24px 80px; }
+
+  header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 10px; }
+  h1 { font-size: 27px; font-weight: 650; margin: 0; letter-spacing: -.015em; }
+  .chip {
+    font: 500 12px/1 ui-monospace, Consolas, monospace;
+    color: var(--accent); background: var(--accent-soft);
+    padding: 5px 9px; border-radius: 6px;
+  }
+  .sub { color: var(--muted); margin: 0 0 6px; font-size: 14.5px; }
+  .legend { display: flex; gap: 18px; flex-wrap: wrap; margin: 18px 0 34px; color: var(--muted); font-size: 12.5px; }
+  .legend i { display: inline-block; width: 26px; height: 0; border-top: 2px solid var(--edge-main); vertical-align: middle; margin-right: 7px; }
+  .legend i.dash { border-top: 2px dashed var(--edge); }
+  .theme-toggle {
+    margin-left: auto; border: 1px solid var(--line); background: var(--surface);
+    color: var(--muted); border-radius: 8px; padding: 5px 11px; font-size: 12px; cursor: pointer;
+    transition: color .15s ease, border-color .15s ease;
+  }
+  .theme-toggle:hover { color: var(--fg); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  h2.sec {
+    font-size: 13px; font-weight: 650; letter-spacing: .09em; color: var(--accent);
+    text-transform: uppercase; margin: 0 0 4px;
+  }
+  p.sec-note { color: var(--faint); font-size: 12.5px; margin: 0 0 22px; }
+
+  #diagramA, #diagramB { position: relative; }
+  .band { margin-bottom: 48px; }
+  .band:last-child { margin-bottom: 0; }
+  .band-label {
+    color: var(--band-label); font-size: 11px; font-weight: 650; letter-spacing: .07em;
+    text-align: center; margin-bottom: 12px;
+  }
+  .nodes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; align-items: stretch; }
+  .nodes.one { grid-template-columns: minmax(0, 340px); justify-content: center; }
+  .nodes.two { grid-template-columns: repeat(2, minmax(0, 300px)); justify-content: center; }
+  .nodes.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .node {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px 15px; box-shadow: var(--shadow); cursor: pointer;
+    transition: opacity .18s ease, border-color .18s ease, transform .18s ease;
+  }
+  .node.wide { grid-column: 1 / -1; }
+  .node b { display: block; font-size: 13.5px; font-weight: 600; }
+  .node span { display: block; color: var(--muted); font-size: 11.5px; margin-top: 3px; line-height: 1.45; }
+  .node.hl { border-color: var(--accent); transform: translateY(-1px); }
+  .node.dim { opacity: .32; }
+  .node.store b { color: var(--store); }
+
+  #edgesA, #edgesB { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  #edgesA path, #edgesB path { fill: none; stroke: var(--edge); stroke-width: 1.4; transition: opacity .18s ease, stroke .18s ease; }
+  #edgesA path.main, #edgesB path.main { stroke: var(--edge-main); stroke-width: 1.9; }
+  #edgesA path.hl, #edgesB path.hl { stroke: var(--edge-main); stroke-width: 2.4; }
+  #edgesA path.dim, #edgesB path.dim { opacity: .22; }
+
+  .detail { color: var(--muted); font-size: 12.5px; margin-top: 14px; min-height: 18px; }
+  .divider { height: 1px; background: var(--line); margin: 46px 0 40px; }
+
+  @media (max-width: 720px) {
+    .nodes, .nodes.two, .nodes.four { grid-template-columns: 1fr; }
+    .nodes.one { grid-template-columns: 1fr; }
+    #edgesA, #edgesB { display: none; }
+    .legend { font-size: 12px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <h1>途关 Waygate · 技术架构</h1>
+    <span class="chip">v1.4.0</span>
+    <button class="theme-toggle" id="themeToggle" type="button">切换主题</button>
+  </header>
+  <p class="sub">自托管订阅反代：把按客户端订阅计费的服务，转成 OpenAI / Anthropic 兼容接口。</p>
+  <div class="legend">
+    <span><i></i>请求主链路</span>
+    <span><i class="dash"></i>支撑与数据流</span>
+  </div>
+
+  <h2 class="sec">A · 请求链路</h2>
+  <p class="sec-note">客户端 → 鉴权 → 翻译 → 反代管线 → 上游三家（按模型 id 路由，可同时生效）</p>
+  <div id="diagramA">
+    <svg id="edgesA" aria-hidden="true"></svg>
+
+    <div class="band">
+      <div class="band-label">调用端</div>
+      <div class="nodes two">
+      <div class="node" id="a-agent" tabindex="0" role="button" aria-pressed="false"><b>编码 Agent / 工具</b><span>OpenAI 兼容 · sk-waygate-*</span></div>
+      <div class="node" id="a-claude" tabindex="0" role="button" aria-pressed="false"><b>Claude 系客户端</b><span>Anthropic /v1/messages</span></div>
+      </div>
+    </div>
+
+    <div class="band">
+      <div class="band-label">网关 · :8787</div>
+      <div class="nodes four">
+      <div class="node" id="a-guard" tabindex="0" role="button" aria-pressed="false"><b>KeyGuard 鉴权</b><span>密钥 · IP 策略 · 配额 · 模型范围</span></div>
+      <div class="node" id="a-trans" tabindex="0" role="button" aria-pressed="false"><b>协议翻译</b><span>OpenAI ↔ Anthropic ↔ 三种上游方言</span></div>
+      <div class="node" id="a-pipe" tabindex="0" role="button" aria-pressed="false"><b>反代管线</b><span>模型路由 · 并发闸 · SSE 透传 · usage 累计</span></div>
+      <div class="node" id="a-retry" tabindex="0" role="button" aria-pressed="false"><b>容错</b><span>断流重试 · 11128 渠道降级</span></div>
+      </div>
+    </div>
+
+    <div class="band">
+      <div class="band-label">上游</div>
+      <div class="nodes">
+      <div class="node" id="a-wb" tabindex="0" role="button" aria-pressed="false"><b>WorkBuddy</b><span>openai 方言 · ck_ 静态密钥</span></div>
+      <div class="node" id="a-mm" tabindex="0" role="button" aria-pressed="false"><b>MiniMax Code</b><span>anthropic 方言 · OAuth 自动换 token</span></div>
+      <div class="node" id="a-qd" tabindex="0" role="button" aria-pressed="false"><b>Qoder CN</b><span>COSY 协议 · 客户端登录态身份</span></div>
+      </div>
+    </div>
+  </div>
+  <p class="detail" id="detailA" aria-live="polite">悬停或点击任意模块，查看它的直接链路。</p>
+
+  <div class="divider"></div>
+
+  <h2 class="sec">B · 控制与数据面</h2>
+  <p class="sec-note">控制台经 Admin API 读写；模型目录喂给路由，聚合与账本落在同一个 SQLite 文件</p>
+  <div id="diagramB">
+    <svg id="edgesB" aria-hidden="true"></svg>
+
+    <div class="band">
+      <div class="band-label">管理面</div>
+      <div class="nodes one">
+      <div class="node" id="b-web" tabindex="0" role="button" aria-pressed="false"><b>Web 管理控制台</b><span>React 19 + Vite · 明暗双主题</span></div>
+      </div>
+    </div>
+
+    <div class="band">
+      <div class="band-label">Admin API</div>
+      <div class="nodes one">
+      <div class="node" id="b-api" tabindex="0" role="button" aria-pressed="false"><b>控制台 API</b><span>概览 · 用量 · 客户端 · 密钥 · 设置</span></div>
+      </div>
+    </div>
+
+    <div class="band">
+      <div class="band-label">数据服务</div>
+      <div class="nodes four">
+      <div class="node" id="b-catalog" tabindex="0" role="button" aria-pressed="false"><b>模型目录</b><span>seed / upstream / observed / manual</span></div>
+      <div class="node" id="b-agg" tabindex="0" role="button" aria-pressed="false"><b>用量聚合</b><span>requests + aggregates 双写 · 留存清理</span></div>
+      <div class="node" id="b-quota" tabindex="0" role="button" aria-pressed="false"><b>额度采集</b><span>MiniMax 账本 · Qoder 额度 · WB 额度真值</span></div>
+      <div class="node" id="b-claim" tabindex="0" role="button" aria-pressed="false"><b>WB OAuth 领取域</b><span>签到代领 · 成长任务 · 连登兑换（v1.4.0）</span></div>
+      </div>
+    </div>
+
+    <div class="band">
+      <div class="band-label">存储</div>
+      <div class="nodes one">
+      <div class="node store" id="b-store" tabindex="0" role="button" aria-pressed="false"><b>SQLite · 单文件</b><span>requests · aggregates · client_keys · model_catalog · providers</span></div>
+      </div>
+    </div>
+  </div>
+  <p class="detail" id="detailB" aria-live="polite">悬停或点击任意模块，查看它的直接链路。</p>
+</div>
+
+<script>
+(function () {
+  var themeBtn = document.getElementById('themeToggle');
+  var root = document.documentElement;
+  var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  root.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
+  themeBtn.addEventListener('click', function () {
+    root.setAttribute('data-theme', root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+  });
+
+  function makeDiagram(diagramId, svgId, detailId, edges) {
+    var diagram = document.getElementById(diagramId);
+    var svg = document.getElementById(svgId);
+    var detail = document.getElementById(detailId);
+    var paths = [];
+    var IDLE = '悬停或点击任意模块，查看它的直接链路。';
+
+    function rel(el) {
+      var r = el.getBoundingClientRect(), d = diagram.getBoundingClientRect();
+      return { x: r.left - d.left, y: r.top - d.top, w: r.width, h: r.height };
+    }
+    // 正交连接：层间走 V-H-V（转折落在两卡间空隙带，绝不穿卡）；同层相邻走水平直线。
+    function route(a, b, lane) {
+      var acx = a.x + a.w / 2, bcx = b.x + b.w / 2;
+      var acy = a.y + a.h / 2, bcy = b.y + b.h / 2;
+      var off = (lane || 0) * 10;
+      var overlapY = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+      if (overlapY > Math.min(a.h, b.h) * 0.6) {
+        var sx = bcx > acx ? a.x + a.w : a.x;
+        var ex = bcx > acx ? b.x : b.x + b.w;
+        return 'M' + sx + ',' + acy + ' H' + ex;
+      }
+      var down = bcy > acy;
+      var y1 = down ? a.y + a.h : a.y;
+      var y2 = down ? b.y : b.y + b.h;
+      var midY = (y1 + y2) / 2 + off;
+      if (Math.abs(acx - bcx) < 2) return 'M' + acx + ',' + y1 + ' V' + y2;
+      return 'M' + acx + ',' + y1 + ' V' + midY + ' H' + bcx + ' V' + y2;
+    }
+
+    function draw() {
+      svg.innerHTML = ''; paths = [];
+      var d = diagram.getBoundingClientRect();
+      svg.setAttribute('viewBox', '0 0 ' + d.width + ' ' + d.height);
+      edges.forEach(function (e, i) {
+        var ea = document.getElementById(e.from), eb = document.getElementById(e.to);
+        if (!ea || !eb) return;
+        var p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        p.setAttribute('d', route(rel(ea), rel(eb), e.lane || 0));
+        if (e.main) p.setAttribute('class', 'main');
+        if (e.dash) p.setAttribute('stroke-dasharray', e.dash);
+        p.dataset.from = e.from; p.dataset.to = e.to;
+        svg.appendChild(p); paths.push(p);
+      });
+    }
+
+    var pinned = null;
+    function highlight(id) {
+      var nodes = diagram.querySelectorAll('.node');
+      nodes.forEach(function (n) { n.classList.remove('hl', 'dim'); });
+      paths.forEach(function (p) { p.classList.remove('hl', 'dim'); });
+      if (!id) return;
+      var linked = {};
+      paths.forEach(function (p) {
+        if (p.dataset.from === id || p.dataset.to === id) {
+          p.classList.add('hl'); linked[p.dataset.from] = 1; linked[p.dataset.to] = 1;
+        } else { p.classList.add('dim'); }
+      });
+      nodes.forEach(function (n) {
+        if (n.id === id) n.classList.add('hl');
+        else if (!linked[n.id]) n.classList.add('dim');
+      });
+    }
+    function describe(id) {
+      var el = document.getElementById(id);
+      var inc = edges.filter(function (e) { return e.from === id || e.to === id; });
+      var dirs = inc.map(function (e) { return e.from === id ? '→ ' + label(e.to) : '← ' + label(e.from); });
+      detail.textContent = label(id) + '（' + inc.length + ' 条链路）：' + (dirs.join('；') || '无');
+    }
+    function label(id) { var el = document.getElementById(id); return el ? el.querySelector('b').textContent : id; }
+
+    diagram.querySelectorAll('.node').forEach(function (n) {
+      n.addEventListener('mouseenter', function () { if (!pinned) highlight(n.id); });
+      n.addEventListener('mouseleave', function () {
+        if (!pinned) { highlight(null); detail.textContent = IDLE; }
+      });
+      n.addEventListener('click', function () {
+        if (pinned === n.id) { pinned = null; n.setAttribute('aria-pressed', 'false'); highlight(null); detail.textContent = IDLE; }
+        else {
+          if (pinned) { var prev = document.getElementById(pinned); if (prev) prev.setAttribute('aria-pressed', 'false'); }
+          pinned = n.id; n.setAttribute('aria-pressed', 'true'); highlight(n.id); describe(n.id);
+        }
+      });
+      n.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); n.click(); }
+      });
+    });
+
+    draw();
+    window.addEventListener('resize', draw);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(draw);
+    return { draw: draw };
+  }
+
+  var A = makeDiagram('diagramA', 'edgesA', 'detailA', [
+    { from: 'a-agent',  to: 'a-guard', main: true },
+    { from: 'a-claude', to: 'a-guard', main: true },
+    { from: 'a-guard',  to: 'a-trans', main: true },
+    { from: 'a-trans',  to: 'a-pipe',  main: true },
+    { from: 'a-pipe',   to: 'a-retry', dash: '3 4' },
+    { from: 'a-pipe',   to: 'a-wb', main: true, lane: -1 },
+    { from: 'a-pipe',   to: 'a-mm', main: true },
+    { from: 'a-pipe',   to: 'a-qd', main: true, lane: 1 }
+  ]);
+
+  var B = makeDiagram('diagramB', 'edgesB', 'detailB', [
+    { from: 'b-web',     to: 'b-api', main: true },
+    { from: 'b-api',     to: 'b-catalog', main: true },
+    { from: 'b-api',     to: 'b-agg', main: true },
+    { from: 'b-api',     to: 'b-quota', main: true },
+    { from: 'b-catalog', to: 'b-store', dash: '4 4' },
+    { from: 'b-agg',     to: 'b-store', dash: '4 4' },
+    { from: 'b-quota',   to: 'b-store', dash: '4 4' },
+    { from: 'b-claim',   to: 'b-store', dash: '4 4' }
+  ]);
+})();
+</script>
+</body>
+</html>

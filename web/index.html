@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- 声明两种极性都支持。真正的极性由 CSS 的 `color-scheme` 属性决定
+         （深色在 tokens.css、浅色在 theme.css）——meta 只影响样式表解析前
+         那一瞬间的原生控件外观，见 tokens.css 头部「meta 不足以让 CSS 属性生效」。 -->
+    <meta name="color-scheme" content="dark light" />
+    <meta name="robots" content="noindex, nofollow" />
+    <!-- 标签页图标**不在这里**：favicon 由 src/main.tsx 运行时以**绝对路径**注入
+         （/icon.svg）。原因：vite 的 `base:'./'` 会把这个位置的绝对路径也改写成
+         相对路径，于是在 /console 子路径下浏览器请求 /console/icon.svg，
+         而 nginx 的 SPA fallback 会把它兜成 index.html（text/html）——
+         浏览器拿到 HTML 当图标，静默失败（favicon 长期不显示的根因）。
+         详见 main.tsx 里那段注入代码的注释。 -->
+    <meta
+      name="description"
+      content="Waygate — 在本地把 WorkBuddy 订阅积分暴露成 OpenAI 兼容接口，一个 Key 走所有客户端。"
+    />
+    <title>Waygate — 把自己的订阅积分变成一个 base_url</title>
+    <!-- ==========================================================================
+         首帧主题（防闪）—— 必须**内联**，且在样式表解析之前。
+         --------------------------------------------------------------------------
+         为什么不能等 React：样式表一解析，默认色的令牌立即生效；若等应用挂载后
+         才改成目标色，用户会先看到一帧错色再跳过去（"闪一下"）。这段脚本在 <head>
+         里**同步**执行，浏览器这时还没画过任何东西，所以永远不闪。
+
+         判定必须与 src/lib/theme.ts 逐条一致（那边是运行时权威）：
+           · [v0.4.22] 官网与控制台**同一套判定** —— 偏好 'system' 时都跟随系统；
+           · 偏好取自 localStorage['relay.theme']，三态 system/light/dark；
+           · **缺省 / 'system' / 越界 / 抛异常 → 跟随系统**（默认就是跟随系统）。
+             `prefers-color-scheme` 读不到时保守取深色。
+
+         为什么不抽成外部模块：这是渲染前的阻塞步骤，多一次 import 就多一次
+         网络往返，那一帧的错色就露出来了。代价是"两份判定"——故两处都留了
+         这条交叉引用，改一处必须改另一处（判据刻意极简，就是为了让它们不漂）。
+         ========================================================================== -->
+    <script>
+      (function () {
+        function sysLight() {
+          try {
+            return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches);
+          } catch (e) {
+            return false;
+          }
+        }
+        try {
+          var t = 'dark';
+          var v = localStorage.getItem('relay.theme');
+          if (v === 'light' || v === 'dark') t = v;
+          else if (sysLight()) t = 'light';   // 缺省 / 'system' / 越界 → 跟随系统
+          document.documentElement.dataset.theme = t;
+        } catch (e) {
+          document.documentElement.dataset.theme = 'dark';
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+<!-- @zbiti-ai:f:18:8fc89c2b -->

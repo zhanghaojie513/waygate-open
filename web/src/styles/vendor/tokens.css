@@ -1,0 +1,1022 @@
+/* ==========================================================================
+   驿站 · Relay — 设计令牌（单一来源）
+   ==========================================================================
+
+   本文件的 `:root` 正文源于官网 v4 令牌 + 回填（见正文 §12），
+   来源与拆分规则见 design/spec-v4-landing-integration.md §3。
+
+   `:root` 之后的**组件层**（控制台样式）保持原样 —— 它不参与合并。
+   字体不在这里：已自托管，见 `web/src/styles/vendor/fonts.css`。
+
+   [注意] 权威方向（v0.4.7 起）：**本文件是令牌的唯一权威源**。
+   merge-web-tokens.mjs 是一次性迁移工具，已退役 —— 重跑会用旧 v4 值覆盖这里。
+   正确链路：改本文件 → 跑 `node tools/sync-prototype-console.mjs`
+   让原型控制台跟随（它会把这里的 :root 整段抄进 prototype/v4/console.css）。
+   ========================================================================== */
+
+/* ==========================================================================
+   驿站 · Relay — 设计令牌 v4.1「折面棱镜 PRISM」
+   ==========================================================================
+
+   从 v4.0「深空视差」到 v4.1 只换了一件事：**场景的构成元素**。
+   v4.0 的背景是「网格地面 + 同心轨道 + 星尘」—— 三个元素同属一个词库
+   （3D 线框空间），拼在一起只能得到「正确但没有人味的深色科技页」。
+   v4.1 换成折面棱镜：画面里不再有地板、轨道、星尘，只有一堆各自接光的玻璃面。
+
+   代价是 v4.0 为那套背景定义的一批「场」令牌（地板网格线三档、地平线光、
+   景深四级、九个辉光）全部失去消费方 —— 已在 v4.1 清理，只留还在用的两档
+   辉光（UI 侧小构件）。**删掉的令牌不会再回来：一个没有消费方的令牌
+   比一个写错的令牌更危险，因为它看上去是对的。**
+
+   相对 v2.1「深空紫罗兰」，v4 系列的改动仍集中在四件事上，色相基本不动：
+
+     ① 新增「场」的令牌（雾、空间底色）—— v2.1 只有「底色」，没有「空间」。
+        底色四级照旧：v2.1 曾把 L0 从 #07060F 提到 #0B0A18，理由是
+        「近乎纯黑读起来像黑洞」。这个判断依然成立，**不推翻**。
+        空间感改由雾与棱镜自身的棱边光提供，而不是靠把底压得更黑。
+
+     ② 新增「材质」令牌（玻璃 / 边缘光）—— v2.1 的卡片是微渐变 + 发丝描边，
+        在平背景上够用；一旦背景有了纵深，卡片必须换成半透明玻璃才能
+        「浮」在场景之上，否则会像贴纸。
+
+     ③ 新增「排版尺度」阶梯 —— v4 要用超大标题拉开张力，
+        字号必须走 clamp() 而非固定值。
+
+     ④ 新增「棱镜」令牌 —— 装配体的机构参数（透视、自转周期、装配中心）。
+
+   ── v4.3 做了什么 ────────────────────────────────────────────────────
+
+   **把铁律 A 从"说法"变成"事实"。** v4.2 把铁律重写成了三类可判定规则，
+   但当时只登记了现状（20 处已用 color-mix / 129 处历史字面量待迁移）。
+   v4.3 把它们全部迁完，并且——这两步才是关键——**在迁移中发现了两件事**：
+
+     ① **色板本身漏了色。** 组件样式里出现过的颜色，色板里找得到名字的
+        只有 10 个，另有 18 个**无名**。所以"改一次品牌色是否跟着动"
+        这个问题在三分之一的调用点上根本无法回答 —— 那些地方连令牌名都没有。
+     ② **漏掉的不止 CSS。** 视图层是拼字符串生成 HTML 的，于是内联样式
+        （`style="background:..."`、`el.style.boxShadow="..."`）同样承载色值。
+        第一遍只扫 .css，漏了 5 处；漏掉的不会报错，看起来和写对的一样正常。
+
+   v4.3 因此做了四件事：
+     ① 补 11 个令牌（--brand-450 / --accent-blue / --bg-elevated / --bg-scrim /
+        --bg-surface-deep / 冷光七阶），让每一个非中性色都有名字；
+     ② 把 134 处字面量迁成 color-mix()（CSS 129 + JS 内联样式 5）；
+     ③ 顺带把令牌自身的复合值（渐变、玻璃、投影）也改成引用令牌；
+     ④ --tint 从「RGB 三元组」改成「颜色值」，场景的九片玻璃不再自带密码式写法。
+
+   还有一处**收敛**：控制台外壳与场景玻璃里有 9 个暗色字面量，
+   与既有纵深令牌的色差全部在 ΔE00 ≤ 3.7（合成后实测差 ≤ 11/255），
+   是同一批"手调过的差不多"的值。它们被收敛回 7 级纵深色阶 ——
+   值有微调，视觉无异，换来色阶重新可枚举。
+
+   ── v4.4 做了什么 ────────────────────────────────────────────────────
+
+   **明度阶梯重构（材质体系最大幅度）。** 诊断：v4.3 收敛后的 11 个 --bg-* 令牌
+   亮度挤在 L 0.0011–0.0170 的窄带里 —— 层级只能靠描边表达，卡片在暗底上
+   读作"暗上加暗"。v4.4 把阶梯拉开成四段可辨识的明度带：
+
+     页面底（不变）L 0.002–0.004 ｜ 区块 L 0.008–0.013 ｜
+     卡面 L 0.018–0.032（整体抬一档多）｜ 最高浮层 ≥ 0.05
+
+   卡面提亮后文字六级**级联重校**：校准基准从「最亮页面底 L2」改为
+   「最亮卡面 --bg-surface」—— 复算显示旧 --text-ghost(#7A8398, L 0.226)
+   对新卡面只剩 3.45:1。六级整体上移后逐级复测：正文档 ≥ 4.5:1、
+   相邻档对比比 ≥ 1.17。配套动作见 console-fx.css §③：卡片材质从
+   近实心 92/96% 降到 84/80% —— 底色提亮接管了「读得清」的职责，
+   透明度负责"背后有光"的存在感。基准参照系是本地语料库的深色
+   dashboard（daily-grind 壳 0.013 / 面板 0.024 / 面板-2 0.038）。
+
+   铁律（v4.2 重写表述，v4.3 完成迁移）：
+     · 色值分三类 —— **语义色必须 var()**；**语义色的透明度变体用 color-mix() 表达**；
+       **中性叠加 rgba(255,255,255,α) / rgba(0,0,0,α) 可直接写**
+       （中性不承载品牌语义，换品牌色时本就不该跟着动）。
+       判据：「换一次品牌色，它必须跟着动吗」。详见 design-spec §17.5
+     · 配套判据：**一个色如果在色板里找不到名字，它就不该出现在组件样式里。**
+       更普遍的形式：**只出现在复合值（gradient）里的颜色，等于没有这个颜色。**
+     · 文字六级必须全部满足 WCAG AA（正文 4.5:1，大字 3:1）
+     · 所有动效在 prefers-reduced-motion 下关闭
+     · 不得在 preserve-3d 容器上使用分组属性（见 scene.css .rig）
+   ========================================================================== */
+
+
+
+:root {
+  /* 必须在 CSS 里声明，不能只靠 <meta name="color-scheme">——
+     实测 meta 不足以让该 CSS 属性生效，原生 select / scrollbar 会按浅色渲染。
+     见 memory 里「下拉框列表背景色异常」的根因记录。 */
+  color-scheme: dark;
+
+  /* ==========================================================================
+     1 · 纵深四级（页面底）
+     v4.4：四级差值不再刻意求小 —— 实测「约 5%/级」的阶梯在整页暗色里
+     读不出层级（见头部 v4.4 块）。页面底两级保持沉（空间的「深」仍由
+     §2 的雾与辉光负责），区块档整体抬亮，让「层级」由明度差直接表达。
+     L 值为 WCAG 相对亮度，复算口径见头部 v4.4。
+     ========================================================================== */
+  --bg-page:      #0B0A18;   /* L0 页面底 / 首屏 · L=0.0035（不变） */
+  --bg-section-a: #16132B;   /* L1 区块交替 · L=0.0081 */
+  --bg-section-b: #1D1A38;   /* L2 抬升区块 · L=0.0129 */
+  --bg-band:      #070611;   /* L3 数据带 / 页脚（不变） */
+
+  /* v4.3 补的两级；v4.4 把 elevated 从「比 L2 再亮一档」提为**全屏最亮的面**
+     （L=0.0518）—— 弹层/下拉/图表浮层要"浮在所有卡面之上"，
+     靠的就是这一档谁也够不着的明度。scrim 职责不变。 */
+  --bg-elevated:  #40367C;   /* L4 最高浮层：弹层 · L=0.0518 */
+  --bg-scrim:     #040309;   /* 遮罩底。比 L3 更黑 —— 它的职责是"把背后压没"，
+                                不是"再深一档的区块" */
+
+  /* ==========================================================================
+     2 · 场（v4 新增）—— 空间感的来源
+     ========================================================================== */
+
+  /* 2.1 雾色：远处的物体不是变暗，而是**褪色到雾里**。
+     这是真实大气的行为，也是「纵深」最容易被忽略、但最有效的一条。
+     雾色必须比底色略亮、略带色相 —— 纯黑雾会把远景吃掉，读成「遮挡」。 */
+  --fog-far:   #1A1739;      /* 远景雾 · 贴近 L2（v4.4 随 L2 抬升） */
+
+  /* 2.2 冷光七阶（v4.3 新增）
+     v4.0 曾定义 violet / cyan / live 各三层共 9 个辉光令牌，服务的是
+     「网格地面 + 轨道 + 星尘」那套背景。换成折面棱镜后，那一整套光源
+     都不存在了 —— 棱镜的发光来自玻璃自身的棱边（见 scene.css 材料三件套），
+     不来自外部辉光。清理后只剩两档。
+
+     v4.3 又补回七档，理由与那次清理**不冲突**：
+     那次删的是"没有消费方的辉光"，这次补的是"有消费方、却没有名字的颜色"。
+     实测 v4.1 里有 7 个极浅色散落在 scene.css（光芯、掠光）与 console.css
+     （控制台的三束柔光）里，全部写成 rgba 字面量。
+
+     为什么它们自成一系，而不并入品牌色：
+     光在深色底上的行为与"色"不同 —— 它是**高得多的明度 + 低得多的饱和**。
+     把光当成品牌色的一个档位，会让品牌色被拉白，两边都会坏。
+     所以牌面分家：品牌色负责"识别"，冷光负责"照亮"。 */
+  --glow-white:  #ECFCFF;    /* 冰白 · 光芯的核心 */
+  --glow-mist:   #F4F2FF;    /* 雾白 · 控制台最冷的一束 */
+  --glow-ice:    #DCF0FF;    /* 冷白 · 玻璃的掠射高光 */
+  --glow-frost:  #CEF4FF;    /* 霜青 · 光芯中段 */
+  --glow-cyan:   #BEF0FF;    /* 冷青 · 光柱与硬亮核 */
+  --glow-pale:   #E2DEFF;    /* 淡紫白 · 光芯上段 */
+  --glow-violet: #C4BAFF;    /* 淡紫 · 光晕外缘 */
+
+  /* v4.1 的两档保持不变，只是改为**引用基色** ——
+     从前它们是唯一两个自带 rgba 的令牌，于是"同一个色有多少种透明度"
+     这件事在色板里断了一截：只有 0.95 与 0.50 两档能被引用，其余只能手写。
+     拆出基色之后，任何档位都能用 color-mix 表达。 */
+  --glow-cyan-core:   color-mix(in srgb, var(--glow-cyan) 95%, transparent);
+  --glow-cyan-mid:    color-mix(in srgb, var(--accent-cyan) 50%, transparent);
+
+  /* ==========================================================================
+     3 · 材质（v4 新增）—— 让卡片能「浮」在场景上
+     ========================================================================== */
+
+  /* 玻璃：背景透明度必须足够高（这里 0.72 之上的底色），
+     否则背后的网格会穿透文字形成噪声；又不能太实，否则失去「浮起」的错觉。
+     实测 0.66 是「读得清正文」与「看得出背后有东西」的平衡点。 */
+  --glass-bg:      linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 86%, transparent) 0%, color-mix(in srgb, var(--bg-surface-deep) 78%, transparent) 100%);
+  /* 薄玻璃的不透明度由 0.62/0.54 提到 0.80/0.74：
+     实测（差分法，见 design-spec §17.6）原来的值在棱镜亮面经过时，
+     卡内 12px 小字的最坏对比度会掉到 3.5 —— 不达 AA。
+     玻璃的「浮起感」靠边缘光和投影拿，不靠把底做透。 */
+  --glass-bg-soft: linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 80%, transparent) 0%, color-mix(in srgb, var(--bg-surface-deep) 74%, transparent) 100%);
+  --glass-border:  color-mix(in srgb, var(--iris) 22%, transparent);
+  --glass-blur:    18px;
+
+  /* 边缘光：玻璃上沿的一道高光，是「有厚度」的关键。
+     没有它，半透明面板会读成「一块半透明色」。 */
+  --edge-light: linear-gradient(180deg, rgba(255, 255, 255, 0.10) 0%, rgba(255, 255, 255, 0) 42%);
+
+  /* 卡面（v4.4 整体抬一档多，L 0.018–0.032 —— 见头部 v4.4 块）。
+     deep 是卡面渐变的下端，抬得比上端少 —— 上下端差值本身就是"受光面"的错觉。 */
+  --bg-surface:          #2F295F;
+  /* v4.3 拆出来：它此前只作为 --bg-surface-grad 的第二个色标和 --glass-bg 的
+     下端存在，本身没有名字。**只出现在复合值里的颜色，等于没有这个颜色** ——
+     想用它的人只能再抄一遍字面量，于是抄出了第二个近似值。 */
+  --bg-surface-deep:     #232046;
+  --bg-surface-grad:     linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-surface-deep) 100%);
+  --bg-surface-2:        #312B5F;
+  /* v4.4：两个色标（#221B44/#16132C）是 v2.1 的手调值，卡面抬档后成了
+     「在色板里找不到名字、又各只剩一处消费」的漂移源 —— 收敛为引用令牌。 */
+  --bg-surface-2-grad:   linear-gradient(180deg, var(--bg-surface-2) 0%, var(--bg-surface-deep) 100%);
+  --bg-surface-3:        #2B2550;
+  --bg-code:             #171430;
+
+  /* 描边三级 */
+  /* [注意] --iris：描边与分层用的紫罗兰基色。**这个令牌是补上的，不是新加的色。**
+
+     在补它之前，139,124,255 这个值只作为下面三个 border 令牌的基色存在，
+     本身**没有名字**。后果很具体：任何"非 15 / 18 / 24% 的档位"都只能手写
+     rgba 字面量 —— 实测散成了 **20 种 alpha、约 30 处**（6% 到 70%），
+     分布在 5 个文件里。而改这些 alpha 时没有任何东西会提醒你
+     "它们是同一个色"。
+
+     为什么它和 --brand-500 / --brand-400 分开：品牌紫服务"**识别**"
+     （标记、图表、主按钮），描边紫服务"**边界与浮层**"（描边、分隔线、
+     hover 底、焦点圈）。两者在深色底上的观感差别很明显，混用会让界面失去层次。
+
+     新写法：`color-mix(in srgb, var(--iris) 12%, transparent)` ——
+     不再为每个 alpha 建令牌，也不再手写 rgba。 */
+  --iris:           #8B7CFF;
+
+  /* 三个档位现在**引用 --iris**，而不是各自重复那串 RGB ——
+     这样 --iris 才真的是"单一出处"：改它一处，三个档位一起动。
+     数学上与原来的 rgba(139,124,255,α) 完全等价（已实测计算值一致）。 */
+  --border-subtle:  color-mix(in srgb, var(--iris) 15%, transparent);
+  --border-default: color-mix(in srgb, var(--iris) 18%, transparent);
+  --border-strong:  color-mix(in srgb, var(--iris) 24%, transparent);
+
+  /* ==========================================================================
+     4 · 文字六级
+     v4.4 级联重校：卡面整体提亮后，校准基准从「最亮页面底 L2」改为
+     **最亮卡面 --bg-surface(L=0.0302)** —— 文字绝大多数坐在卡上，
+     基准必须取它实际所坐的最亮的面。复算：旧 ghost(#7A8398) 对新卡面
+     只剩 3.45:1，六级整体上移后全部回到 AA 线上（正文 4.5:1），
+     相邻档对比比 >= 1.17 保住层级。注：ghost 不用于浮层(--bg-elevated)上。
+     ========================================================================== */
+  --text-primary:   #F2F4F8;   /* 卡面 11.91 */
+  --text-secondary: #D5DCEA;   /* 卡面  9.51 */
+  --text-tertiary:  #C1CBE2;   /* 卡面  8.05 */
+  --text-muted:     #B1BCD4;   /* 卡面  6.87 · 说明文字 */
+  --text-faint:     #A2ACC5;   /* 卡面  5.76 · 辅助信息 */
+  --text-ghost:     #8E99B1;   /* 卡面  4.58 · 标签 / 表头 / 页脚 */
+
+  /* ==========================================================================
+     5 · 品牌与语义色（沿用 v2.1，未改）
+     换掉的成本远大于收益：这三色已经贯穿标记、图表、状态点。随便动一处，
+     整站的一致性就塌了。
+     ========================================================================== */
+  /* ★ 鸢尾紫是「earned purple」而非 AI 紫（finesse LILA RULE 自查 2026-10-12）：
+     过线理由三条 —— ① 中性阶整体染鸢尾色相（--bg-page 是紫调黑非灰黑）；
+     ② 语义色用春薄荷与品牌紫构成双色相系统，非紫上叠紫；③ 棱镜场景层是独有识别物。
+     防线（后来者不许做）：不在紫上再加辉光渐变按钮 / 霓虹 mesh / 紫渐变 CTA ——
+     那会把 earned 打回 reflex。 */
+  --brand-500:      #6E5CFF;   /* 鸢尾紫 */
+  --brand-450:      #7C5CFF;   /* v4.3：品牌渐变的紫端 / 选中态的抬升底。
+                                 它不是新色 —— 它是 --gradient-brand 的第一个色标，
+                                 控制台里还有 7 处在手写它（侧栏选中、弹层底、步骤高亮）。
+                                 夹在 500 与 400 之间，所以占 450 这一档。 */
+  --brand-400:      #A79BFF;
+  /* 主按钮 hover 底：比 500 亮一档。原来是裸字面量 #7E6DFF（tokens.css 的
+     `.btn-primary:hover`），已是"有名字的颜色却没有令牌"的一处 —— 主题切换
+     必须能改它（浅色下要**更深**而不是更亮），故补成令牌。
+     深色值与旧字面量逐字相同，视觉零变化。 */
+  --brand-hover:    #7E6DFF;
+  --brand-tint:     color-mix(in srgb, var(--brand-500) 16%, transparent);
+  --accent-cyan:    #3EDCFF;   /* 电光青 */
+  --accent-blue:    #7AA0FF;   /* v4.3：棱镜第五片的谱色。
+                                九个玻璃片各带一个 --tint，其中八个能引用既有令牌，
+                                只有这一个蓝没有对应色 —— 谱色不该为此新起一系，
+                                所以它作为 --accent-cyan 的邻居落在语义色里。 */
+  --signal-live:    #35E08A;   /* 春薄荷 */
+  --signal-live-track: color-mix(in srgb, var(--signal-live) 22%, transparent);   /* 状态点的轨道 / 描边 */
+  --warn-amber:     #FFAA3B;
+  --warn-amber-line: color-mix(in srgb, var(--warn-amber) 30%, transparent);
+  --danger-red:     #FF6B6B;
+  --violet:         #A855F7;
+
+  /* 渐变
+     v4.3：能指向令牌的色标全部改为引用 ——
+     **只出现在复合值里的颜色，等于没有这个颜色**：改一次品牌紫，
+     渐变还是旧的那一支，而没有任何东西会提示你。
+     仍有两个色标（--gradient-brand 的蓝、青端）是字面量：它们只在这里出现，
+     自成一对，没有第三个消费方。给"只用一次的颜色"起名字只会把色板撑虚，
+     所以留着，但记在这里。 */
+  --gradient-brand:    linear-gradient(90deg, var(--brand-450) 0%, #4D7CFF 50%, #35DCE8 100%);
+  --gradient-progress: linear-gradient(90deg, var(--accent-cyan) 0%, var(--signal-live) 100%);
+  --gradient-banner:   linear-gradient(90deg, color-mix(in srgb, var(--brand-500) 18%, transparent) 0%, color-mix(in srgb, var(--accent-cyan) 5%, transparent) 100%);
+  --gradient-avatar:   linear-gradient(135deg, var(--iris) 0%, var(--accent-cyan) 100%);
+  /* v4：标题上的渐变文字。三色停靠点与品牌渐变一致，
+     但加了 200% 宽度以便做扫光。 */
+  --gradient-text: linear-gradient(100deg, #FFFFFF 0%, #C9BFFF 28%, #7FD6FF 56%, #FFFFFF 78%, #C9BFFF 100%);
+
+  /* 阴影
+     第三类（中性叠加）在这里也包括**纯黑**：投影与遮罩用的 rgba(0,0,0,α)
+     不承载品牌语义 —— 换品牌色时它不该跟着动。所以照旧直写。
+     能跟着动的两项（品牌投影、浮层描边）改为 color-mix。
+
+     [v0.4.21] 三个投影里 `--shadow-card` 是**唯一服务控制台**的一项
+     （`.login-card`），因此必须能随主题变 —— 深色值保持原字面量不动，
+     浅色值在 theme.css 里整体重定义（见那边的说明）。另外两项只服务官网
+     （`--shadow-float` → landing/ui.css），官网锁深色，故无需主题化。 */
+  --shadow-brand: 0 10px 30px -4px color-mix(in srgb, var(--brand-500) 45%, transparent);
+  --shadow-card:  0 24px 60px -28px rgba(0, 0, 0, 0.85);
+  --shadow-float: 0 40px 90px -40px rgba(0, 0, 0, 0.9), 0 0 0 1px color-mix(in srgb, var(--iris) 10%, transparent);
+
+  /* ==========================================================================
+     6 · 排版
+     字体三件套沿用 v2.1：Sora（展示）/ Noto Sans SC（正文）/ JetBrains Mono（代码）。
+     不换字体是刻意的 —— 「不大众化」应该靠尺度、字距与版式张力达成，
+     而不是靠换一款别人没见过的字体。换字体只改气质，不改结构。
+     ========================================================================== */
+  --font-display: 'Sora', 'Noto Sans SC', system-ui, sans-serif;
+  --font-body:    'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  --font-mono:    'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* 展示级尺度：走 clamp()，否则 4K 上标题会小得可怜、手机上又炸开 */
+  /* 首屏主标题。上限从 84px 收到 76px：首屏改成两栏后左栏只有约 840px，
+     84px 时第二行「变成一个 base_url」放不下，会在 "变成一个" 后面硬折 ——
+     折点落在词组中间，读起来像排版事故。76px 下整行约 690px，留出余量。 */
+  --fs-display-1: clamp(38px, 4.9vw, 76px);   /* 首屏主标题 */
+  --fs-display-2: clamp(30px, 3.4vw, 52px);   /* 区块标题 */
+  --fs-display-3: clamp(22px, 2.0vw, 30px);   /* 次级区块标题 */
+  --fs-lead:      clamp(15px, 1.25vw, 18px);  /* 导语 */
+  --fs-body:      14.5px;
+  --fs-small:     13px;
+  --fs-micro:     11.5px;
+
+  /* 字距：负字距是「大字号显高级」的核心手法 —— 字号越大，
+     默认字距在视觉上越松，必须收紧才显得「整」。 */
+  --track-display: -0.035em;
+  --track-tight:   -0.015em;
+  --track-eyebrow: 0.16em;   /* 小字号全大写要放开，否则糊成一团 */
+
+  --lh-display: 1.04;
+  --lh-title:   1.22;
+  --lh-body:    1.72;
+
+  /* ==========================================================================
+     7 · 间距与栅格
+     ========================================================================== */
+  --space-1: 4px;   --space-2: 8px;   --space-3: 12px;
+  --space-4: 16px;  --space-5: 24px;  --space-6: 32px;
+  --space-7: 48px;  --space-8: 64px;  --space-9: 96px;  --space-10: 144px;
+
+  --gutter: clamp(20px, 5vw, 120px);   /* 页面左右安全边 */
+  --maxw:   1280px;
+
+  /* ==========================================================================
+     8 · 圆角
+     v2.1 的 md=11px 在一张大玻璃面板上偏小，会显得「廉价」——
+     面板越大，圆角必须越大，否则视觉重量对不上。
+     ========================================================================== */
+  --radius-xs: 6px;
+  --radius-sm: 9px;
+  --radius-md: 11px;
+  --radius-lg: 18px;    /* v0.4.9：16→18 —— 卡面提亮后视觉重量更大，圆角同步放大一档 */
+  --radius-xl: 22px;    /* v4 新增：大面板 */
+  --radius-2xl: 30px;   /* v4 新增：首屏主卡 */
+
+  /* ==========================================================================
+     9 · 时长与缓动
+     交互时长阶梯沿用 v2.1，未改。
+     注意：**相机跟随滚动的阻尼不在这里** —— 它是 scene.js 里的时间常数
+     TAU（0.16s）。阻尼是"手感"，属于 JS 而非样式；写成 CSS 变量会让人
+     以为改 CSS 能调手感，实际不会生效。（v4.0 曾有 --dolly-dur/--dolly-ease
+     两个令牌，从未被消费，已删。）
+     ========================================================================== */
+  --d-hover: 160ms;
+  --d-tap:   120ms;
+  --d-panel: 420ms;
+  --d-enter: 800ms;
+  --ease-out:    cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* ==========================================================================
+     10 · 场景状态（由 scene.js 每帧写入）
+     声明在这里是为了让 CSS 有确定的初值 —— 没有初值时，
+     首帧会以「未定义」参与 transform 计算，导致场景闪一下才归位。
+
+     [注意] 这批变量只在 :root 上写入、由 .scene 内部消费。**绝不要**把它们
+     绑到 preserve-3d 容器上做 opacity —— opacity<1 会压平 3D 链，
+     详见 scene.css 里 .rig 的说明（这是本项目踩过的最深的一个坑）。
+     ========================================================================== */
+  --cam-x: 0px;
+  --cam-y: 0px;
+  --cam-z: 0px;         /* 负值 = 相机前推 */
+  --cam-rx: 0deg;       /* 俯仰 */
+  --cam-ry: 0deg;       /* 偏航 */
+  --cam-rz: 0deg;       /* 滚转（微幅，做手持感） */
+  --fog: 0.18;          /* 0–1 · 雾浓度 */
+  --scene-dim: 1;       /* 场景亮度（滚到正文密集处压低，把对比度让给正文） */
+  --scroll-p: 0;        /* 全局滚动进度 0–1 */
+  --look-x: 0;          /* 视线：指针位置归一化 -1…1，带阻尼 */
+  --look-y: 0;
+
+  /* ==========================================================================
+     11 · 棱镜（v4.1 新增）—— 场景装配体的机构参数
+     为什么这些要提到令牌层：它们是**机构参数**（和 --radius-md 同性质：
+     全站同一个值），不是某一页的排版。散在 scene.css 里用字面量写，
+     前端接场景时就得去 CSS 里抄数字 —— 抄错一个 2600，整组透视就变形。
+     ========================================================================== */
+  /* 透视距离。刻意比 v2 的 --cam-persp(1600) 长 —— 这里要的是「长焦」：
+     外环半径 900px，2600 下转到近侧缩放 1.53、远侧 0.74（差 2.06 倍，
+     纵深读得出来）；换 1600 则是 2.25 / 0.64，近侧那几片会糊满全屏。 */
+  --prism-persp:    2600px;
+  --prism-turn:     128s;     /* 装配体自转一圈。≈2.8°/s，再快就从「装置」变「转盘」 */
+  --prism-anchor-x: 64%;      /* 装配中心：偏右。正文在左，两者各占一半、互不遮挡 */
+  --prism-anchor-y: 45%;      /* 纵向：落在标题下方的空档，不压正文 */
+  /* 外壳景深档。内壳不设（0 不建滤镜图层，模糊是本页最贵的栅格操作）。
+     逐片仍可在 HTML 上用 --dof 覆盖，这里是缺省值。 */
+  --prism-dof-mid:  2.6px;
+  /* 扫光周期：各片错峰取 14–33s，写在 HTML 的 --sheen-dur 上。
+     刻意不在这里定义 min/max —— 定义了却没有消费方，就是死令牌；
+     取值范围属于「内容约定」，写进 design-spec 比写成变量更合适。 */
+
+  /* ==========================================================================
+     12 · 回填：v4 未定义、但 web 代码在引用（Spec §3 + 全量扫描补全）
+     每一行都写明「谁在用」。缺一个的后果不是报错，而是该声明静默失效。
+     注意：旧的弹性/过冲缓动令牌（cubic-bezier(0.34,1.56,0.64,1)）**不在此列**,
+     它违反 P0-3「禁止弹跳缓动」，已被删除；控制台那两处引用改指 --ease-out。
+     ========================================================================== */
+  /* 品牌标记三停：BrandMark.tsx 的 SVG <stop>（SVG 无法直接用渐变）。 */
+  --brand-stop-0: var(--brand-450);
+  --brand-stop-1: #4D7CFF;   /* = --gradient-brand 中点，同源 */
+  --brand-stop-2: #35DCE8;   /* = --gradient-brand 终点，同源 */
+  /* 柱状图纵向渐变顶端（app.css .bars30 .b.today）。 */
+  --signal-live-lt: #6BF0AC;
+  --danger-red-lt: #FFB4B4;
+  /* 揭示动画时长：映射到 v4 的 --d-panel（420ms）。不要写死，让它跟 v4 一起动。 */
+  --d-reveal: var(--d-panel);
+  /* 卡片栅格间距：tokens.css 自身的 .grid-* 在用。 */
+  --card-gap: 24px;
+  /* 控制台布局三件（tokens.css / app.css 在用）。 */
+  --content-width: 1200px;
+  --page-gutter: 120px;
+  --dashboard-sidebar: 248px;
+  /* 胶囊圆角：.pill / .tag 在用；v4 只给了 xs…2xl 阶梯，pill 是单独一档。 */
+  --radius-pill: 999px;
+
+  /* ==========================================================================
+     13 · 主题中性层（明暗切换用）—— **浅色值在 theme.css，不在这里**
+     --------------------------------------------------------------------------
+     为什么这一层必须存在：铁律 A 第三类原本允许组件样式直写中性叠加
+     `rgba(255,255,255,α)` / `rgba(0,0,0,α)`，理由是"中性不承载品牌语义，
+     换品牌色时本就不该跟着动"。这个理由**在单主题下成立，在明暗切换下不成立** ——
+     白色的 4% 在深底上是"抬起一点的面"，在浅底上等于**没有**（白压白），
+     于是所有 hover 底、内嵌底、轨道底、滚动条在浅色下一并消失。
+     它们不是"中性所以安全"，而是"绑定了深色底"。
+
+     判据修正（本文件头部铁律 A 的补充）：**一个中性叠加若其可见性依赖底色极性，
+     就必须是令牌。** 白色 alpha 与黑色 alpha 都属此类。
+
+     这是一条**按强度递增的中性阶梯**（wash-1 最淡 → wash-12 最明显），
+     不是一个按消费方命名的字典 —— 按消费方命名（--hover-bg / --inset-bg …）
+     会把同一个值复制成四五个名字，而"同一个色有二十种写法"正是要终结的那件事。
+     深色值 = 原字面量，**逐值相等或已就近归并**（.025→.02 / .035→.04 / .045→.05，
+     三者 Δalpha ≤.005，在深底上远低于可辨阈；因此深色主题视觉零变化）；
+     浅色值在 theme.css 里整体翻成"叠一层墨"，并**按浅色重新定过强度** ——
+     不是机械取反：白 4% 压在近黑上很轻，黑 4% 压在近白上却更明显。
+
+     [注意] 两个"可见性依赖底色极性"的例外单独成令牌，不塞进 wash 阶梯：
+     `--track-inset` 在深色是"压一层黑"的凹槽（不是叠白），
+     `--sheen` 在深色是"叠一点白"的掠光带（不是 wash）。 */
+
+  /* 中性 wash（面内嵌 / hover 底 / 轨道 / 滚动条 / 发丝线 / 边界）
+     档位刻意对齐深色里**实际出现过的 alpha**，使深色取值逐字不变：
+     .02 .03 .04 .05 .06 .07 .08 .09 .12 .15 .16 .20 .26。
+     另有四个非整值就近归并（.025→wash-1 / .035→wash-3 / .045→wash-4 /
+     .055→wash-5），Δalpha ≤.005，在深底上低于可辨阈。 */
+  --wash-1:  rgba(255, 255, 255, .02);   /* 最淡内嵌底 / 表头行 hover */
+  --wash-2:  rgba(255, 255, 255, .03);   /* 轻微内嵌 / 行 hover */
+  --wash-3:  rgba(255, 255, 255, .04);   /* 控件底（nav-toggle / chain 芯片）*/
+  --wash-4:  rgba(255, 255, 255, .05);   /* 明确 hover（sb-logout / 输入芯片）*/
+  --wash-5:  rgba(255, 255, 255, .06);   /* 活动项底 / 关闭态开关轨道 */
+  --wash-6:  rgba(255, 255, 255, .07);   /* 轨道底（d-track / agg seg / ratio bar）*/
+  --wash-7:  rgba(255, 255, 255, .08);   /* 滚动条拇指 */
+  --wash-8:  rgba(255, 255, 255, .09);   /* 强 hover */
+  --wash-9:  rgba(255, 255, 255, .12);   /* 强边界 / 关闭态开关 */
+  --wash-10: rgba(255, 255, 255, .16);   /* 图表基线 / 滚动条拇指 hover */
+  --wash-11: rgba(255, 255, 255, .20);   /* ghost 按钮 hover 边界 */
+  --wash-12: rgba(255, 255, 255, .26);   /* 日均量虚线 */
+  /* 凹槽底：深色下"压一层黑"（不是叠白，故不在 wash 阶梯里） */
+  --track-inset: rgba(0, 0, 0, .35);     /* 进度轨（.track） */
+  /* 掠光带（玻璃横幅上的周期性高光）与顶边高光 —— **独立令牌，不并入 wash**：
+     它们的可见性方向与 wash 相反。wash 是"把面抬起 / 压下"（浅色下翻成叠墨），
+     而高光必须**始终比所在的面更亮**（浅色下翻成叠墨就会变成一道黑抹痕）。
+     浅色下它们趋于消失（白压白）—— 那是正确的结果，不是缺陷：
+     浅色界面本就不该有"光从上面打进来"的暗示。 */
+  --sheen:      rgba(255, 255, 255, .06);   /* 横幅掠光带 */
+  --glint:      rgba(255, 255, 255, .15);   /* 顶栏顶边高光（起点） */
+  --glint-soft: rgba(255, 255, 255, .05);   /* 顶栏顶边高光（收尾） */
+  /* 语法高亮：关键字。唯一未走语义色的语法色（其余四色已引用品牌/语义令牌）。 */
+  --syntax-kw: #C792EA;
+  /* 阴影色（抬升用；浅色下必须变淡并改色相，否则投影读成"脏"）——
+     投影与遮罩在深色下用纯黑是刻意的（不承载品牌语义）；
+     但"纯黑"这个**色相**在浅底上过重，故把颜色部分提出来做令牌，
+     几何部分（偏移/模糊/扩散）留在各自的 box-shadow 里。
+     档位按**消费方各自的抬升高度**分，不强行归并 —— 归并会改掉深色的阴影浓淡，
+     而深色是已定稿的视觉基准（每一档都对应一处实测过的观感）。 */
+  --shade-pop:    rgba(0, 0, 0, .45);    /* .bar-tip 悬停卡 */
+  --shade-menu:   rgba(0, 0, 0, .72);    /* .rowmenu 行菜单 */
+  --shade-float:  rgba(0, 0, 0, .78);    /* .ov-modal 弹层 */
+  --shade-drawer: rgba(0, 0, 0, .80);    /* .drawer 详情抽屉 */
+  --shade-over:   rgba(0, 0, 0, .90);    /* .sel-pop 下拉面板 */
+  --shade-scrim:  rgba(0, 0, 0, .55);    /* .nav-backdrop（窄屏抽屉背板） */
+
+}
+
+/* ==========================================================================
+   12 · 相机变量的类型注册（v4.1 新增）
+
+   为什么必须注册：**未注册的自定义属性，类型是 <custom-ident>，
+   浏览器无法在两端之间插值** —— 于是「视图切换时棱镜平滑漂移」这件事，
+   在不注册的前提下只能用 JS 写 rAF 插值，而那会跟 scene.js 的阻尼打架。
+
+   注册成具体类型之后，--cam-* 变成「可过渡的值」，
+   CSS 的 transition 就能直接作用在它们上面（控制台用的就是这条路，
+   见 console.css 的 .app[data-view] 规则）。零 JS、无竞态。
+
+   为什么不能被"没收"：这一批变量是**同一套物理量**（相机的位置与姿态），
+   类型注册等于把它们的单位语义写进样式表，而不是散在每条 calc() 里。
+
+   [注意] 过渡**只在控制台生效**（console.css 挂在 .app 上）。
+   官网上绝不能给它们加 transition —— scene.js 每帧都写一次，
+   每次写入都会开启一段过渡，阻尼会被拖成"永远追不上目标"。
+   类型注册本身无害：注册只影响能否插值，不影响读写。
+
+   支持度：Chrome 85+ / Safari 16.4+ / Firefox 128+。
+   不支持时退化为「瞬切」—— 镜头直接到位，功能不缺。
+   ========================================================================== */
+@property --cam-x     { syntax: "<length>"; inherits: true; initial-value: 0px; }
+@property --cam-y     { syntax: "<length>"; inherits: true; initial-value: 0px; }
+@property --cam-z     { syntax: "<length>"; inherits: true; initial-value: 0px; }
+@property --cam-rx    { syntax: "<angle>";  inherits: true; initial-value: 0deg; }
+@property --cam-ry    { syntax: "<angle>";  inherits: true; initial-value: 0deg; }
+@property --cam-rz    { syntax: "<angle>";  inherits: true; initial-value: 0deg; }
+@property --scene-dim { syntax: "<number>"; inherits: true; initial-value: 1; }
+
+/* ==========================================================================
+   无障碍：一刀切关闭动效。相机停在首帧机位，场景仍完整可看，
+   只是不再随滚动运镜 —— 降级后依然是个能用的静态背景，不是一个黑屏。
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    /* [注意] 这里**不需要**把相机时长归零：相机的阻尼在 scene.js 里，
+       它自己检测 prefers-reduced-motion 后把阻尼系数直接取 1（瞬时到位）。
+       曾经这里写过 --dolly-dur: 0ms，但那个令牌早已删除 ——
+       一条指向不存在令牌的声明不会报错，只会静默失效，
+       所以留着它比删掉更危险。 */
+    --d-hover: 0ms;
+    --d-tap: 0ms;
+    --d-panel: 0ms;
+    --d-enter: 0ms;
+  }
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg-page);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.75;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: inherit; text-decoration: none; }
+
+.num { font-family: var(--font-display); font-variant-numeric: tabular-nums; }
+/* [task#74] 这里原本还有一条**裸的 `mono` 工具类**（只设 font-family）。
+   它与 app.css 里同名的「行内代码芯片」撞名 —— 概览「最近请求」的网格单元格
+   误把它当"等宽字体工具类"用，白拿了芯片的两侧 padding，在 `border-box` 下
+   等于每格 10px 的**不可收缩下限**，窄面板必然溢出（task#72 的根因）。
+   已删除。等宽的落点现在各自唯一：`<td>` 用本文件的 `.td-mono`、
+   非 `<td>` 的数值用 app.css 的 `.cell-mono`、行内代码芯片用 `.code-chip`。
+   不要在这里重新引入同名工具类。 */
+
+.grad-text {
+  background: var(--gradient-brand);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+}
+
+/* ==========================================================================
+   官网（指南页）基础
+   ========================================================================== */
+
+.wrap { width: var(--content-width); margin: 0 auto; }
+
+.nav {
+  height: 76px; display: flex; align-items: center; justify-content: space-between;
+  padding: 0 var(--page-gutter); border-bottom: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--bg-page) 86%, transparent); backdrop-filter: blur(14px);
+  position: sticky; top: 0; z-index: 40;
+}
+.brand { display: flex; align-items: center; gap: 11px; }
+.brand-name { font-family: var(--font-display); font-weight: 700; font-size: 20px; letter-spacing: -.2px; }
+.nav-links { display: flex; gap: 34px; font-size: 14.5px; color: var(--text-muted); }
+.nav-links a:hover { color: var(--text-primary); }
+.nav-right { display: flex; align-items: center; gap: 20px; }
+.ver { font-family: var(--font-mono); font-size: 12.5px; color: var(--text-faint); }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  border-radius: var(--radius-md); cursor: pointer; border: none;
+  font-family: var(--font-body); font-weight: 600; white-space: nowrap;
+}
+.btn-primary {
+  padding: 12px 22px; background: var(--brand-500); color: #fff;
+  font-size: 14.5px; box-shadow: var(--shadow-brand);
+}
+.btn-primary:hover { background: var(--brand-hover); }
+.btn-ghost {
+  padding: 12px 22px; background: var(--bg-surface-3); color: var(--text-secondary);
+  border: 1px solid var(--border-strong); font-size: 14.5px;
+}
+.btn-ghost:hover { border-color: var(--wash-11); }
+
+.section { padding: 96px var(--page-gutter); }
+.section.alt-a { background: var(--bg-section-a); }
+.section.alt-b { background: var(--bg-section-b); }
+
+.eyebrow {
+  font-family: var(--font-display); font-size: 12.5px; font-weight: 600;
+  letter-spacing: 1.6px; text-transform: uppercase; color: var(--accent-cyan);
+  margin-bottom: 16px;
+}
+.h2 { font-family: var(--font-body); font-weight: 900; font-size: 38px; line-height: 1.4; letter-spacing: -.5px; }
+.h2-sub { margin-top: 16px; font-size: 16px; color: var(--text-muted); max-width: 720px; }
+
+.card {
+  background: var(--bg-surface); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+
+.pill {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 5px 13px; border-radius: var(--radius-pill);
+  font-size: 11.5px; font-weight: 500; letter-spacing: .2px;
+}
+.pill-live { background: color-mix(in srgb, var(--signal-live) 10%, transparent); color: var(--signal-live); border: 1px solid var(--signal-live-track); }
+.pill-amber{ background: color-mix(in srgb, var(--warn-amber) 10%, transparent); color: var(--warn-amber); border: 1px solid color-mix(in srgb, var(--warn-amber) 22%, transparent); }
+.pill-cyan { background: color-mix(in srgb, var(--accent-cyan) 10%, transparent); color: var(--accent-cyan); border: 1px solid color-mix(in srgb, var(--accent-cyan) 22%, transparent); }
+.pill-ghost{ background: var(--bg-surface-3); color: var(--text-muted); border: 1px solid var(--border-subtle); }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+/* 代码块 */
+.code {
+  background: var(--bg-code); border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg); font-family: var(--font-mono);
+  font-size: 13px; line-height: 22px; color: var(--text-secondary);
+  padding: 16px 18px; overflow-x: auto; white-space: pre;
+}
+.code .k { color: var(--brand-400); }        /* key */
+.kw { color: var(--syntax-kw); }             /* keyword */
+.st { color: var(--accent-cyan); }             /* string */
+.cm { color: var(--text-ghost); font-style: normal; } /* comment */
+.fn { color: var(--signal-live); }             /* function / cmd */
+
+/* 网格 */
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--card-gap); }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--card-gap); }
+
+/* ==========================================================================
+   控制台
+   ========================================================================== */
+
+.app { display: flex; min-height: 100vh; background: var(--bg-page); }
+
+/* 侧栏高度（[注] 修过一个真实 bug）
+ *
+ * 之前是裸的 `position: sticky; top: 0; height: 100vh`。sticky 下
+ * `100vh` 的含义是「视口高度」，与页面总高**无关** —— 设置页那种
+ * 内容远超一屏的页面滚到下半屏时，侧栏停在原地、底部露出空白。
+ *
+ * 修法有两选择：
+ *   [注] 去掉 sticky 让 flex 自然拉伸 —— 侧栏会跟着内容变成几千像素高，
+ *     导航项被拉散，底下账号块要滚到页尾才看得见，体验更糟。
+ *   [注] 保留 sticky（始终贴合视口），但把侧栏做成**自身可滚动**：
+ *     内容装不下时由侧栏内部出滚动条兜住，导航永远可达。
+ *
+ * `overscroll-behavior: contain` 是配套的细节：侧栏滚到底后继续滚，
+ * 不会把滚动"传染"给主内容区 —— 否则鼠标停在侧栏上滚轮会莫名带动整页。
+ */
+.sidebar {
+  width: var(--dashboard-sidebar); flex: 0 0 var(--dashboard-sidebar);
+  background: var(--bg-section-a); border-right: 1px solid var(--border-subtle);
+  display: flex; flex-direction: column; padding: 22px 16px;
+  position: sticky; top: 0; height: 100vh;
+  overflow-y: auto; overscroll-behavior: contain;
+}
+/* 侧栏滚动条做细，避免在深色侧栏上出现一条突兀的浅色宽条。
+   两个前缀都要写：`::-webkit-scrollbar` 管 Chromium/Safari，
+   裸 `scrollbar-width` 管 Firefox。 */
+.sidebar::-webkit-scrollbar { width: 8px; }
+.sidebar::-webkit-scrollbar-thumb {
+  background: var(--wash-7); border-radius: 999px;
+}
+.sidebar::-webkit-scrollbar-thumb:hover { background: var(--wash-10); }
+.sidebar::-webkit-scrollbar-track { background: transparent; }
+@supports (scrollbar-width: thin) {
+  .sidebar { scrollbar-width: thin; scrollbar-color: var(--wash-9) transparent; }
+}
+/* 侧栏是纵向 flex 容器：子项默认会被压缩（flex-shrink:1），
+   内容一多导航项就会被压扁。显式禁止收缩，让它溢出后走滚动条。 */
+.sidebar > * { flex-shrink: 0; }
+.sb-brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 22px; }
+.sb-brand span { font-family: var(--font-display); font-weight: 700; font-size: 16px; }
+.sb-group { font-size: 11px; letter-spacing: 1.4px; color: var(--text-ghost);
+  text-transform: uppercase; padding: 8px 10px; font-weight: 600; }
+.sb-item {
+  display: flex; align-items: center; gap: 11px; padding: 11px 12px;
+  border-radius: var(--radius-sm); font-size: 14px; color: var(--text-muted);
+  cursor: pointer; margin-bottom: 2px; transition: background .12s, color .12s;
+}
+.sb-item svg { flex: 0 0 18px; }
+.sb-item:hover { background: var(--wash-3); color: var(--text-secondary); }
+.sb-item.active { background: var(--brand-tint); color: var(--brand-400); }
+.sb-spacer { flex: 1; }
+.sb-account {
+  display: flex; align-items: center; gap: 11px; padding: 12px;
+  background: var(--bg-surface); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+.avatar {
+  width: 34px; height: 34px; border-radius: 50%; flex: 0 0 34px;
+  background: var(--gradient-brand); display: flex; align-items: center;
+  justify-content: center; font-weight: 700; font-size: 13px; color: #fff;
+  font-family: var(--font-display);
+}
+.sb-account .meta { line-height: 1.35; min-width: 0; }
+.sb-account .meta b { font-size: 13.5px; font-weight: 600; display: block; }
+.sb-account .meta i { font-size: 11px; color: var(--text-faint); font-style: normal;
+  display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+.topbar {
+  height: 62px; flex: 0 0 62px; display: flex; align-items: center;
+  justify-content: space-between; padding: 0 32px;
+  border-bottom: 1px solid var(--border-subtle); background: var(--bg-page);
+  position: sticky; top: 0; z-index: 20;
+}
+.topbar h1 { font-size: 20px; font-weight: 600; letter-spacing: -.2px; }
+.topbar-left { display: flex; align-items: center; gap: 14px; }
+.topbar-right { display: flex; align-items: center; gap: 12px; }
+/* ---------- 下拉框（自绘 listbox，对齐设计稿 .sel） ----------
+   造型**逐条照抄** prototype/v4/console.css 的 `.sel` / `.sel.sm`：
+   32px / 圆角 9px / 中性叠加底 rgba(255,255,255,.035) / 1px 描边 / 12.5px。
+   （本文件是派生文件：组件层保留、色值不判定，故设计稿原文的中性叠加可直写。）
+
+   为什么放弃原生 <select>：它的弹出列表由**操作系统**绘制，CSS 完全碰不到 ——
+   深色玻璃界面里永远协调不了。设计稿用的就是自绘下拉，组件已按设计稿重写
+   （见 components/ui/Select.tsx），键盘行为在那边逐条补回。
+
+   [注意] `.sel` 现在是 `<button>`：必须 `font: inherit`，否则会掉进 UA 的
+   `font: 400 13.333px Arial` 默认值（设计稿的 `.sel` 靠 ui.css 的
+   `button { font: inherit }` 兜底，那条规则只作用于 `.landing` 作用域内，够不到控制台）。 */
+.sel-field { position: relative; display: inline-flex; min-width: 0; }
+
+.sel {
+  display: inline-flex; align-items: center; gap: 8px;
+  flex: 1 1 auto; min-width: 0;
+  appearance: none; font: inherit; font-size: 12.5px;
+  height: 32px; padding: 0 11px; border-radius: 9px;
+  background: var(--wash-3);
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary); white-space: nowrap;
+  cursor: pointer;
+  transition: border-color var(--d-hover) var(--ease-out), color var(--d-hover) var(--ease-out);
+}
+.sel:hover { border-color: var(--border-strong); color: var(--text-primary); }
+.sel:active { background: var(--wash-5); }
+.sel:focus-visible { outline: none; border-color: var(--brand-400); box-shadow: 0 0 0 3px var(--brand-tint); }
+.sel.sm { height: 28px; font-size: 11.5px; padding: 0 9px; }
+.sel:disabled { cursor: not-allowed; color: var(--text-faint); border-color: var(--border-subtle); }
+.sel:disabled:hover { color: var(--text-faint); border-color: var(--border-subtle); }
+
+.sel-val { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+/* 自绘箭头：类名对齐组件里的 `.caret-glyph`（历史上写成 `.caret` 导致样式从未生效）。 */
+.sel .caret-glyph { flex: 0 0 auto; pointer-events: none; color: var(--text-ghost); }
+.sel .caret-glyph.ic { color: var(--text-ghost); }
+
+/* 弹出面板：portal 到 body + fixed（躲开 .card 的 overflow:hidden 与 hover 位移）。 */
+.sel-pop {
+  position: fixed; z-index: 130; max-height: 288px; overflow: auto;
+  padding: 5px; border-radius: 11px;
+  background: var(--bg-surface-2-grad);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 22px 48px -18px var(--shade-over);
+  animation: sel-pop-in 140ms var(--ease-out) both;
+}
+@keyframes sel-pop-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: none; }
+}
+.sel-pop:focus { outline: none; }
+.sel-pop:focus-visible { outline: 2px solid var(--brand-400); outline-offset: 2px; }
+
+.sel-opt {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-radius: 7px; cursor: pointer;
+  font-size: 12.5px; color: var(--text-tertiary);
+}
+.sel-pop.sm .sel-opt { font-size: 11.5px; padding: 6px 9px; }
+.sel-opt-lb { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sel-opt .ic { flex: 0 0 auto; color: var(--brand-400); }
+/* 活动项（键盘/悬停高亮） */
+.sel-opt.on { background: var(--wash-5); color: var(--text-primary); }
+/* 当前已选项：与活动项叠加时以品牌色收尾 */
+.sel-opt.picked { color: var(--brand-400); }
+.sel-opt.on.picked { color: var(--brand-400); }
+
+/* 减少动效：面板不做入场位移 */
+@media (prefers-reduced-motion: reduce) {
+  .sel-pop { animation: none; }
+}
+
+/* .view 自身不加内边距：顶栏需要通栏，内边距由 .view-body 承担 */
+.view { display: none; }
+.view.on { display: block; }
+
+/* 积分横幅 */
+.credit-banner {
+  display: flex; align-items: center; background: var(--gradient-banner);
+  border: 1px solid color-mix(in srgb, var(--brand-500) 35%, transparent); border-radius: var(--radius-lg);
+  padding: 22px 28px; gap: 40px;
+}
+.cb-label { font-size: 12.5px; color: var(--text-muted); margin-bottom: 6px; }
+.cb-num { font-family: var(--font-display); font-weight: 700; font-size: 42px;
+  color: var(--signal-live); line-height: 1; letter-spacing: -1px; }
+.cb-of { font-family: var(--font-mono); font-size: 15px; color: var(--text-faint); margin-left: 8px; }
+.cb-mid { flex: 1; min-width: 0; }
+.cb-mid .row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+.cb-mid .row .t { font-size: 12.5px; color: var(--text-muted); }
+.cb-mid .row .p { font-family: var(--font-display); font-weight: 700; font-size: 17px; color: var(--text-primary); }
+.track { height: 8px; border-radius: 4px; background: var(--track-inset); overflow: hidden; }
+.track > i { display: block; height: 100%; border-radius: 4px; background: var(--gradient-progress); }
+.cb-right { text-align: right; padding-left: 36px; border-left: 1px solid var(--border-default); }
+.cb-right .cb-num { font-size: 24px; color: var(--text-primary); }
+
+/* [task#54] 取不到额度时：`--` 保留（契约 §2.1 要求），但**必须**跟一句可读的原因 ——
+   只给一个 34px 的淡 `--`，用户读作「空白」。 */
+.cb-left { min-width: 0; }
+.cb-num-na { font-size: 34px; color: var(--text-faint); }
+.cb-why { display: flex; align-items: flex-start; gap: 6px; margin-top: 9px; max-width: 300px;
+  font-size: 11.5px; line-height: 1.7; color: var(--text-muted); }
+.cb-why svg { flex: 0 0 auto; margin-top: 3px; color: var(--warn-amber); }
+.cb-note { font-size: 11px; line-height: 1.7; color: var(--text-faint); }
+.cb-stale { font-size: 11px; color: var(--warn-amber); margin-top: 6px; }
+
+/* 指标卡 */
+.metric-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+.metric { padding: 18px 20px; }
+.metric .lb { font-size: 12.5px; color: var(--text-muted); margin-bottom: 10px; }
+.metric .vl { font-family: var(--font-display); font-weight: 700; font-size: 24px;
+  color: var(--text-primary); line-height: 1; }
+.metric .dl { margin-top: 9px; font-size: 11.5px; color: var(--text-faint); }
+.metric .dl.up { color: var(--signal-live); }
+.metric .dl.warn { color: var(--warn-amber); }
+
+/* 卡片通用 */
+.panel { padding: 20px 22px; }
+.panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.panel-head h3 { font-size: 14.5px; font-weight: 600; }
+
+/* 柱状图 */
+.bars { display: flex; align-items: flex-end; gap: 9px; height: 132px; }
+.bars .bar { flex: 1; border-radius: 4px 4px 0 0;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent-cyan) 55%, transparent), color-mix(in srgb, var(--brand-500) 30%, transparent)); }
+.bars .bar.peak { background: linear-gradient(180deg, var(--signal-live), var(--accent-cyan)); }
+.bars .bar.dim { background: var(--wash-6); }
+/* 轴刻度：槽位数 = 柱数（空槽留白），标签因此精确落在对应那根柱的下面。
+   原来是 6 个 span 用 space-between 铺满整宽，而柱的位置是 (i+0.5)/n ——
+   两者越往中间偏得越多，读的人会把 9/21 认成 9/20。
+   gap 与 .bars30 保持一致，是"对齐"这件事的另一半：少了它，两边各减各的间距，
+   首尾对得上、中间仍然是错的。 */
+.axis { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px;
+  margin-top: 12px; font-family: var(--font-mono); font-size: 11px; color: var(--text-ghost); }
+.axis span { text-align: center; white-space: nowrap; }
+
+/* 占比列表 */
+.ratio li { list-style: none; display: flex; align-items: center; gap: 10px;
+  height: 32px; font-size: 12.5px; }
+.ratio .nm { flex: 1; color: var(--text-tertiary); font-family: var(--font-mono); font-size: 12px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ratio .bar { width: 96px; height: 6px; border-radius: 3px; background: var(--wash-6); }
+.ratio .bar > i { display: block; height: 100%; border-radius: 3px; }
+.ratio .pc { width: 48px; text-align: right; font-family: var(--font-display);
+  font-weight: 600; font-size: 12.5px; color: var(--text-secondary); }
+
+/* 等宽日志块 */
+.log {
+  font-family: var(--font-mono); font-size: 11.5px; line-height: 28px;
+  white-space: pre; overflow-x: auto; color: var(--text-tertiary);
+}
+.log .hd { color: var(--text-ghost); }
+.log .w { color: var(--warn-amber); }
+.log .g { color: var(--text-faint); }
+
+/* 表格 */
+table.tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+table.tbl th {
+  text-align: left; font-size: 11.5px; font-weight: 500; color: var(--text-ghost);
+  padding: 0 12px 11px; border-bottom: 1px solid var(--border-subtle); white-space: nowrap;
+}
+table.tbl td {
+  padding: 0 12px; height: 46px; border-bottom: 1px solid var(--wash-3);
+  color: var(--text-tertiary); vertical-align: middle; white-space: nowrap;
+}
+table.tbl tr:last-child td { border-bottom: none; }
+table.tbl tr:hover td { background: var(--wash-1); }
+table.tbl .r { text-align: right; }
+.td-strong { color: var(--text-primary); font-weight: 500; }
+.td-mono { font-family: var(--font-mono); font-size: 11.5px; }
+.dotc { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 8px;
+  vertical-align: 1px; }
+
+.tag { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: var(--radius-pill);
+  font-size: 11px; font-weight: 500; }
+.tag-live { background: color-mix(in srgb, var(--signal-live) 10%, transparent); color: var(--signal-live); }
+.tag-off  { background: var(--wash-5); color: var(--text-faint); }
+.tag-exp  { background: color-mix(in srgb, var(--warn-amber) 10%, transparent); color: var(--warn-amber); }
+.tag-amber{ background: color-mix(in srgb, var(--warn-amber) 10%, transparent); color: var(--warn-amber); }
+
+/* 筛选条 */
+.filters { display: grid; grid-template-columns: repeat(4, 150px) 1fr; gap: 10px; align-items: center; }
+.search {
+  display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 13px;
+  background: var(--bg-section-b); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm); font-size: 12.5px; color: var(--text-faint);
+}
+/* 筛选条里的下拉直接用设计稿的 .sel（32px）—— 原先那条 `.filters .select` 覆盖
+   是给原生 select 兜底的，自绘之后不再需要，删掉；高度与 .search 对齐（同为 32px）。 */
+
+/* 统计条：由 Portal Tooltip 负责说明浮层，容器保持自身圆角与横向布局。 */
+.statbar { display: grid; grid-template-columns: repeat(4, 1fr);
+  background: var(--bg-surface); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg); }
+.statbar > div { padding: 16px 20px; border-right: 1px solid var(--border-subtle); }
+.statbar > div:last-child { border-right: none; }
+.statbar .lb { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; }
+.statbar .vl { font-family: var(--font-display); font-weight: 700; font-size: 25px; line-height: 1;
+  font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+
+/* 设置行 */
+.set-row { display: flex; align-items: center; gap: 20px; padding: 16px 20px;
+  border-bottom: 1px solid var(--wash-3); }
+.set-row:last-child { border-bottom: none; }
+.set-row .info { flex: 1; min-width: 0; }
+.set-row .info b { display: block; font-size: 13.5px; font-weight: 500; color: var(--text-secondary); }
+.set-row .info span { display: block; font-size: 11.5px; color: var(--text-faint); margin-top: 3px; line-height: 1.6; }
+.set-row .ctl { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; }
+
+/* 开关 · 激活态用「春薄荷」而非品牌紫。
+   理由：本产品里紫色专职「导航/所在位置」（侧栏那道发光竖条），
+   而「开 / 有效 / 在线」这一族状态语义全局都由 signal-live 承担（25 处引用，紫仅 4 处）。
+   开关是状态指示器，不是导航构件，所以归春薄荷这一族。 */
+.switch { width: 40px; height: 22px; border-radius: 11px; background: var(--signal-live-track);
+  position: relative; cursor: pointer; flex: 0 0 40px; }
+.switch::after { content: ""; position: absolute; top: 3px; right: 3px; width: 16px; height: 16px;
+  border-radius: 50%; background: var(--signal-live); }
+.switch.off { background: var(--wash-9); }
+.switch.off::after { left: 3px; right: auto; background: #fff; }
+
+.input-mini { height: 34px; padding: 0 12px; background: var(--bg-section-b);
+  border: 1px solid var(--border-default); border-radius: var(--radius-sm);
+  font-family: var(--font-mono); font-size: 12.5px; color: var(--text-secondary); }
+
+.danger-zone { border-color: color-mix(in srgb, var(--warn-amber) 24%, transparent); }
+
+/* 客户端卡片 */
+.client-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.client-card { padding: 18px 20px; }
+.cc-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.cc-ico { width: 38px; height: 38px; border-radius: var(--radius-md); flex: 0 0 38px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg-surface-3); border: 1px solid var(--border-subtle);
+  font-family: var(--font-display); font-weight: 700; font-size: 14px; }
+.cc-head .nm { flex: 1; min-width: 0; }
+.cc-head .nm b { display: block; font-size: 14px; font-weight: 600; }
+.cc-head .nm span { display: block; font-size: 11px; color: var(--text-faint); margin-top: 2px; }
+.cc-rows { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; }
+.cc-rows .k { font-size: 11px; color: var(--text-ghost); margin-bottom: 4px; }
+.cc-rows .v { font-family: var(--font-display); font-weight: 600; font-size: 14px; color: var(--text-secondary); }
+.cc-rows .v.code-chip { font-family: var(--font-mono); font-size: 11.5px; font-weight: 400; }
+
+/* 分页 */
+.pager { display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 20px; border-top: 1px solid var(--border-subtle); }
+.pager .txt { font-size: 11.5px; color: var(--text-faint); }
+.pager .btns { display: flex; align-items: center; gap: 6px; }
+.pg { min-width: 30px; height: 30px; display: inline-flex; align-items: center;
+  justify-content: center; border-radius: var(--radius-sm); font-size: 12px;
+  font-family: var(--font-display); color: var(--text-muted);
+  background: var(--bg-section-b); border: 1px solid var(--border-subtle); cursor: pointer; }
+.pg.on { background: var(--brand-tint); color: var(--brand-400); border-color: color-mix(in srgb, var(--brand-500) 40%, transparent); }
+.pg:hover { color: var(--text-secondary); }
+
+/* 聚合卡 */
+.agg-row { display: flex; align-items: center; gap: 12px; padding: 11px 14px;
+  border-radius: var(--radius-sm); cursor: pointer; margin-bottom: 6px; }
+.agg-row:hover { background: var(--wash-2); }
+.agg-row.on { background: var(--brand-tint); }
+.agg-row .code { font-family: var(--font-mono); font-size: 12px; width: 42px; }
+.agg-row .nm2 { flex: 1; font-size: 12px; color: var(--text-tertiary); }
+.agg-row .n { font-family: var(--font-display); font-weight: 600; font-size: 13px; }
+.agg-row .seg { width: 74px; height: 6px; border-radius: 3px; background: var(--wash-6); }
+.agg-row .seg > i { display: block; height: 100%; border-radius: 3px; }
+
+.note {
+  display: flex; gap: 10px; padding: 12px 14px; border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--accent-cyan) 5%, transparent); border: 1px solid color-mix(in srgb, var(--accent-cyan) 16%, transparent);
+  font-size: 12px; color: var(--text-muted); line-height: 1.7;
+}
+.note b { color: var(--accent-cyan); font-weight: 600; }
+
+.footer-note { margin-top: 14px; font-size: 11.5px; color: var(--text-ghost); line-height: 1.7; }
+
+/* 视图内容区：承担页面内边距（.view 本身必须为 0，否则顶栏会被缩进）。
+   设上限是为了让超宽桌面保持可扫描的阅读线；窄桌面仍由 flex 自然占满。 */
+.view-body { width: min(100%, var(--maxw)); margin-inline: auto; box-sizing: border-box; padding: 26px 32px 40px; }
+/* @zbiti-ai:f:911:9562b2b7 */

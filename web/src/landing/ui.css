@@ -1,0 +1,396 @@
+/* ==========================================================================
+   [注意] 自动产出：由 tools/scope-css.mjs 从
+      （内部原型，未随开源版发布）<同名文件> 生成。
+   要改请改原型稿再重跑脚本。本文件只在原型基础上加了 `.landing` 作用域前缀，
+   规则内容与原型一致（便于 diff），不重排、不合并。
+   ========================================================================== */
+
+/* ==========================================================================
+   驿站 · Relay — 内容层 v4 (ui.css)
+   官网与控制台共用的排版、容器、按钮、玻璃卡片、滚动揭示。
+   console.css 只放控制台特有的东西（侧栏 / 数据表 / 指标卡）。
+
+   分工的原因：官网和控制台必须在同一个视觉语言里 —— 把共用部分抽出来，
+   是让「统一」变成结构上的必然，而不是靠两边各写一遍再人工对齐。
+   ========================================================================== */
+
+/* ---------- 0 · 基础 ---------- */.landing, .landing *, .landing *::before, .landing *::after
+{ box-sizing: border-box; }html.relay-landing
+{ scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+@media (prefers-reduced-motion: reduce) { html.relay-landing
+ { scroll-behavior: auto; } }.landing
+{
+  margin: 0;
+  background: var(--bg-page);
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}.landing h1,
+.landing h2,
+.landing h3,
+.landing h4
+{ margin: 0; font-family: var(--font-display); color: var(--text-primary); font-weight: 700; }.landing p
+{ margin: 0; }.landing a
+{ color: inherit; text-decoration: none; }.landing button
+{ font: inherit; color: inherit; }.landing code,
+.landing kbd
+{ font-family: var(--font-mono); font-size: .92em; }
+
+/* 细滚动条 —— 深色底上一条浅色宽条会非常刺眼 */html.relay-landing ::-webkit-scrollbar
+{ width: 10px; height: 10px; }html.relay-landing ::-webkit-scrollbar-track
+{ background: transparent; }html.relay-landing ::-webkit-scrollbar-thumb
+{
+  background: color-mix(in srgb, var(--iris) 22%, transparent); border-radius: 6px;
+  border: 2px solid transparent; background-clip: content-box;
+}.landing ::-webkit-scrollbar-thumb:hover
+{ background: color-mix(in srgb, var(--iris) 38%, transparent); background-clip: content-box; }
+
+/* ---------- 1 · 内容壳：必须浮在场景之上 ---------- */.landing .shell
+{ position: relative; z-index: 1; }
+
+/* 页面左右安全边。用同一个类而不是每个区块自己写 padding，
+   否则各区块的左边界会差几个像素 —— 在超大标题上这个差值非常明显。 */.landing .wrap
+{ width: 100%; max-width: var(--maxw); margin: 0 auto; padding-inline: var(--gutter); }
+
+/* ---------- 2 · 顶栏 ---------- */.landing .nav
+{
+  position: fixed; top: 0; left: 0; right: 0; z-index: 40;
+  display: flex; align-items: center; gap: var(--space-6);
+  padding: 18px var(--gutter);
+  transition: background var(--d-panel) var(--ease-out),
+              border-color var(--d-panel) var(--ease-out),
+              backdrop-filter var(--d-panel) var(--ease-out),
+              padding var(--d-panel) var(--ease-out);
+  border-bottom: 1px solid transparent;
+}
+/* 只在滚离首屏后加玻璃底 —— 首屏就加会挡住场景最重要的那部分 */.landing .nav.stuck
+{
+  padding-block: 12px;
+  background: color-mix(in srgb, var(--bg-page) 72%, transparent);
+  border-bottom-color: var(--border-subtle);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+}.landing .nav .brand
+{ display: flex; align-items: center; gap: 11px; }.landing .nav .brand b
+{
+  font-family: var(--font-display); font-weight: 700; font-size: 15px;
+  letter-spacing: var(--track-tight); color: var(--text-primary);
+}.landing .nav .brand span
+{
+  font-family: var(--font-mono); font-size: 9.5px; letter-spacing: var(--track-eyebrow);
+  color: var(--text-ghost); text-transform: uppercase;
+}.landing .nav-links
+{ display: flex; align-items: center; gap: 26px; margin-left: auto; }.landing .nav-links a
+{
+  font-size: 13px; color: var(--text-muted);
+  transition: color var(--d-hover) var(--ease-out);
+  position: relative;
+}.landing .nav-links a:hover
+{ color: var(--text-primary); }
+/* 下划线只在 hover 时长出，默认保持干净 */.landing .nav-links a::after
+{
+  content: ''; position: absolute; left: 0; right: 0; bottom: -5px; height: 1px;
+  background: var(--gradient-brand);
+  transform: scaleX(0); transform-origin: left;
+  transition: transform var(--d-panel) var(--ease-out);
+}.landing .nav-links a:hover::after
+{ transform: scaleX(1); }.landing .nav-menu-toggle,
+.landing .mobile-nav
+{ display: none; }
+@media (max-width: 860px) {.landing .nav-links
+{ display: none; }.landing .nav-menu-toggle
+{
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--bg-surface) 66%, transparent);
+    color: var(--text-secondary);
+    cursor: pointer;
+  }.landing .nav-menu-toggle:hover
+{ color: var(--text-primary); border-color: var(--border-strong); }.landing .nav-menu-toggle:focus-visible
+{ outline: none; color: var(--brand-400); box-shadow: 0 0 0 3px var(--brand-tint); }.landing .mobile-nav
+{
+    position: absolute;
+    top: calc(100% + 8px);
+    left: var(--gutter);
+    right: var(--gutter);
+    display: grid;
+    gap: 4px;
+    padding: 8px;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--bg-elevated) 94%, transparent);
+    box-shadow: var(--shadow-float);
+    backdrop-filter: blur(16px) saturate(140%);
+  }.landing .mobile-nav[aria-hidden="true"]
+{ display: none; }.landing .mobile-nav a
+{ padding: 11px 12px; border-radius: var(--radius-sm); color: var(--text-secondary); font-size: 13px; }.landing .mobile-nav a:hover,
+.landing .mobile-nav a:focus-visible
+{ color: var(--text-primary); background: var(--brand-tint); outline: none; }
+}
+
+/* ---------- 3 · 排版 ---------- */.landing .display-1
+{
+  font-size: var(--fs-display-1); line-height: var(--lh-display);
+  letter-spacing: var(--track-display); font-weight: 700;
+}.landing .display-2
+{
+  font-size: var(--fs-display-2); line-height: 1.14;
+  letter-spacing: var(--track-display); font-weight: 700;
+}.landing .display-3
+{
+  font-size: var(--fs-display-3); line-height: var(--lh-title);
+  letter-spacing: var(--track-tight); font-weight: 600;
+}.landing .lead
+{
+  font-size: var(--fs-lead); line-height: 1.7; color: var(--text-muted);
+  max-width: 62ch;
+}
+
+/* 渐变文字：用 background-clip 而不是给每个字上色，才能做扫光。
+   background-size 放大到 220% 是给动画留行程。 */.landing .grad-text
+{
+  background: var(--gradient-text);
+  background-size: 220% 100%;
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+  animation: lg-grad-sweep 9s linear infinite;
+}
+@keyframes lg-grad-sweep { to { background-position: 220% 0; } }
+
+/* 眉标题：小字号 + 全大写 + 宽字距 + 前置序号。
+   这是「技术感」最省力的来源 —— 一行等宽小字胜过十个图标。 */.landing .eyebrow
+{
+  display: inline-flex; align-items: center; gap: 12px;
+  font-family: var(--font-mono); font-size: var(--fs-micro);
+  letter-spacing: var(--track-eyebrow); text-transform: uppercase;
+  /* --c 允许单个实例改色（默认是电光青）。副标题级的眉标不该跟主标题抢青色。 */
+  color: var(--c, var(--accent-cyan));
+}.landing .eyebrow::before
+{
+  content: ''; width: 26px; height: 1px; background: currentColor; opacity: .5;
+}.landing .eyebrow .idx
+{ color: var(--text-ghost); }.landing .mono
+{ font-family: var(--font-mono); }.landing .dim
+{ color: var(--text-ghost); }
+
+/* ---------- 4 · 按钮 ---------- */.landing .btn
+{
+  display: inline-flex; align-items: center; gap: 9px;
+  height: 44px; padding: 0 22px; border-radius: var(--radius-md);
+  font-size: 14px; font-weight: 500; cursor: pointer;
+  border: 1px solid transparent; white-space: nowrap;
+  transition: transform var(--d-tap) var(--ease-out),
+              box-shadow var(--d-hover) var(--ease-out),
+              border-color var(--d-hover) var(--ease-out),
+              background var(--d-hover) var(--ease-out);
+}.landing .btn:active
+{ transform: translateY(1px); }.landing .btn-primary
+{
+  background: var(--brand-500); color: #fff;
+  box-shadow: 0 8px 26px -8px color-mix(in srgb, var(--brand-500) 70%, transparent);
+}.landing .btn-primary:hover
+{ background: #7C6BFF; box-shadow: 0 12px 34px -8px color-mix(in srgb, var(--brand-500) 90%, transparent); }.landing .btn-ghost
+{
+  background: rgba(255, 255, 255, .03); color: var(--text-secondary);
+  border-color: var(--border-default);
+}.landing .btn-ghost:hover
+{ border-color: var(--border-strong); color: var(--text-primary); background: rgba(255, 255, 255, .055); }.landing .btn-sm
+{ height: 34px; padding: 0 15px; font-size: 12.5px; }
+
+/* ---------- 5 · 玻璃卡片 ---------- */
+/* 玻璃靠四件东西成立，缺一件就塌成「半透明色块」：
+     ① 半透明底（--glass-bg）  ② 背景模糊   ③ 上沿边缘光   ④ 与场景分离的投影 */.landing .glass
+{
+  position: relative;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-xl);
+  backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+  box-shadow: var(--shadow-float);
+  overflow: hidden;
+}.landing .glass::before
+{
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: var(--edge-light);
+}.landing .glass-soft
+{
+  background: var(--glass-bg-soft);
+  backdrop-filter: blur(calc(var(--glass-blur) * .6));
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur) * .6));
+  box-shadow: none;
+}
+
+/* ---------- 6 · 区块骨架 ---------- */
+/* 区块间距收到 8.4vh：原来 11vh 在 900px 高的屏上是 99px，
+   加上上下两次就是近 200px 的纯空 —— 页面会读成"没做满"。
+压缩间距不是把呼吸感丢掉，是把呼吸感从"区块之间"挪回"区块之内"。 */.landing .section
+{ position: relative; padding-block: clamp(62px, 8.4vh, 122px); }
+
+/* ---------- 正文保护帘（v4 实测后补，见 design-spec §17.6）----------
+   为什么必须有这一层：v4 的背景是「会发亮的棱镜」，而文字最暗的两级
+   （faint #878FA4 / ghost #7A8398）本身只有 5.5 / 4.7 的对比度余量。
+   算下来，要让 ghost 级在玻璃亮面经过时仍达 AA，场景得压到 2.5% 不透明度 ——
+   等于把背景关掉。两者本质冲突，不能靠调 --scene-dim 两全。
+
+   所以换一个位置解决：**让场景在"段落所在处"变暗，在"区块交界处"透出来。**
+   帘子用垂直渐变，上下两端透明 —— 场景于是在区块转场时露出来，
+   而正文底下始终有一层干净的暗底。这比全局压暗更划算：
+   该看见场景的地方一点没少，不该看见的地方彻底干净。
+
+   [注意] z-index: -1 是必需的：.shell 自成层叠上下文（position+z-index:1），
+   所以 -1 会落在 .shell 内部的最底层 —— 仍在 .scene 之上、内容之下。
+   写成 0 会把整个区块的文字盖住。 */.landing .section::before,
+.landing .strip::before
+{
+  content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  /* 不透明区必须**从很靠上就开始**（6%）：
+     第一版从 13% 才开始渐入，而章节头（文字最密的地方）正好坐在
+     那段透明带里 —— 帘子等于没盖住最需要它的地方。实测眉标仍只有 3.67。
+     现在只在最上/最下 6% 做过渡，留给区块转场的场景露出仍在，
+     但正文区从头到尾都被盖住。 */
+  background: linear-gradient(180deg,
+    transparent 0%,
+    color-mix(in srgb, var(--bg-band) 84%, transparent) 6%,
+    color-mix(in srgb, var(--bg-band) 88%, transparent) 50%,
+    color-mix(in srgb, var(--bg-band) 84%, transparent) 94%,
+    transparent 100%);
+}
+/* 非对称头：标题占 6 列、说明占 4 列并下沉 —— 对称居中是最「大众化」的排法，
+   错位能立刻把版面从模板感里拉出来。 */.landing .sec-head
+{
+  display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  gap: var(--space-6) var(--space-8); align-items: end;
+  margin-bottom: var(--space-8);
+}.landing .sec-head .lead
+{ padding-bottom: 6px; }
+@media (max-width: 900px) {.landing .sec-head
+{ grid-template-columns: 1fr; align-items: start; }
+}.landing .rule
+{ height: 1px; background: var(--border-subtle); border: 0; margin: 0; }
+
+/* ---------- 7 · 滚动揭示 ---------- */.landing .reveal
+{
+  opacity: 0; transform: translate3d(0, 22px, 0);
+  transition: opacity 900ms var(--ease-out), transform 900ms var(--ease-out);
+  transition-delay: calc(var(--i, 0) * 80ms);
+}.landing .reveal.in
+{ opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) {.landing .reveal
+{ opacity: 1 !important; transform: none !important; }
+}
+
+/* ---------- 8 · 滚动进度轨（右侧）---------- */
+/* 纯装饰，但它是「这是一段被导演过的旅程」最便宜的提示 */.landing .rail
+{
+  position: fixed; right: 22px; top: 50%; transform: translateY(-50%);
+  z-index: 30; display: flex; flex-direction: column; gap: 9px; align-items: center;
+}.landing .rail i
+{
+  display: block; width: 1px; height: 26px; background: var(--border-default);
+  transform-origin: 50% 0;
+}.landing .rail i.on
+{ background: var(--gradient-brand); box-shadow: 0 0 12px 1px color-mix(in srgb, var(--brand-500) 60%, transparent); }
+@media (max-width: 1180px) { .landing .rail
+ { display: none; } }
+
+/* ---------- 9 · 代码块 ---------- */.landing .code
+{
+  position: relative;
+  background: var(--bg-code); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg); padding: 18px 20px;
+  font-family: var(--font-mono); font-size: 12.5px; line-height: 1.9;
+  color: var(--text-tertiary); overflow-x: auto; white-space: pre;
+  -webkit-mask-image: none;
+}.landing .code .c
+{ color: var(--text-faint); }        /* 注释 */.landing .code .k
+{ color: var(--accent-cyan); }       /* 命令 / 键 */.landing .code .s
+{ color: var(--signal-live); }       /* 字符串 */.landing .code .v
+{ color: var(--brand-400); }         /* 变量 / 占位 */.landing .code .fn
+{ color: var(--text-primary); font-weight: 500; }   /* 提示符行 */
+
+/* ---------- 10 · 页脚 ---------- */.landing .footer
+{
+  position: relative; z-index: 1;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-band);
+  padding-block: 40px;
+  font-size: 12.5px; color: var(--text-ghost);
+}.landing .footer .row
+{ display: flex; flex-wrap: wrap; gap: 14px 28px; align-items: center; }.landing .footer .row .sp
+{ margin-left: auto; }
+
+/* ---------- 11 · 栅格 ---------- */.landing .grid-2
+{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-5); }.landing .grid-3
+{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-5); }.landing .grid-4
+{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-5); }
+@media (max-width: 1100px) { .landing .grid-3,
+ .landing .grid-4
+ { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 720px)  { .landing .grid-2,
+ .landing .grid-3,
+ .landing .grid-4
+ { grid-template-columns: 1fr; } }
+
+/* ---------- 12 · 实心卡片 ----------
+   玻璃（.glass）用于「浮在场景上」的主体面板；卡片用实心渐变。
+   全部换成玻璃会让整页失去材质对比 —— 有实有虚才看得出层级。 */.landing .card
+{
+  position: relative;
+  background: var(--bg-surface-grad);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}.landing .card-2
+{ background: var(--bg-surface-2-grad); }
+
+/* ---------- 13 · 状态点 / 状态胶囊 ---------- */
+/* 状态点用 currentColor：一处写 color，点和光晕同时对。
+   光晕是必需的 —— 深色底上 7px 的纯色圆点会被读成「脏点」。 */.landing .dot
+{
+  display: inline-block; width: 7px; height: 7px; flex: 0 0 7px;
+  border-radius: 50%; background: currentColor;
+  box-shadow: 0 0 10px 1px currentColor;
+}.landing .dot-live
+{ animation: dot-pulse 2.6s var(--ease-in-out) infinite; }
+@keyframes dot-pulse {
+  0%, 100% { box-shadow: 0 0 10px 1px currentColor; }
+  50%      { box-shadow: 0 0 16px 3px currentColor; }
+}.landing .pill
+{
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 22px; padding: 0 9px; border-radius: 999px;
+  font-family: var(--font-mono); font-size: 11.5px; letter-spacing: .02em;
+  color: var(--text-tertiary);
+  background: rgba(255, 255, 255, .03);
+  border: 1px solid var(--border-default);
+  white-space: nowrap;
+}.landing .pill-live
+{ color: var(--signal-live); border-color: var(--signal-live-track); background: color-mix(in srgb, var(--signal-live) 7%, transparent); }.landing .pill-amber
+{ color: var(--warn-amber); border-color: var(--warn-amber-line);   background: color-mix(in srgb, var(--warn-amber) 7%, transparent); }.landing .pill-brand
+{ color: var(--brand-400); border-color: color-mix(in srgb, var(--iris) 28%, transparent);  background: var(--brand-tint); }
+
+/* ---------- 14 · 数字 ----------
+   等宽数字（tabular-nums）是必需的：否则数字滚动时每一帧宽度都在变，
+   整块版式会跟着抖。 */.landing .num
+{
+  font-family: var(--font-display); font-weight: 700;
+  font-variant-numeric: tabular-nums; font-feature-settings: 'tnum' 1;
+  letter-spacing: var(--track-display);
+}.landing .unit
+{ font-size: .42em; font-weight: 600; color: var(--text-faint); margin-left: 3px; letter-spacing: 0; }
+
+/* ---------- 15 · 无障碍：动效降级 ---------- */
+@media (prefers-reduced-motion: reduce) {.landing .dot-live
+{ animation: none !important; }.landing .grad-text
+{ animation: none !important; }
+}

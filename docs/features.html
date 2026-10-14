@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>途关 Waygate · 功能架构</title>
+<style>
+  :root {
+    --bg: #F7F6FC; --surface: #FFFFFF; --fg: #171334; --muted: #655E88; --faint: #9B94BC;
+    --line: #E4E1F2; --accent: #4A38C0; --accent-soft: #EDEBFB;
+    --shadow: 0 1px 2px rgba(23,19,52,.05), 0 6px 18px rgba(23,19,52,.06);
+    --d1: #4A38C0; --d2: #0A6A87; --d3: #0A7247; --d4: #8A590A; --d5: #7A3E9D;
+  }
+  [data-theme="dark"] {
+    --bg: #0F0D1E; --surface: #1A1630; --fg: #EDEAF8; --muted: #A29BC4; --faint: #6E6790;
+    --line: #2E2851; --accent: #9C8FFF; --accent-soft: #241F3D;
+    --shadow: 0 1px 2px rgba(0,0,0,.5), 0 6px 20px rgba(0,0,0,.4);
+    --d1: #9C8FFF; --d2: #3FB6DE; --d3: #4FC08D; --d4: #E0A93E; --d5: #C08FE8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0F0D1E; --surface: #1A1630; --fg: #EDEAF8; --muted: #A29BC4; --faint: #6E6790;
+      --line: #2E2851; --accent: #9C8FFF; --accent-soft: #241F3D;
+      --shadow: 0 1px 2px rgba(0,0,0,.5), 0 6px 20px rgba(0,0,0,.4);
+      --d1: #9C8FFF; --d2: #3FB6DE; --d3: #4FC08D; --d4: #E0A93E; --d5: #C08FE8;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 400 15px/1.55 system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page { max-width: 1120px; margin: 0 auto; padding: 44px 24px 80px; }
+
+  header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 10px; }
+  h1 { font-size: 27px; font-weight: 650; margin: 0; letter-spacing: -.015em; }
+  .chip { font: 500 12px/1 ui-monospace, Consolas, monospace; color: var(--accent); background: var(--accent-soft); padding: 5px 9px; border-radius: 6px; }
+  .sub { color: var(--muted); margin: 0 0 34px; font-size: 14.5px; }
+  .theme-toggle {
+    margin-left: auto; border: 1px solid var(--line); background: var(--surface);
+    color: var(--muted); border-radius: 8px; padding: 5px 11px; font-size: 12px; cursor: pointer;
+    transition: color .15s ease;
+  }
+  .theme-toggle:hover { color: var(--fg); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+    padding: 18px 20px 16px; box-shadow: var(--shadow);
+    transition: border-color .18s ease, transform .18s ease;
+  }
+  .card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .card h2 {
+    font-size: 15px; font-weight: 650; margin: 0 0 3px; display: flex; align-items: center; gap: 9px;
+  }
+  .card h2 i { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+  .c1 h2 i { background: var(--d1); } .c2 h2 i { background: var(--d2); }
+  .c3 h2 i { background: var(--d3); } .c4 h2 i { background: var(--d4); }
+  .c5 h2 i { background: var(--d5); }
+  .card .tag { color: var(--faint); font-size: 11.5px; font-weight: 500; margin: 0 0 14px; }
+  .card ul { list-style: none; margin: 0; padding: 0; }
+  .card li {
+    position: relative; padding: 5px 0 5px 15px; font-size: 13px; color: var(--muted); line-height: 1.5;
+    border-top: 1px solid var(--line);
+  }
+  .card li:first-child { border-top: none; }
+  .card li b { color: var(--fg); font-weight: 600; }
+  .card li::before {
+    content: ""; position: absolute; left: 0; top: 12px; width: 5px; height: 5px;
+    border-radius: 50%; background: var(--faint);
+  }
+  .card.feat { grid-column: span 2; }
+  .card.feat li { border-top-color: var(--line); }
+  .foot { color: var(--faint); font-size: 12px; margin-top: 26px; line-height: 1.6; }
+
+  @media (max-width: 760px) {
+    .grid { grid-template-columns: 1fr; }
+    .card.feat { grid-column: span 1; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <h1>途关 Waygate · 功能架构</h1>
+    <span class="chip">v1.4.0</span>
+    <button class="theme-toggle" id="themeToggle" type="button">切换主题</button>
+  </header>
+  <p class="sub">五域能力地图：控制台 · 接入 · 多提供商 · 数据口径 · 运行保障。条目均对应已实现的功能。</p>
+
+  <div class="grid">
+
+    <section class="card feat c1">
+      <h2><i></i>控制台</h2>
+      <p class="tag">React 19 单页 · 7 页 · 明暗双主题（跟随系统）</p>
+      <ul>
+        <li><b>概览</b> —— 按客户端归属的用量摘要、积分实扣、渠道告警</li>
+        <li><b>积分与用量</b> —— 趋势图（Token / 请求数双口径，等距时间轴补空桶）、按模型 / 客户端拆分、缓存命中率与缓存 token 计量</li>
+        <li><b>客户端管理</b> —— 提供商行（额度、健康、签到）+ 密钥绑定与路由优先级</li>
+        <li><b>API Keys</b> —— 权限范围（全部/按族/按模型/按标签）、IP 上限与白名单、token 配额</li>
+        <li><b>请求日志</b> —— 逐条留痕（含 SSE）、游标分页、按密钥筛选、一键取证 30 分钟、留存清理</li>
+        <li><b>设置</b> —— 8 组 30+ 项，含提供商凭据、限额、日志、签到与危险操作</li>
+        <li><b>外观</b> —— 明暗双主题，跟随系统 / 手动切换（侧栏底部）</li>
+      </ul>
+    </section>
+
+    <section class="card c2">
+      <h2><i></i>接入</h2>
+      <p class="tag">双方言出口 · 一把密钥走所有客户端</p>
+      <ul>
+        <li><b>OpenAI 兼容</b> —— <code>/v1/chat/completions</code>，流式 / 非流式</li>
+        <li><b>Anthropic 兼容</b> —— <code>/v1/messages</code>，Claude Code 等走 x-api-key</li>
+        <li><b>密钥形态</b> —— <code>sk-waygate-*</code>（控制台创建，明文仅显示一次）</li>
+        <li><b>协议翻译</b> —— OpenAI ↔ Anthropic 与三种上游方言互译</li>
+      </ul>
+    </section>
+
+    <section class="card c3">
+      <h2><i></i>多提供商</h2>
+      <p class="tag">三家可同时生效 · 按模型 id 路由</p>
+      <ul>
+        <li><b>WorkBuddy</b> —— openai 方言 · ck_ 静态密钥</li>
+        <li><b>MiniMax Code</b> —— anthropic 方言 · OAuth 自动续期</li>
+        <li><b>Qoder CN</b> —— COSY 协议 · 客户端登录态身份</li>
+        <li><b>路由规则</b> —— 精确匹配（大小写敏感）→ 提供商内模糊回落；声明行优先于 observed</li>
+      </ul>
+    </section>
+
+    <section class="card c4">
+      <h2><i></i>积分与领取</h2>
+      <p class="tag">不做标定 · 上游说多少就是多少</p>
+      <ul>
+        <li><b>实扣口径</b> —— 积分 = 上游回报 <code>usage.credit</code>；未回报即 <code>null</code>（界面 <code>—</code>），绝不估算</li>
+        <li><b>积分账本</b> —— MiniMax <code>credit/details</code> 真实余额（精确到 0.01）</li>
+        <li><b>签到与领取</b> —— WorkBuddy 签到代领、成长任务、连登兑换（v1.4.0 OAuth 领取域）</li>
+        <li><b>额度真值</b> —— 三家额度分别取其权威来源；取不到就明说</li>
+        <li><b>不变式</b> —— ΣbyModel = ΣbyClient = creditsUsed，服务端断言后才返回</li>
+      </ul>
+    </section>
+
+    <section class="card c5">
+      <h2><i></i>运行保障</h2>
+      <p class="tag">自托管单机 · 反代保真</p>
+      <ul>
+        <li><b>并发闸</b> —— 槽位占用实时可观测（不泄漏、不单调上涨）</li>
+        <li><b>断流重试</b> —— Qoder 零内容断流自动重试一次（客户端无感）</li>
+        <li><b>渠道降级</b> —— 上游 11128 渠道校验自动降级重试</li>
+        <li><b>留存与备份</b> —— 日志按天清理；SQLite <code>VACUUM INTO</code> 备份、冷热双份可回滚</li>
+      </ul>
+    </section>
+
+  </div>
+
+  <p class="foot">
+    图中每一条都对应已实现的代码路径，无规划项。版本 v1.4.0 ·
+    与 <code>server/src/version.ts</code> 同源。
+  </p>
+</div>
+
+<script>
+(function () {
+  var root = document.documentElement;
+  var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  root.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
+  document.getElementById('themeToggle').addEventListener('click', function () {
+    root.setAttribute('data-theme', root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+  });
+})();
+</script>
+</body>
+</html>

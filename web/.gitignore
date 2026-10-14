@@ -1,0 +1,7 @@
+node_modules
+# 构建产物一律不入库；用 dist* 覆盖 dist / dist-ssr / dist-mock 等所有变体
+dist*
+*.local
+.DS_Store
+.vite
+npm-debug.log*

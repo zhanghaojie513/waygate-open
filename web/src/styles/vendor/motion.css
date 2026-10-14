@@ -1,0 +1,254 @@
+/* ==========================================================================
+   驿站 · Relay — 动效层 (motion.css)
+   设计原则：环境层永远在动（慢、低对比、不抢读），交互层只在对的时刻动一次。
+   时长阶梯：120 / 200 / 420 / 800ms  +  24s 环境循环
+   缓动：out=cubic-bezier(.22,1,.36,1)  in-out=cubic-bezier(.65,0,.35,1)
+   所有动效在 prefers-reduced-motion 下完全关闭。
+   ========================================================================== */
+
+/* ==========================================================================
+   背景 v3 · 透视路由场 (Perspective Routing Field)
+   替换 v2 的「模糊光斑」——光斑是这三年最饱和的视觉套路，缺立体也缺概念。
+   v3 由五层构成，每层都带真实 3D 变换：
+     ① 透视地板网格（向观者滚动）  ② 陀螺轨道 ×3（各自自转）
+     ③ 数据包 ×5（沿轨道运行）     ④ 中心节点 + 光轴（呼吸）
+     ⑤ 暗角 + 噪点
+   概念贴合：轨道 = 路由拓扑，数据包 = 请求，中心节点 = 你的机器。
+   ========================================================================== */
+
+.pbg { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+
+/* ① 透视地面（与控制台同一套手法，覆盖率可预测）
+   汇聚线：repeating-conic-gradient 绕灭点生成 —— 真的汇聚，不是平行线
+   横向线：显式递变间距 —— 越往下间距越大，就是透视本身
+   为什么不用 CSS 3D：perspective + rotateX 的投影高度上限是 P/tanθ，
+   参数没算准就会把整个地面压成一条 160px 的带子并被裁掉（踩过）。 */
+.pbg-field { position: absolute; inset: 0;
+  background-image:
+    repeating-conic-gradient(from 0deg at 50% 50%, rgba(124,92,255,.26) 0deg .09deg, transparent .09deg 4.6deg),
+    linear-gradient(180deg,
+      transparent 50%,   rgba(124,92,255,.78) 50%,   transparent 50.16%,
+      transparent 51.2%, rgba(124,92,255,.68) 51.2%, transparent 51.36%,
+      transparent 52.8%, rgba(124,92,255,.60) 52.8%, transparent 52.96%,
+      transparent 55%,   rgba(124,92,255,.52) 55%,   transparent 55.16%,
+      transparent 58%,   rgba(124,92,255,.45) 58%,   transparent 58.16%,
+      transparent 62%,   rgba(124,92,255,.38) 62%,   transparent 62.16%,
+      transparent 67%,   rgba(124,92,255,.32) 67%,   transparent 67.16%,
+      transparent 73%,   rgba(124,92,255,.27) 73%,   transparent 73.16%,
+      transparent 80%,   rgba(124,92,255,.23) 80%,   transparent 80.16%,
+      transparent 88%,   rgba(124,92,255,.19) 88%,   transparent 88.16%,
+      transparent 97%,   rgba(124,92,255,.16) 97%,   transparent 97.16%);
+  -webkit-mask-image: linear-gradient(180deg, transparent 41%, rgba(0,0,0,.6) 54%, #000 78%, #000 100%);
+  mask-image: linear-gradient(180deg, transparent 41%, rgba(0,0,0,.6) 54%, #000 78%, #000 100%);
+  animation: pbg-drift 42s var(--ease-in-out) infinite alternate; }
+@keyframes pbg-drift { to { transform: translate3d(0, -2%, 0); } }
+
+/* 地平线 + 灭点光 + 底部辉光 */
+.pbg-horizon { position: absolute; inset: 0;
+  background-image:
+    linear-gradient(180deg, transparent 49.72%, rgba(124,92,255,.92) 50%, color-mix(in srgb, var(--accent-cyan) 55%, transparent) 50.12%, transparent 50.32%),
+    radial-gradient(1240px 580px at 50% 50%, rgba(124,92,255,.36), transparent 64%),
+    radial-gradient(1560px 540px at 50% 120%, color-mix(in srgb, var(--accent-cyan) 16%, transparent), transparent 72%); }
+
+/* ② 陀螺轨道：绕灭点。纯正交压扁（不加 perspective）—— 环的正交椭圆更好预测 */
+.pbg-orbits { position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
+.pbg-ring { position: absolute; left: 0; top: 0; border: 1px solid rgba(124,92,255,.5);
+  border-radius: 50%; }
+.pbg-ring.r1 { width: 1040px; height: 1040px; margin: -520px 0 0 -520px;
+  transform: rotateX(62deg) rotateZ(-12deg); animation: pbg-spin 32s linear infinite; }
+.pbg-ring.r2 { width: 1040px; height: 1040px; margin: -520px 0 0 -520px;
+  border-color: rgba(167,155,255,.34);
+  transform: rotateX(62deg) rotateZ(64deg); animation: pbg-spin 44s linear infinite reverse; }
+.pbg-ring.r3 { width: 700px; height: 700px; margin: -350px 0 0 -350px;
+  border-color: rgba(62,220,255,.4);
+  transform: rotateX(62deg) rotateZ(24deg); animation: pbg-spin 24s linear infinite; }
+@keyframes pbg-spin { to { transform: rotateX(62deg) rotateZ(360deg); } }
+
+/* ③ 数据包：在倾斜的轨道上被自然压扁，正好读成「贴着轨道飞」 */
+.pbg-packet { position: absolute; left: 50%; width: 7px; height: 7px; margin-left: -3.5px;
+  border-radius: 50%; background: #fff;
+  box-shadow: 0 0 12px 3px rgba(124,92,255,.9), 0 0 4px 1px rgba(255, 255, 255, .8); }
+.pbg-packet.at-top { top: -4px; }
+.pbg-packet.at-bottom { bottom: -4px; box-shadow: 0 0 12px 3px rgba(62,220,255,.85), 0 0 4px 1px rgba(255,255,255,.8); }
+.pbg-packet.at-right { right: -4px; left: auto; margin-left: 0; top: 50%; margin-top: -3.5px;
+  box-shadow: 0 0 12px 3px color-mix(in srgb, var(--signal-live) 85%, transparent), 0 0 4px 1px rgba(255,255,255,.8); }
+/* 拖尾去掉：轨道是面内自转 + 正交压扁，左右两端运动方向是竖直的，
+   固定朝左的拖尾会露馅。改用更强的辉光表达速度。 */
+
+/* ④ 中心节点 + 光轴 */
+.pbg-node { position: absolute; left: 50%; top: 50%; width: 13px; height: 13px; margin: -6.5px 0 0 -6.5px;
+  border-radius: 50%; background: #fff;
+  animation: pbg-pulse 4.4s var(--ease-in-out) infinite; }
+@keyframes pbg-pulse {
+  0%, 100% { box-shadow: 0 0 0 6px rgba(124,92,255,.16), 0 0 40px 10px rgba(124,92,255,.45), 0 0 120px 40px rgba(62,220,255,.14); }
+  50%      { box-shadow: 0 0 0 11px rgba(124,92,255,.09), 0 0 58px 15px rgba(124,92,255,.62), 0 0 156px 54px rgba(62,220,255,.24); }
+}
+.pbg-beam { position: absolute; left: 50%; top: -14%; width: 150px; height: 64%; margin-left: -75px;
+  background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--accent-cyan) 16%, transparent) 50%, transparent);
+  filter: blur(22px); }
+
+/* ⑤ 暗角：压边不压心，保证正文可读同时留住地面 */
+.pbg-vignette { position: absolute; inset: 0;
+  background: radial-gradient(132% 94% at 50% 50%, transparent 42%, rgba(11,10,24,.46) 78%, var(--bg-page) 100%); }
+
+/* 场景整体极缓慢左右摆动，避免长时间看静止 */
+.pbg { animation: pbg-sway 46s var(--ease-in-out) infinite alternate; }
+@keyframes pbg-sway { from { transform: translate3d(-1.2%, 0, 0) scale(1.02); }
+  to { transform: translate3d(1.2%, -0.6%, 0) scale(1.05); } }
+
+/* ---------- 0 · 无障碍：一刀切关闭 ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important; animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  .reveal { opacity: 1 !important; transform: none !important; }
+  .fx { display: none; }
+}
+
+/* ---------- 1 · 环境层：极光 / 网格 / 光柱 / 噪点 / 扫描 ---------- */
+.fx { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.fx > * { position: absolute; }
+/* [注意] 必须显式写 position：index.html 内联样式里的 `.hero > * { position: relative }`
+   特异度是 (0,1,1)，会压过本文件里的 `.fx { position: absolute }`。
+   一旦 .fx 变成 relative，它的高度就由内容决定 —— 而子元素全是绝对定位，
+   高度塌成 0，整个背景层全部不可见。用 (0,2,1) 的 body .hero > .fx 夺回来。 */
+body .hero > .fx { position: absolute; inset: 0; z-index: 0; }
+body .hero > .wrap { position: relative; z-index: 1; }
+body .hero::before, body .hero::after { background: none; }
+
+/* 1.1 极光：四团，各自不同速度漂移，形成"活的"底色 */
+.aurora { border-radius: 50%; filter: blur(80px); will-change: transform; }
+.aurora.a1 { top:-330px; left:-140px; width:1120px; height:780px;
+  background: radial-gradient(circle, rgba(124,92,255,.46), rgba(124,92,255,.14) 55%, transparent 74%);
+  animation: drift-a 34s var(--ease-in-out) infinite alternate; }
+.aurora.a2 { top:-180px; right:-180px; width:840px; height:840px;
+  background: radial-gradient(circle, rgba(62,220,255,.26), rgba(62,220,255,.08) 55%, transparent 74%);
+  animation: drift-b 44s var(--ease-in-out) infinite alternate; }
+.aurora.a3 { bottom:-420px; left:180px; width:760px; height:760px;
+  background: radial-gradient(circle, rgba(168,85,247,.22), transparent 72%);
+  animation: drift-c 52s var(--ease-in-out) infinite alternate; }
+.aurora.a4 { bottom:-380px; right:60px; width:560px; height:560px;
+  background: radial-gradient(circle, color-mix(in srgb, var(--signal-live) 14%, transparent), transparent 72%);
+  animation: drift-a 40s var(--ease-in-out) infinite alternate-reverse; }
+@keyframes drift-a { from { transform: translate3d(0,0,0) scale(1); } to { transform: translate3d(72px,44px,0) scale(1.14); } }
+@keyframes drift-b { from { transform: translate3d(0,0,0) scale(1); } to { transform: translate3d(-64px,36px,0) scale(1.1); } }
+@keyframes drift-c { from { transform: translate3d(0,0,0) scale(1.06); } to { transform: translate3d(48px,-40px,0) scale(1); } }
+
+/* 1.2 网格：随滚动位移（--sy 由 JS 写入），边缘径向淡出 */
+.fx-grid { inset: -10% 0 -20%; opacity: .9;
+  background-image:
+    linear-gradient(rgba(255,255,255,.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.028) 1px, transparent 1px),
+    linear-gradient(rgba(124,92,255,.09) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(124,92,255,.09) 1px, transparent 1px);
+  background-size: 80px 80px, 80px 80px, 480px 480px, 480px 480px;
+  mask-image: radial-gradient(115% 78% at 50% 0%, #000 22%, transparent 76%);
+  transform: translate3d(0, var(--sy, 0px), 0);
+  will-change: transform; }
+
+/* 1.3 光柱：两束竖直光带，呼吸式明暗 */
+.shaft { top:-140px; height:1100px; width:260px; filter: blur(30px);
+  background: linear-gradient(90deg, transparent, rgba(124,92,255,.16), transparent); }
+.shaft.s1 { left:180px; animation: breathe 9s var(--ease-in-out) infinite; }
+.shaft.s2 { left:1040px; width:200px;
+  background: linear-gradient(90deg, transparent, rgba(62,220,255,.13), transparent);
+  animation: breathe 11s var(--ease-in-out) infinite reverse; }
+@keyframes breathe { 0%,100% { opacity: .45; } 50% { opacity: 1; } }
+
+/* 1.4 遥测图形：同心环 + 旋转弧段（右上方，低对比） */
+.fx-telemetry { top:96px; right:0; width:420px; height:420px;
+  background: repeating-radial-gradient(circle at 50% 50%,
+    rgba(124,92,255,.20) 0 1px, transparent 1px 58px);
+  mask-image: radial-gradient(circle at 50% 50%, #000 74%, transparent 76%); }
+.fx-telemetry::after { content: ""; position: absolute; inset: 110px; border-radius: 50%;
+  border: 1.5px solid transparent; border-top-color: rgba(124,92,255,.55); border-right-color: rgba(62,220,255,.35);
+  animation: spin 22s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* 1.5 扫描线：每 12s 自上而下穿过一次 */
+.fx-scan { left:0; right:0; height:1px;
+  background: linear-gradient(90deg, transparent, rgba(124,92,255,.55), rgba(62,220,255,.35), transparent);
+  animation: scan 12s var(--ease-in-out) infinite; }
+@keyframes scan { 0% { top:-2%; opacity:0; } 8% { opacity:1; } 92% { opacity:1; } 100% { top:102%; opacity:0; } }
+
+/* 1.6 噪点：给大面积渐变加颗粒，去掉"塑料感" */
+.fx-noise { inset:0; opacity:.035; mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E"); }
+
+/* ---------- 2 · 导航：滚动后加深玻璃 + 发丝线提亮 ----------
+   [注意] 这里不能再加 border-bottom —— tokens-v2.css 已经用 .nav::after
+   铺了一条两端淡出的渐变发丝线，再加边框就会叠成两条线。 */
+.nav { transition: background var(--d-hover) var(--ease-out), backdrop-filter var(--d-hover) var(--ease-out); }
+.nav.is-scrolled {
+  background: linear-gradient(180deg,
+    rgba(124,92,255,.15) 0%,
+    var(--wash-5) 58%,
+    var(--wash-2) 100%);
+  -webkit-backdrop-filter: blur(26px) saturate(1.7);
+  backdrop-filter: blur(26px) saturate(1.7);
+}
+.nav.is-scrolled::after {
+  background: linear-gradient(90deg, transparent, rgba(139,124,255,.78) 22%, rgba(62,220,255,.52) 62%, transparent);
+}
+
+/* ---------- 3 · 滚动进入：上浮 + 淡入，按 --i 阶梯错开 ---------- */
+.reveal { opacity: 0; transform: translate3d(0, 18px, 0);
+  transition: opacity var(--d-reveal) var(--ease-out), transform var(--d-reveal) var(--ease-out);
+  transition-delay: calc(var(--i, 0) * 60ms); }
+.reveal.is-in { opacity: 1; transform: none; }
+
+/* 区块顶边：一道光从左扫到右 */
+.section { position: relative; }
+.section::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(124,92,255,.5), rgba(62,220,255,.3), transparent);
+  transform: scaleX(0); transform-origin: left; transition: transform 900ms var(--ease-out); }
+.section.is-in::after { transform: scaleX(1); }
+
+/* ---------- 4 · 卡片：光标聚光 + 顶边高光 ---------- */
+.spot { position: relative; overflow: hidden; }
+.spot::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(167,155,255,.55), transparent);
+  opacity: 0; transition: opacity var(--d-hover); }
+.spot:hover::before { opacity: 1; }
+.spot::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: radial-gradient(340px circle at var(--mx, 50%) var(--my, 50%), color-mix(in srgb, var(--brand-500) 18%, transparent), transparent 62%);
+  opacity: 0; transition: opacity var(--d-hover) var(--ease-out); }
+.spot:hover::after { opacity: 1; }
+
+/* ---------- 5 · 按钮：上浮 + 光晕扩张 ---------- */
+.btn { transition: transform var(--d-hover) var(--ease-out), box-shadow var(--d-hover) var(--ease-out), border-color var(--d-hover); }
+.btn-primary:hover { transform: translateY(-1px); box-shadow: 0 16px 42px -6px color-mix(in srgb, var(--brand-500) 62%, transparent); }
+.btn-primary:active { transform: translateY(0); }
+.btn-ghost:hover { border-color: var(--border-strong); transform: translateY(-1px); }
+
+/* ---------- 6 · 渐变文字：缓慢横移，让字"活"起来 ---------- */
+.grad-text { background-size: 220% 100%; animation: grad-sweep 7s linear infinite; }
+@keyframes grad-sweep { from { background-position: 0% 0; } to { background-position: 220% 0; } }
+
+/* ---------- 7 · 终端：光标闪烁 + 逐字 ---------- */
+.caret { display: inline-block; width: 8px; height: 1.02em; margin-left: 2px;
+  background: var(--brand-400); vertical-align: -0.16em;
+  animation: blink 1.05s steps(1) infinite; }
+@keyframes blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+.type-line { white-space: pre; }
+.type-line::after { content: ""; }
+
+/* ---------- 8 · （已移除：跑马灯） ----------
+   原因：一份内容仅 792px < 容器 1200px，副本与本体同屏出现，
+   视觉上像列表重复而非滚动。该条已改为静态等距排布（.logos）。 */
+
+/* ---------- 9 · 数字滚动 & 图表生长 ---------- */
+.bar { transform-origin: bottom; transform: scaleY(.04);
+  transition: transform 760ms var(--ease-out); transition-delay: calc(var(--i, 0) * 40ms); }
+.is-in .bar { transform: scaleY(1); }
+
+/* 数据包沿连线流动 */
+.packet { animation: packet 2.8s var(--ease-in-out) infinite; }
+@keyframes packet { 0% { transform: translateX(0); opacity: 0; } 12% { opacity: 1; }
+  88% { opacity: 1; } 100% { transform: translateX(var(--w, 120px)); opacity: 0; } }
+
+/* 在线指示点：呼吸 */
+.dot-live { animation: pulse 2.4s var(--ease-in-out) infinite; }
+@keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--signal-live) 50%, transparent); } 50% { box-shadow: 0 0 0 5px transparent; } }
+/* @zbiti-ai:f:253:ac79c930 */

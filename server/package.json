@@ -1,0 +1,38 @@
+{
+  "name": "waygate-server",
+  "version": "1.6.5",
+  "private": true,
+  "description": "驿站 · Relay — OpenAI 兼容反向代理与控制台（后端）",
+  "engines": {
+    "node": ">=22.9.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && npm run copy-assets",
+    "copy-assets": "node scripts/copy-assets.mjs",
+    "dev": "tsc -p tsconfig.build.json --watch",
+    "start": "node --env-file-if-exists=.env --max-old-space-size=384 dist/main.js",
+    "test": "vitest run",
+    "smoke": "node scripts/smoke-local.mjs",
+    "smoke:boot": "node tools/smoke-boot.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@nestjs/common": "^12.1.2",
+    "@nestjs/core": "^12.1.2",
+    "@nestjs/platform-fastify": "^12.1.2",
+    "better-sqlite3": "^13.0.3",
+    "fastify": "^5.2.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "undici": "^8.11.2"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.10.0",
+    "eslint": "^9.17.0",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.0",
+    "vitest": "^2.1.8"
+  }
+}

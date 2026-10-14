@@ -1,0 +1,17 @@
+node_modules/
+dist/
+data/
+*.db
+*.db-wal
+*.db-shm
+admin.hash
+.env
+.env.*
+!.env.example
+*.log
+coverage/
+
+# 集成测试的临时数据目录（实测这里会产出 relay.secret / relay.db，
+# 属于真实敏感物，绝不可入库）。原 .gitignore 漏了这一条，已补上。
+.tmp-int/
+*.secret

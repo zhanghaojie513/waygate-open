@@ -1,0 +1,37 @@
+# ===== 依赖与构建产物（可随时重建） =====
+node_modules/
+server/dist/
+web/dist/
+web/dist-mock/
+*.log
+
+# ===== 运行数据与凭证（绝不入库） =====
+.env
+.env.*
+!server/.env.example
+!web/.env.mock
+*.db
+*.db-shm
+*.db-wal
+*.crt
+*.key
+*.pem
+
+# ===== 发布与运维产物（含生产服务器地址、库备份、发版包） =====
+deploy-out/
+
+# ===== 本地会话 / 工作区状态 =====
+.zcode/
+.zcodeignore
+.vite/
+.workbuddy/
+.evidence/
+.acc-tmp/
+.claude/
+
+# ===== 截图与临时文件 =====
+PixPin_*.png
+*.tmp
+.DS_Store
+Thumbs.db
+desktop.ini

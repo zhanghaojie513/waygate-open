@@ -1,0 +1,437 @@
+/* ==========================================================================
+   [注意] 自动产出：由 tools/scope-css.mjs 从
+      （内部原型，未随开源版发布）<同名文件> 生成。
+   要改请改原型稿再重跑脚本。本文件只在原型基础上加了 `.landing` 作用域前缀，
+   规则内容与原型一致（便于 diff），不重排、不合并。
+   ========================================================================== */
+
+/* ==========================================================================
+   驿站 · Relay — 场景层 v4.1「折面棱镜 PRISM」(scene.css)
+   ==========================================================================
+
+   取代 v4.0 的「网格地面 + 轨道 + 星尘」。替换的理由不是审美偏好：
+   那三个元素都来自**同一个词库**（3D 线框空间），拼在一起只能得到
+   「正确但没有人味的深色科技页」。棱镜换掉的是**构成元素本身** ——
+   画面里不再有地板、轨道、星尘，只有一堆各自接光的玻璃面。
+
+   ── 三条设计主张 ─────────────────────────────────────────────────────
+
+   ① 立体感来自**真透视**，不来自贴图。
+      每片玻璃放在一条半径不同的环上（rotateY → translateZ），
+      相机在环心。于是同一片玻璃转到近侧会变大、转到远侧会变小，
+      近侧移动快、远侧移动慢 —— 这是透视自带的差速，不用装。
+      装配体整体绕 Y 轴匀速自转，观者就"在棱镜内部"。
+
+   ② 现实感来自**光的三个去向**，不是来自渐变好看。
+      真玻璃会被光做三件事，缺一件就从"玻璃"塌成"半透明色块"：
+        · 透射 —— 穿过玻璃的光被染色（--tint），且**每片颜色不同**：
+          一束白光穿过棱镜本来就该被分开，不该是同一个紫。
+        · 边缘 —— 光在边缘被折射堆积，棱边比面亮一个量级。
+          所以上沿给了 34% 白，两侧 26% 的染色描边，下沿几乎没有。
+        · 掠射 —— 一道高光沿面扫过。这是"玻璃"和"塑料片"的分界：
+          塑料的高光是死点，玻璃的高光会走。
+
+   ③ 动效分两路，各管各的（沿用 v4.0 的判断）：
+      **运镜归滚动**（--cam-* 由 scene.js 按 DOM 关键帧插值），
+      **生命感归时间**（CSS 自转 + 扫光循环），
+      再加一路**视线**（--look-* 来自指针），三者互不打架。
+
+   ── 技术取舍（踩过的坑，别再踩）──────────────────────────────────────
+
+   ① 面**不能**相互 blend。preserve-3d 里放 mix-blend-mode 会把该元素
+      及祖先链压平（blend 需要先成组，成组就丢失 3D 上下文）。
+      所以玻璃之间靠正常的 alpha 叠加 —— 在深底上，低不透明的浅色
+      叠两次本来就等于变亮，不必借 screen。
+
+   ② 相机与自转**必须分在两级元素**上。写在同一个 transform 里，
+      后写的会覆盖前写的（transform 是整体替换，不是累加）。
+      所以：.rig 管滚动运镜 → .tilt 管固定倾角 → .stage 管时间自转。
+
+   ③ 景深只能**逐片**给，不能按距离实时算。CSS 读不到元素的变换后深度，
+      所以按环半径预先分三档模糊。这是近似，但比"全画面一样锐"真实得多 ——
+      全锐会让远近彻底读不出差别，那才是真的假。
+   ========================================================================== */
+
+/* ==========================================================================
+   1 · 场景壳
+   透视距离刻意取 2600px（令牌里的 --cam-persp 是 1600px，这里不用它）：
+   棱镜环半径最大约 780px，用 1600 时近侧缩放会到 1.95 倍、玻璃片糊满全屏；
+   2600 下近侧 1.43、远侧 0.77 —— 差 1.85 倍，纵深读得出来又不失控。
+   ========================================================================== */
+/* 场景底色单独提成变量：调暗层要盖同一张底色才等价于「整体降透明度」，
+   写两份渐变迟早会写出不一致（改了一处忘了另一处）。 */.landing .scene
+{
+  --scene-bg: linear-gradient(168deg, #0A0919 0%, #120E2A 46%, #070611 100%);
+  position: fixed; inset: 0; z-index: 0;
+  /* 一个固定全屏的场景层，用 clip 比 hidden 合适：clip 只裁切、
+     不建立滚动容器，语义上正是这里要的。保留 hidden 在前是给旧引擎兜底。
+
+     [注意] 更正一条我一度写在这里的错误结论：之前排查页面横向溢出时，
+     我先怀疑"3D 变换的后代撑大了 scrollWidth"，于是把 hidden 换成 clip ——
+     **实测没有解决**（420 视口下 scrollWidth 仍是 462）。
+     真正的元凶是 .cta::before 的负 inset，见 landing.css。
+     保留 clip 只是因为它是这里更正确的选择，不是因为它修了那个 bug。 */
+  overflow: hidden;
+  overflow: clip;
+  pointer-events: none;
+  perspective: var(--prism-persp);
+  perspective-origin: 50% 46%;
+  background: var(--scene-bg);
+}
+
+/* ---------- 相机机架：滚动运镜 + 视线视差 ----------
+   [注意] 这里**绝对不能**出现 opacity / filter / mix-blend-mode / mask / clip-path，
+   也不能加 overflow。原因是一条很容易被忽略的 CSS 规则（CSS Transforms 2
+   §「Grouping property values」）：元素一旦带上这些属性中的任何一个，
+   它就必须先被渲染成一个「组」，而**成组意味着 transform-style 的使用值
+   被强制为 flat** —— 整条 3D 链就此压平。
+
+   这个坑的可怕之处在于它**完全不可见**：
+     · getComputedStyle 仍然返回 transform-style: preserve-3d（返回的是计算值，
+       不是使用值），肉眼查不到
+     · 压平不会移除 transform，只是让 translateZ 失去视觉意义 ——
+       棱镜看上去「还是那个棱镜，只是立体感差一点」，很容易被当成审美问题
+
+   实测（1600×900，固定滚动位置，只改 .rig 的 opacity）：
+     opacity 0.6 → 九片玻璃宽度合计 3395px，第 1 片 440.9px
+     opacity 1.0 → 九片玻璃宽度合计 3480px，第 1 片 524.3px
+   单片最大差 116px。而 --scene-dim 在首屏正好是 1.000、一滚动就 < 1，
+   于是「刚开始滚动」和「回到顶部」各发生一次**瞬间的放大/缩小**。
+
+   所以调暗改由 .dimmer 这个独立图层承担（见下）。 */.landing .rig
+{
+  position: absolute; inset: 0;
+  transform-style: preserve-3d;
+  transform-origin: 50% 46%;
+  will-change: transform;
+  transform:
+    translate3d(
+      calc(var(--cam-x) * .40 + var(--look-x) * 26px),
+      calc(var(--cam-y) * .34 + var(--look-y) * 18px),
+      calc(var(--cam-z) * .20))
+    rotateX(calc(var(--cam-rx) * .45))
+    rotateY(calc(var(--cam-ry) * .60))
+    /* 滚转用得很轻（最多 ±1.25°）：它的作用不是"转"，是让画面有一点点
+       手持感 —— 完全水平的机位会读成"贴在屏幕上的图"。 */
+    rotateZ(calc(var(--cam-rz) * .5));
+}.landing .rig > *
+{ position: absolute; }
+
+/* ---------- 固定倾角：给装配体一个"被斜着看"的姿态 ----------
+   没有它，环是正对着看的，会读成"一圈平面贴图"而不是"一个立体装置"。 */.landing .tilt
+{
+  position: absolute; inset: 0;
+  transform-style: preserve-3d;
+  transform-origin: 50% 46%;
+  transform: rotateX(-7deg) rotateZ(1.6deg);
+}
+
+/* ---------- 装配体：时间自转 ----------
+   128s 一圈 ≈ 2.8°/s。再快就从"装置"变成"转盘" ——
+   高级感的很大一部分是**慢**：慢才会被读成体量，快只会被读成动画。 */
+/* 装配体放在画面右侧偏上（64% / 44%）而不是正中 ——
+   这是一个构图决定，不是布局决定：正文在左，棱镜在右，
+   两者各占一半、互不遮挡，同时中心光芯正好落在标题右侧的空白里。
+   放正中时实测光芯会骑在副标题上，把一行字读断。 */.landing .stage
+{
+  position: absolute; left: var(--prism-anchor-x); top: var(--prism-anchor-y);
+  width: 0; height: 0;
+  transform-style: preserve-3d;
+  animation: prism-turn var(--prism-turn) linear infinite;
+}
+@keyframes prism-turn {
+  from { transform: rotateY(0deg); }
+  to   { transform: rotateY(360deg); }
+}
+
+/* ==========================================================================
+   2 · 玻璃面
+   每片的位置与材质全部由内联 --* 给出，这里是唯一的形状定义。
+   放在 CSS 里而不是逐个写死，是因为加片/减片应该只改 HTML 一行。
+   ========================================================================== */.landing .pl
+{
+  position: absolute; left: 0; top: 0;
+  width: var(--w); height: var(--h);
+  margin-left: calc(var(--w) * -.5);
+  margin-top:  calc(var(--h) * -.5);
+  border-radius: 2px;
+  /* v4.3：--tint 从「RGB 三元组」改成「颜色值」。
+     从前内联写的是 `--tint:139,124,255`，只有放进 `rgba(var(--tint), α)`
+     才成立；现在内联直接给颜色令牌（`--tint:var(--iris)`），
+     透明度走 color-mix —— 于是"这片玻璃是什么颜色"在 HTML 里一眼可读，
+     而且改一次品牌色，九片玻璃里引用同一令牌的那些会一起动。
+
+     缺省值是为了**可诊断**：某一片漏写 --tint 时，
+     没有缺省会让整条 background 声明失效（表现是"这片玻璃不见了"），
+     而**失效不会报错** —— 一条写坏的自定义属性看起来和一条写对的一样安静。 */
+  --tint: var(--iris);
+  /* opacity 放在叶子节点上是安全的：它下面没有 3D 内容，压平无所谓。
+     真正危险的是把 opacity 放到 preserve-3d 的容器上（见 .rig 的说明）。 */
+  opacity: var(--o);
+  backface-visibility: visible;
+
+  /* 定位：绕 Y 转 → 沿半径推出去 → 抬到该在的高度 → 各自倾斜 */
+  transform:
+    rotateY(var(--a))
+    translateZ(var(--r))
+    translateY(var(--y))
+    rotateZ(var(--z, 0deg))
+    rotateX(var(--x, 0deg));
+
+  /* ② 透射：玻璃的**本体在暗场里几乎不发光** —— 发光的是棱。
+     这一步是"暗玻璃 / 黑曜石"与"磨砂白玻璃"的分界：
+     把体做亮（白 20% 起）会立刻掉进廉价 glassmorphism 那一档，
+     因为现实里没有哪种玻璃会整体发白。
+     体做暗还有第二个好处：两片重叠处会吸收变暗 → 自然读成"叠了两层"，
+     这就是 CSS 里能拿到的最接近遮挡（AO）的信号。 */
+  background:
+    radial-gradient(36% 24% at 8% 3%, rgba(255, 255, 255, var(--hot, .20)), transparent 68%),
+    linear-gradient(146deg,
+      color-mix(in srgb, var(--bg-surface-3) 58%, transparent) 0%,
+      color-mix(in srgb, var(--bg-code) 44%, transparent) 32%,
+      color-mix(in srgb, var(--bg-page) 30%, transparent) 66%,
+      color-mix(in srgb, var(--bg-page) 10%, transparent) 100%),
+    /* 透射染色：只压在靠上的一侧，光从上面来 */
+    linear-gradient(170deg,
+      color-mix(in srgb, var(--tint) 18%, transparent) 0%,
+      color-mix(in srgb, var(--tint) 5%, transparent) 36%,
+      transparent 64%);
+
+  /* ② 边缘：棱边比面亮一个量级，四条边亮度完全不同 —— 这是"哪边受光"的全部信息。
+     末项是外发光。刻意做得收敛（-22px 的负扩散）：玻璃在光里只洇出一圈，
+     洇大了就从"棱镜"变成"霓虹灯"。 */
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, var(--e, .5)),
+    inset 1px 0 0 rgba(255, 255, 255, calc(var(--e, .5) * .38)),
+    inset -1px 0 0 color-mix(in srgb, var(--tint) 34%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--tint) 16%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--tint) 18%, transparent),
+    0 0 40px -20px color-mix(in srgb, var(--tint) 48%, transparent);
+}
+
+/* 景深模糊只给外壳。
+   内壳的 --dof 是 0，但 filter: blur(0px) 依然会为每一片建立滤镜图层 ——
+   五片白建五个图层。模糊是这一页最贵的栅格操作，能省一个是一个。
+   （filter 放在叶子上是安全的：它会把自身压平，但没有 3D 子内容。） */.landing .pl.soft
+{ filter: blur(var(--dof, var(--prism-dof-mid))); }
+
+/* 玻璃的"厚度"：光从上面进来时在片体内被散射开一层薄雾，
+   沉到下沿时被吸收成一道淡色沉积。少了这两层，面会读成一张纸。 */.landing .pl::before
+{
+  content: ''; position: absolute; inset: 0;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, calc(var(--e, .5) * .13)), transparent 28%),
+    linear-gradient(0deg,   color-mix(in srgb, var(--tint) 16%, transparent), transparent 20%);
+}
+
+/* ② 掠射高光：一道亮带沿面扫过。
+   周期由 --sheen-* 给，各片错峰 —— 同时闪会变成"整块屏在闪"。 */.landing .pl::after
+{
+  content: ''; position: absolute; inset: 0;
+  mix-blend-mode: screen;
+  background: linear-gradient(112deg,
+    transparent 40%,
+    rgba(255, 255, 255, .30) 47%,
+    color-mix(in srgb, var(--glow-ice) 62%, transparent) 50%,
+    rgba(255, 255, 255, .30) 53%,
+    transparent 60%);
+  background-size: 300% 100%;
+  opacity: 0;
+  animation: p-sheen var(--sheen-dur, 16s) var(--ease-in-out) infinite;
+  animation-delay: var(--sheen-delay, 0s);
+}
+@keyframes p-sheen {
+  0%   { background-position: 135% 0; opacity: 0; }
+  14%  { opacity: .85; }
+  52%  { background-position: -35% 0; opacity: 0; }
+  100% { background-position: -35% 0; opacity: 0; }
+}
+
+/* ==========================================================================
+   3 · 中央光芯
+   棱镜里得有个东西在发光，否则只是一堆玻璃在转。
+   放在 .rig 之外：它要做 screen 叠加，进 preserve-3d 会把装配体压平。
+   ========================================================================== */
+/* 注意：不能用 margin-top: -27% 来垂直居中 ——
+   **百分比 margin 永远按包含块的宽度解析**，不是高度。
+   1600px 宽的视口上 -27% 会得到 -432px，而元素实际高 486px、半数只有 243px，
+   结果是光芯整体上移 190px（首版就是这么错的，光芯骑到了副标题上）。
+   居中的正确写法是 translateY(-50%)：百分比位移按元素自身尺寸算。 */.landing .core
+{
+  position: absolute; left: var(--prism-anchor-x); top: var(--prism-anchor-y);
+  width: 4px; height: 54%;
+  mix-blend-mode: screen;
+  background: linear-gradient(180deg,
+    transparent 0%,
+    color-mix(in srgb, var(--glow-pale) 38%, transparent) 24%,
+    color-mix(in srgb, var(--glow-white) 92%, transparent) 50%,
+    color-mix(in srgb, var(--glow-frost) 55%, transparent) 62%,
+    color-mix(in srgb, var(--glow-violet) 22%, transparent) 78%,
+    transparent 100%);
+  filter: blur(5px);
+  opacity: .8;
+  transform: translateY(-50%) translate3d(
+    calc(var(--cam-x) * .30 + var(--look-x) * 14px),
+    calc(var(--cam-y) * .26 + var(--look-y) * 10px), 0);
+}
+/* 光晕挂在 .core 自己身上（50%/50%），不是挂在 .scene 上：
+   .core 带有 translateY(-50%)，伪元素跟着一起走，两者才会同心。 */.landing .core::after
+{
+  content: ''; position: absolute; left: 50%; top: 50%;
+  width: 720px; height: 720px; margin: -360px 0 0 -360px;
+  mix-blend-mode: screen;
+  background: radial-gradient(closest-side,
+    color-mix(in srgb, var(--glow-violet) 50%, transparent), color-mix(in srgb, var(--brand-500) 18%, transparent) 44%, transparent 74%);
+  filter: blur(26px);
+  animation: core-breathe 9s var(--ease-in-out) infinite;
+}
+@keyframes core-breathe {
+  0%, 100% { opacity: .74; transform: scale(1); }
+  50%      { opacity: 1;   transform: scale(1.09); }
+}
+
+/* 光芯本体：一个硬亮核。整个画面只允许有这一个"过曝点" ——
+   有了它，周围所有玻璃的亮度才有参照，才读得出"谁被照亮了"。 */.landing .nucleus
+{
+  position: absolute; left: var(--prism-anchor-x); top: var(--prism-anchor-y);
+  width: 15px; height: 15px; margin: -7.5px 0 0 -7.5px;
+  border-radius: 50%;
+  background: #fff;
+  mix-blend-mode: screen;
+  box-shadow:
+    0 0 22px 7px color-mix(in srgb, var(--glow-cyan) 78%, transparent),
+    0 0 84px 26px color-mix(in srgb, var(--brand-500) 42%, transparent),
+    0 0 190px 70px color-mix(in srgb, var(--accent-cyan) 16%, transparent);
+  animation: nucleus-breathe 6.4s var(--ease-in-out) infinite;
+  transform: translate3d(
+    calc(var(--cam-x) * .34 + var(--look-x) * 18px),
+    calc(var(--cam-y) * .30 + var(--look-y) * 12px), 0);
+}
+@keyframes nucleus-breathe {
+  0%, 100% { opacity: .82; }
+  50%      { opacity: 1; }
+}
+
+/* ==========================================================================
+   4 · 光柱 ×2 —— 斜穿整个构图
+   作用是给这堆面一个"光从哪来"的答案。没有它，掠射高光只是在闪；
+   有了它，高光才是被这束光照亮的。
+   ========================================================================== */.landing .beam
+{
+  position: absolute;
+  mix-blend-mode: screen;
+  filter: blur(52px);
+  will-change: transform;
+}
+/* 光柱 b1 从 32% 挪到 44%：32% 时它（含 52px 模糊）正好落在首屏副标题
+   右端背后，把那一小段文字的最坏对比度压到 2.9（实测，见 design-spec §17.6）。
+   挪开后副标题回到纯暗区，同时光柱仍穿过棱镜 —— 该照亮的东西一个没少。 */.landing .beam.b1
+{
+  left: 44%; top: -30%; width: 300px; height: 170%;
+  background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--glow-cyan) 20%, transparent) 46%, transparent);
+  transform: rotate(18deg)
+             translate3d(calc(var(--cam-x) * .5), calc(var(--cam-y) * .4), 0);
+  animation: beam-drift 34s var(--ease-in-out) infinite alternate;
+}.landing .beam.b2
+{
+  right: 14%; top: -34%; width: 200px; height: 170%;
+  background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--iris) 26%, transparent) 50%, transparent);
+  transform: rotate(-13deg)
+             translate3d(calc(var(--cam-x) * .62), calc(var(--cam-y) * .5), 0);
+  animation: beam-drift 46s var(--ease-in-out) infinite alternate-reverse;
+}
+/* 只动画 opacity（合成层可直接处理）。原先同时把 filter 从 blur(52px) 推到 blur(66px)：
+   对 300px × 170% 视口高的元素逐帧改模糊半径 = 每帧重新栅格化，常驻消耗 GPU。
+   模糊半径固定在 .beam 上，视觉差异仅为光柱边缘柔度不再呼吸。 */
+@keyframes beam-drift {
+  to { opacity: .55; }
+}
+
+/* ==========================================================================
+   5 · 尘埃 —— 极轻的一层，只为"空气中悬浮着东西"
+   数量与亮度都被压到最低（scene.js 里 3 层共 30 颗，不透明度 .22）：
+   一旦亮了密了，就又变回"星空背景"那个套路。
+   ========================================================================== */.landing .dust
+{ position: absolute; inset: -10%; }.landing .dust i
+{
+  position: absolute; border-radius: 50%;
+  background: #DCE6FF;
+  opacity: 0;
+  animation: dust-in 3200ms var(--ease-out) forwards;
+}
+@keyframes dust-in { to { opacity: .22; } }.landing .dust.d2 i
+{ background: #CFE6FF; }.landing .dust.d1 i
+{ background: #fff; }
+
+/* ==========================================================================
+   6 · 大气：雾 / 暗角 / 噪点
+   雾的浓度由 --fog 逐区块驱动（滚到正文密集处自动加重，把背景推远）。
+   ========================================================================== */.landing .fog
+{
+  position: absolute; inset: 0;
+  mix-blend-mode: screen;
+  background: radial-gradient(116% 72% at 50% 46%, transparent 26%, var(--fog-far) 100%);
+  opacity: calc(.14 + var(--fog) * .72);
+}
+/* 调暗层：用「盖一层同色底」代替「给 .rig 降透明度」。
+   两者视觉等价，但这一层不在 3D 链上，所以不会触发压平。
+   opacity = 1 - dim：dim 越小说得越暗，与原来的写法数值完全对应。
+   放在 .fog 之后、.vignette 之前 —— 它压暗的是「场景」，而暗角与噪点是
+   「镜头」上的东西，不该跟着一起被压暗。 */.landing .dimmer
+{
+  position: absolute; inset: 0;
+  background: var(--scene-bg);
+  opacity: calc(1 - var(--scene-dim));
+  pointer-events: none;
+}.landing .vignette
+{
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(124% 90% at 50% 46%, transparent 34%, color-mix(in srgb, var(--bg-band) 56%, transparent) 76%, var(--bg-band) 100%),
+    /* 左侧压一档：正文在左，玻璃在右。把背景让给文字，是这一层唯一的职责。
+       但只能压到 72% —— 压满会把棱镜的左半边也一起抹掉，物体就不成形状了。 */
+    linear-gradient(94deg,
+      color-mix(in srgb, var(--bg-band) 84%, transparent) 0%,
+      color-mix(in srgb, var(--bg-band) 58%, transparent) 28%,
+      color-mix(in srgb, var(--bg-band) 20%, transparent) 50%,
+      transparent 72%);
+}.landing .noise
+{
+  position: absolute; inset: 0; opacity: .034; mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ==========================================================================
+   7 · 降级
+   ========================================================================== */
+
+/* 关闭动效：装配体停在首帧机位，扫光停在"不该看见"的位置，
+   场景依然是一张完整的静态构图 —— 不是一块黑屏，也不是一堆亮片。 */
+@media (prefers-reduced-motion: reduce) {.landing .stage,
+.landing .core::after,
+.landing .nucleus,
+.landing .beam
+{ animation: none !important; }.landing .pl::after
+{ animation: none !important; opacity: .34; background-position: 46% 0; }.landing .dust i
+{ animation: none !important; opacity: .18; }
+}
+
+/* 小屏：装配体推向右上角，并整体降到"安静的纹理"这一档。
+   窄屏不能沿用桌面那套参数，实测（420×900）三个问题同时出现：
+     · 视口窄 → 300px 宽的玻璃片横跨整个屏，文字被压在玻璃下面
+     · 透视变近（还是 2600 的话物体显得更小，所以调近）→ 近侧放大更狠
+     · 首屏正文从 3 行变 6 行，装配体正中的光芯正好落在正文上
+   所以窄屏要的不是"缩小"，是**换角色**：从"画面主体"退成"角落的气氛"。
+   手段：推到 72%/31%、只留内壳、透明度砍到 40%、光芯与硬亮核一起压暗。 */
+@media (max-width: 900px) {.landing .scene
+{ perspective: 2000px; }.landing .stage,
+.landing .core,
+.landing .nucleus
+{ left: 72%; top: 31%; }.landing .tilt
+{ transform-origin: 72% 31%; }.landing .pl
+{ opacity: calc(var(--o) * .40); }
+  /* 外壳在窄屏上只会糊成一片，直接不要 */.landing .pl.soft
+{ display: none; }.landing .core
+{ opacity: .38; }.landing .nucleus
+{ opacity: .5; }
+}
