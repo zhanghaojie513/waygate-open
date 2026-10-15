@@ -311,7 +311,8 @@ export class OverviewService {
             GROUP BY client_id, model
          )
          SELECT g.client_id AS clientId, g.model, g.requests, g.errors, g.creditsRaw, g.knownCount,
-                g.msSum, g.promptTokens, g.completionTokens, g.tokens, g.cachedTokens, g.lastTs, g.keyHint,
+                g.msSum,
+                g.promptTokens, g.completionTokens, g.tokens, g.cachedTokens, g.lastTs, g.keyHint,
                 ck.client AS boundName, ck.name AS keyName, ck.id AS keyExistsId,
                 mc.display_name AS displayName, mc.multiplier AS multiplier, mc.tag AS tag
            FROM g
@@ -388,6 +389,8 @@ export class OverviewService {
         tokens: number;
         creditsRaw: number | null;
         knownCount: number;
+        /* [v1.6.8] 本模型总耗时（ms）。 */
+        msSum: number;
       }
     >();
     for (const g of groups) {
@@ -402,11 +405,13 @@ export class OverviewService {
           tokens: g.tokens,
           creditsRaw: g.creditsRaw,
           knownCount: g.knownCount,
+          msSum: g.msSum,
         });
         continue;
       }
       m.requests += g.requests;
       m.tokens += g.tokens;
+      m.msSum += g.msSum;
       // NULL 语义：两边都为 NULL 才保持 NULL，否则按「NULL 当 0」相加
       m.creditsRaw = m.creditsRaw === null && g.creditsRaw === null ? null : (m.creditsRaw ?? 0) + (g.creditsRaw ?? 0);
       m.knownCount += g.knownCount;

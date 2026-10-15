@@ -42,11 +42,21 @@ export const QODER_OPENAPI_BASE = 'https://openapi.qoder.com.cn';
 /** Qoder 桌面端 clientType（COSY 身份头之一）。 */
 const CLIENT_TYPE = '10';
 const REQUEST_TIMEOUT_MS = 20_000;
-/** 每日检查时刻：本地 08:05（与另外两家签到一致）。 */
-const DAILY_CHECK_HOUR = 8;
+/**
+ * 每日检查时刻：本地 **10:05**（Asia/Shanghai）。
+ *
+ * ⚠️ 与 MiniMax 的 08:05 **不同**，别照抄对齐 —— Qoder 官方标注活动
+ * 「每日 10:00（UTC+8）刷新，领取后 30 天有效，+100 Credits」，
+ * 在 08:05 检查时当天活动尚未刷新（签的是前一天、或直接报"没有可领取的活动"）。
+ * 留 5 分钟缓冲避开刷新瞬时抖动。改动此处需同步前端提示文案
+ * （ProviderTable 的签到 tooltip 按提供商显示各自时刻）。
+ */
+const DAILY_CHECK_HOUR = 10;
 const DAILY_CHECK_MINUTE = 5;
 /** 签到「今天」的时区边界（上游活动按 UTC+8 刷新）。 */
 const SIGNIN_TZ = 'Asia/Shanghai';
+/** [v1.6.7] 账本刷新间隔 —— 与 MiniMax 账本同节奏（5 分钟），且独立于签到时刻闸。 */
+const LEDGER_INTERVAL_MS = 5 * 60 * 1000;
 
 export interface QoderCampaign {
   campaignId: string;
@@ -172,6 +182,8 @@ export class QoderActivityService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(QoderActivityService.name);
   private readonly store = new QoderCredentialStore();
   private timer: NodeJS.Timeout | null = null;
+  /* [v1.6.7] 账本刷新定时器（独立于签到 timer）。 */
+  private ledgerTimer: NodeJS.Timeout | null = null;
   private running = false;
   /**
    * [v1.6.0] 各提供商的账本快照（内存）。
@@ -188,15 +200,27 @@ export class QoderActivityService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit(): void {
     if (this.autoStart === false) return;
+    /* 签到检查：每 30 分钟醒来一次（到点才真打上游，幂等闸在 runDaily）。 */
     this.timer = setInterval(() => void this.runDaily(), 30 * 60 * 1000);
     this.timer.unref?.();
     void this.runDaily();
+    /* [v1.6.7] 账本刷新**独立于签到**（与 MiniMax 账本同设计）：
+       此前 refreshLedgers 挂在 runDaily 末尾，而 runDaily 在本地 08:05 前直接 return ——
+       于是凌晨重启后账本 map 恒空、概览页 Qoder 行整行消失（实测：01:03 重启后无行）。
+       账本与「签到时刻」无关，必须启动即拉、按自己的间隔刷新。 */
+    this.ledgerTimer = setInterval(() => void this.refreshLedgers().catch(() => undefined), LEDGER_INTERVAL_MS);
+    this.ledgerTimer.unref?.();
+    void this.refreshLedgers().catch(() => undefined);
   }
 
   onModuleDestroy(): void {
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
+    }
+    if (this.ledgerTimer) {
+      clearInterval(this.ledgerTimer);
+      this.ledgerTimer = null;
     }
   }
 
@@ -225,8 +249,8 @@ export class QoderActivityService implements OnModuleInit, OnModuleDestroy {
     } finally {
       this.running = false;
     }
-    /* 顺手刷一次账本（与签到同轮，失败不影响签到）。 */
-    await this.refreshLedgers().catch(() => undefined);
+    /* [v1.6.7] 账本刷新已移出本方法 —— 它有自己的定时器（见 onModuleInit）。
+       此前挂在这里会在 08:05 前永不执行，凌晨重启后账本行整行消失。 */
   }
 
   /** 打一次 openapi（带 Cosy 身份头）。 */

@@ -200,7 +200,35 @@ describe('QoderActivityService', () => {
     let calls = 0;
     vi.stubGlobal('fetch', vi.fn(async () => { calls += 1; return new Response('{}', { status: 200 }); }));
     await svc().runDaily();
-    /* 当前时刻若早于 08:05 则直接返回（不打上游）—— 两种情况都不该打 openai 家的接口。 */
+    /* 当前时刻若早于本服务的检查时刻（Qoder 为 10:05）则直接返回（不打上游）—— 两种情况都不该打 openai 家的接口。 */
     expect(calls).toBeGreaterThanOrEqual(0);
+  });
+
+  /**
+   * ★ 回归（v1.6.7）：账本刷新必须**独立于签到时刻闸**。
+   *
+   * 事故：`refreshLedgers()` 原先挂在 `runDaily()` 末尾，而 `runDaily()` 在本地检查时刻前
+   * 直接 return —— 于是凌晨重启后账本 map 恒空，概览页 Qoder 行**整行消失**
+   * （实测：01:03 重启后无行）。本测试钉住「启动即刷」这一行为。
+   */
+  it('★ 启动即刷账本（onModuleInit 触发，不受签到时刻闸影响）', async () => {
+    let usageCalls = 0;
+    vi.stubGlobal('fetch', vi.fn(async (u: string) => {
+      if (String(u).includes('credits-summary')) return new Response(JSON.stringify({ totalCredits: 241.81 }), { status: 200 });
+      if (String(u).includes('v2/me/usage')) {
+        usageCalls += 1;
+        return new Response(JSON.stringify({
+          qoderUsage: { addOnQuota: { total: 500, used: 5, remaining: 495, unit: 'credits' } },
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    }));
+    const s = new QoderActivityService(providers, true); // autoStart=true：本测要验定时器/启动即刷
+    s.onModuleInit();
+    /* onModuleInit 里的 refreshLedgers 是 void 异步 —— 给它一个 tick 落地。 */
+    await new Promise((r) => setTimeout(r, 30));
+    expect(usageCalls).toBeGreaterThan(0); // 确实拉了账本（而不是等签到时刻）
+    expect(s.allBlocks().length).toBe(1); // 行存在（不会整行消失）
+    s.onModuleDestroy();
   });
 });

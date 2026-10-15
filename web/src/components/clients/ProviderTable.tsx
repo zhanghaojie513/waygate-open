@@ -193,14 +193,18 @@ export function ProviderTable({
                     {/* [v0.5.6] 签到（仅 MiniMax Code 客户端订阅）：显示今日状态，一键补签。
                         [v1.3.0] 实证 WorkBuddy 上游不允许 ck_ 代领（403），不做其签到按钮 ——
                         它的签到状态在设置页「提供商健康」卡同步展示。 */}
-                    {/* [v1.6.0] 签到按钮：MiniMax（oauth）与 Qoder（cosy，v1.6.0 起支持）共用同一套 signin_* 状态。 */}
+                    {/* [v1.6.0] 签到按钮：MiniMax（oauth）与 Qoder（cosy，v1.6.0 起支持）共用同一套 signin_* 状态。
+                        自动签到时刻**两家不同**，故按提供商取（不能写死一个）：MiniMax 08:05、
+                        Qoder 10:05（官方活动每日 10:00 UTC+8 刷新，见 qoder-activity.service.ts 常量注释）。
+                        文案里的时刻必须与服务端常量一致 —— 否则用户照提示等到 08:05 会白等。 */}
                     {p.credKind === 'oauth_minimax' || p.protocol === 'qoder' ? (
                       <Tooltip
-                        content={
-                          p.signin?.checkedOn
-                            ? `最近签到 ${p.signin.checkedOn}${p.signin.lastPoints ? ` · +${p.signin.lastPoints} 积分` : ''}（relay 每天 08:05 自动签）`
-                            : '今天还没签到 —— 点一下立即签（relay 每天 08:05 也会自动签）'
-                        }
+                        content={(() => {
+                          const at = p.protocol === 'qoder' ? '10:05' : '08:05';
+                          return p.signin?.checkedOn
+                            ? `最近签到 ${p.signin.checkedOn}${p.signin.lastPoints ? ` · +${p.signin.lastPoints} 积分` : ''}（relay 每天 ${at} 自动签）`
+                            : `今天还没签到 —— 点一下立即签（relay 每天 ${at} 也会自动签）`;
+                        })()}
                       >
                         {/* ⚠️ 这里**不能**翻 `disabled`：Tooltip 在被包裹元素 `disabled` 时
                             会改用一层 `<span class="tooltip-anchor">` 承载交互（原生 disabled

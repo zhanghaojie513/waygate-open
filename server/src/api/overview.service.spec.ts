@@ -50,6 +50,8 @@ function seedReq(
   ts = Date.now(),
   ua: string | null = null,
   totalTokens = 2,
+  ms = 1,
+  firstByteMs = 1,
 ): void {
   requests.log({
     ts,
@@ -63,9 +65,9 @@ function seedReq(
     modelDisplay: null,
     status,
     upstreamCode: null,
-    ms: 1,
+    ms,
     queuedMs: 0,
-    firstByteMs: 1,
+    firstByteMs,
     promptTokens: 1,
     completionTokens: 1,
     totalTokens,
@@ -163,7 +165,8 @@ describe('OverviewService × 聚合不放大 / 客户端带 tokens', () => {
     db.close();
   });
 
-  it('★ 占比不可能超过 100%（放大被修掉的直接体现）', () => {
+  /**
+   * ★ 占比不可能超过 100%（放大被修掉的直接体现）
     catalog.seed('p_test', [{ id: 'MiniMax-M3.1-Flash-Preview', displayName: 'M3.1', tag: null, multiplier: null }]);
     addSecondProviderWithSameModel('MiniMax-M3.1-Flash-Preview');
     seedReq('MiniMax-M3.1-Flash-Preview', 40.18, 'k1');

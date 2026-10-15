@@ -68,6 +68,41 @@ export function formatDuration(ms: number | null | undefined): string {
   return `${m}m${s}s`;
 }
 
+/**
+ * [v1.6.8] **输出速度**（tokens/秒）。
+ *
+ * 口径：`completion_tokens / 生成时长`，其中生成时长 = 总耗时 − 首字耗时
+ * （扣掉首字等待，只算真正吐字的吞吐；与社区那种 t/s 显示同口径）。
+ *
+ * ⚠️ 上游**不给**生成时长（三家 usage 里都没有时长字段），所以这里全靠反代侧观测的
+ * `ms` / `first_byte_ms` 推算 —— 这是**唯一**可行的口径。
+ *
+ * 取不到就返回 `null`（调用方显示 `--`），**不返回 0**：
+ *   · 失败行：`first_byte_ms` 为 NULL、completion 为 0 —— 压根没有生成过程
+ *   · 非流式 / 首字即全部内容：生成时长 ≤ 0，速度无意义
+ *   · 未回报 completion tokens：分子不可知
+ * 「未知」与「0 t/s」是两件事，混同会让人以为模型不吐字。
+ */
+export function outputSpeed(
+  completionTokens: number | null | undefined,
+  ms: number | null | undefined,
+  firstByteMs: number | null | undefined,
+): number | null {
+  const ct = completionTokens ?? 0;
+  if (ct <= 0) return null;
+  if (ms === null || ms === undefined || ms <= 0) return null;
+  /* 首字未知时退化为「按总耗时算」——至少给一个下界估计，但这是有损的（含首字等待）。 */
+  const gen = firstByteMs === null || firstByteMs === undefined ? ms : ms - firstByteMs;
+  if (gen <= 0) return null;
+  return ct / (gen / 1000);
+}
+
+/** 速度值 → `199.1 t/s`；null → `--`。 */
+export function formatSpeed(tps: number | null | undefined): string {
+  if (tps === null || tps === undefined || Number.isNaN(tps)) return '--';
+  return `${tps.toFixed(1)} t/s`;
+}
+
 export function formatClock(iso: string | null | undefined): string {
   if (!iso) return '--';
   const d = new Date(iso);

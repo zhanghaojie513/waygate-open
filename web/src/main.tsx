@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
+import { ToastProvider } from './components/ui/Toast';
 import { redirectLegacyHash, watchLegacyHash } from './router';
 
 /* [注意] 样式加载顺序是契约的一部分：
@@ -49,7 +50,7 @@ for (const rel of ['icon', 'apple-touch-icon']) {
   const link = document.createElement('link');
   link.rel = rel;
   link.type = 'image/svg+xml';
-  link.href = '/icon.svg?v=1';
+  link.href = '/icon.svg?v=2';
   document.head.appendChild(link);
 }
 
@@ -58,7 +59,11 @@ if (!root) throw new Error('#root 未找到 —— index.html 被改坏了');
 
 createRoot(root).render(
   <StrictMode>
-    <App />
+    {/* ToastProvider 挂在最外层：Toast 用 Portal 渲染到 body，
+        与路由/页面结构解耦 —— 页内任何位置的动作都能弹同一条通道的提示。 */}
+    <ToastProvider>
+      <App />
+    </ToastProvider>
   </StrictMode>,
 );
 // @zbiti-ai:f:33:7025b5a9

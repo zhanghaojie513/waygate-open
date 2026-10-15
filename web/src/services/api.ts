@@ -307,6 +307,7 @@ export const api = {
   },
 
   providerSigninNow(id: string): Promise<{ ok: boolean; outcome: string; points: number | null; streak: number | null; message: string }> {
+    if (MOCKS_ENABLED) return mockApi.providerSigninNow(id);
     return apiRequestGuarded(`/api/providers/${encodeURIComponent(id)}/signin`, { method: 'POST' });
   },
 

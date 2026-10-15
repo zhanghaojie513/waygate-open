@@ -1,8 +1,8 @@
 import type { RequestLogRow } from '../../types/api';
 import {
-  Activity, ChevronRight, Clock, Coins, Cpu, Gem, Globe, KeyRound, Timer,
+  Activity, ChevronRight, Clock, Coins, Cpu, Gauge, Gem, Globe, KeyRound, Timer,
 } from 'lucide-react';
-import { formatClock, formatDuration, formatInt, formatCredits, noteLabels, statusTone } from '../../lib/format';
+import { formatClock, formatDuration, formatInt, formatCredits, formatSpeed, noteLabels, outputSpeed, statusTone } from '../../lib/format';
 import { ToolIcon } from './ToolIcon';
 import { Tooltip } from '../ui/Tooltip';
 
@@ -84,6 +84,8 @@ export function RequestTable({
             <th scope="col"><Globe size={12} />User Agent</th>
             <th scope="col" className="r"><Activity size={12} />状态</th>
             <th scope="col" className="r"><Timer size={12} />耗时</th>
+            {/* [v1.6.8] 输出速度：输出 tokens ÷ 生成时长（总耗时 − 首字）。 */}
+            <th scope="col" className="r"><Gauge size={12} />输出速度</th>
             <th scope="col" className="r"><Coins size={12} />Tokens</th>
             <th scope="col" className="r"><Gem size={12} />积分</th>
           </tr>
@@ -202,7 +204,37 @@ export function RequestTable({
                   )}
                 </td>
 
-                <td className="r td-mono">{formatDuration(r.ms)}</td>
+                {/* [v1.6.8] 耗时改两行（首字 / 耗时），与「请求详情」的三段口径一致；
+                    首字为 NULL（失败行 / 未收到任何 chunk）时显示「无首字」。 */}
+                <td className="r td-mono">
+                  <div>
+                    <Tooltip content={'首字耗时 —— 从发出请求到收到第一个内容块的等待\n（含上游排队与思考时间；失败行没有首字）'}>
+                      <span className="cell-sub">
+                        {r.firstByteMs === null ? '无首字' : `首字 ${formatDuration(r.firstByteMs)}`}
+                      </span>
+                    </Tooltip>
+                  </div>
+                  <div>
+                    <Tooltip content={'总耗时 —— 从发出请求到流结束'}>
+                      <span>耗时 {formatDuration(r.ms)}</span>
+                    </Tooltip>
+                  </div>
+                </td>
+
+                {/* [v1.6.8] 输出速度 = 输出 tokens ÷ 生成时长（总耗时 − 首字）。
+                    上游不回报生成时长，此值由本服务按两端观测推算；
+                    取不到（失败行 / 首字即结束）显示 --，绝不显示 0。 */}
+                <td className="r td-mono">
+                  <Tooltip
+                    content={
+                      '输出速度 = 输出 tokens ÷ 生成时长（总耗时 − 首字）\n'
+                      + '上游不回报生成时长，此值由本服务按两端观测推算；\n'
+                      + '失败行或首字即结束的请求没有生成过程，显示 --'
+                    }
+                  >
+                    <span>{formatSpeed(outputSpeed(r.completionTokens, r.ms, r.firstByteMs))}</span>
+                  </Tooltip>
+                </td>
 
                 {/* tokens：上 in/out、下缓存命中。两行各有 tooltip。 */}
                 <td className="r td-mono">

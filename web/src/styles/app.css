@@ -1290,6 +1290,9 @@ table.tbl .r, table.tbl th.r, table.tbl td.r { text-align: right; }
 /* tokens 列：下行缓存命中量（青色 = 价值/折扣） */
 .cell-cached { font-size: 10.5px; color: var(--accent-cyan); margin-top: 0; line-height: 1.4; }
 
+/* [v1.6.8] 耗时列上行「首字」——比下行「耗时」弱一级（次要信息） */
+.cell-sub { font-size: 10.5px; color: var(--text-tertiary); line-height: 1.4; display: block; }
+
 /* ---------- 请求日志：行首展开指示 + 状态彩点（v0.4.9，参考 Vercel 风格请求表） ----------
    行可点开详情抽屉，但此前没有任何可视暗示 —— › 箭头补上这个 affordance：
    常态灰、行 hover 提亮、抽屉打开时旋转 90°（指向下 = "已展开"）并染品牌色。
@@ -1908,3 +1911,58 @@ svg.ua-ico.none { color: var(--text-ghost); }
   color: var(--text-secondary);
 }
 .banner-info .banner-ico { color: var(--accent-cyan); }
+
+/* ---------- 项目级消息提示（Toast）----------
+   浮在页面顶部居中，自动消失；与 .banner（页内常驻）分工见 Toast.tsx 头注。
+   层级 90：高于抽屉(71)/弹层(100 之下)，低于模态弹层 —— 让弹层里的操作
+   仍能把提示压在下面（弹层是更强的上下文）。 */
+.toast-stack {
+  position: fixed; top: 18px; left: 50%; transform: translateX(-50%);
+  z-index: 90; display: flex; flex-direction: column; gap: 9px;
+  width: min(560px, calc(100vw - 32px)); pointer-events: none;
+}
+.toast {
+  position: relative; overflow: hidden;
+  display: flex; align-items: flex-start; gap: 9px;
+  padding: 11px 34px 11px 14px; border-radius: var(--radius-md);
+  font-size: 12.5px; line-height: 1.6; border: 1px solid transparent;
+  background: var(--bg-surface-2); box-shadow: 0 10px 30px var(--shade-float);
+  pointer-events: auto;
+  animation: toast-in var(--d-hover) var(--ease-out) both;
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.toast-ico { flex: 0 0 auto; margin-top: 2px; }
+.toast-body { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+/* 手动关闭：× 用文本字形（不是 emoji），命中区放大到 26px */
+.toast-close {
+  position: absolute; top: 6px; right: 6px;
+  width: 26px; height: 26px; border: none; background: transparent;
+  color: var(--text-faint); font-size: 16px; line-height: 1; cursor: pointer;
+  border-radius: 6px;
+}
+.toast-close:hover { color: var(--text-secondary); background: var(--wash-6); }
+/* 底部进度条：倒计时可视化（暂停时冻结）*/
+.toast-progress {
+  position: absolute; left: 0; bottom: 0; height: 2px; width: 100%;
+  transform-origin: left; background: currentColor; opacity: .55;
+  animation: toast-shrink linear both;
+}
+.toast-progress.paused { animation-play-state: paused; }
+@keyframes toast-shrink { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+
+/* tone 配色：与 .banner 同一套语义色令牌 */
+.toast-error   { background: color-mix(in srgb, var(--danger-red) 9%, var(--bg-surface-2)); border-color: color-mix(in srgb, var(--danger-red) 26%, transparent); color: var(--text-secondary); }
+.toast-error   .toast-ico { color: var(--danger-red); }
+.toast-success { background: color-mix(in srgb, var(--signal-live) 9%, var(--bg-surface-2)); border-color: color-mix(in srgb, var(--signal-live) 26%, transparent); color: var(--text-secondary); }
+.toast-success .toast-ico { color: var(--signal-live); }
+.toast-success .toast-progress { color: var(--signal-live); }
+.toast-warn    { background: color-mix(in srgb, var(--warn-amber) 8%, var(--bg-surface-2)); border-color: color-mix(in srgb, var(--warn-amber) 26%, transparent); color: var(--text-secondary); }
+.toast-warn    .toast-ico { color: var(--warn-amber); }
+.toast-warn    .toast-progress { color: var(--warn-amber); }
+.toast-info    { background: color-mix(in srgb, var(--accent-cyan) 6%, var(--bg-surface-2)); border-color: color-mix(in srgb, var(--accent-cyan) 22%, transparent); color: var(--text-secondary); }
+.toast-info    .toast-ico { color: var(--accent-cyan); }
+.toast-info    .toast-progress { color: var(--accent-cyan); }
+.toast-error   .toast-progress { color: var(--danger-red); }

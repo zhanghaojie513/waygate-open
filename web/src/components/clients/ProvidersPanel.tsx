@@ -16,6 +16,7 @@ import { UpstreamModels } from './UpstreamModels';
 import type { CatalogMsg } from './UpstreamModels';
 import { Tooltip } from '../ui/Tooltip';
 import { Banner } from '../ui/Banner';
+import { useToast } from '../ui/Toast';
 
 /**
  * 提供商与客户端面板（2026-10-09 从设置页搬来，随后与客户端用量**合并成一张表**）。
@@ -47,6 +48,9 @@ export function ProvidersPanel({ window }: { window: TimeWindow }) {
   const [err, setErr] = useState<ApiError | null>(null);
   const [catalogMsg, setCatalogMsg] = useState<CatalogMsg | null>(null);
   const [catalogBusy, setCatalogBusy] = useState(false);
+  /* 项目级提示：签到/领取的结果浮在页面顶部 —— 表格行里没有安放反馈的位置，
+     而用户点完必须立刻知道「成了没有」（用户口径：不能没反馈）。 */
+  const toast = useToast();
 
   const rows = providers.data?.items ?? [];
   const byProvider = clientsRes.data?.byProvider ?? [];
@@ -93,9 +97,23 @@ export function ProvidersPanel({ window }: { window: TimeWindow }) {
     try {
       const res = await api.providerSigninNow(row.id);
       setCatalogMsg({ kind: res.ok ? 'ok' : 'error', text: res.message });
+      /* 三种结果分别给话：抢到了 / 今天已签过 / 失败。用 outcome 而不是只看 ok ——
+         'none'（今天已签）是成功路径，但说成「签到成功」会让用户以为多领了一次。 */
+      if (res.ok) {
+        toast.push(res.outcome === 'none'
+          ? { tone: 'info', message: `${row.name}：${res.message}` }
+          : { tone: 'success', message: `${row.name} 签到成功${res.points ? ` · +${res.points} 积分` : ''}。` });
+      } else {
+        toast.push({ tone: 'error', message: `${row.name} 签到失败：${res.message}` });
+      }
       providers.reload();
     } catch (e) {
-      setErr(e instanceof ApiError ? e : new ApiError(String(e), 0, 0));
+      const err = e instanceof ApiError ? e : new ApiError(String(e), 0, 0);
+      setErr(err);
+      /* ⚠️ 异常路径也必须弹 —— 它恰恰是最需要反馈的一类失败（HTTP 非 2xx /
+         网络中断 / 上游拒绝）。只 setErr 的话提示落在页内区块，用户点了行内按钮
+         根本看不到（本轮实测就是这样漏掉的）。 */
+      toast.push({ tone: 'error', message: `${row.name} 签到失败：${err.message || '请求未完成'}` });
     } finally {
       setBusyId(null);
     }
@@ -114,9 +132,12 @@ export function ProvidersPanel({ window }: { window: TimeWindow }) {
         ? `领取完成：签到 ${res.signin?.points ?? 0} 积分；任务新领 ${claimed}、已领过 ${already}、待完成 ${skipped}；本轮合计 +${res.creditsGained ?? 0}。`
         : (res.message ?? '领取失败。');
       setCatalogMsg({ kind: res.ok ? 'ok' : 'error', text });
+      toast.push(res.ok ? { tone: 'success', message: `${row.name}：${text}` } : { tone: 'error', message: `${row.name} 领取失败：${res.message ?? '未知原因'}` });
       providers.reload();
     } catch (e) {
-      setErr(e instanceof ApiError ? e : new ApiError(String(e), 0, 0));
+      const err = e instanceof ApiError ? e : new ApiError(String(e), 0, 0);
+      setErr(err);
+      toast.push({ tone: 'error', message: `${row.name} 领取失败：${err.message || '请求未完成'}` });
     } finally {
       setBusyId(null);
     }

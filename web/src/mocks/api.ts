@@ -436,6 +436,25 @@ export const mockApi = {
     });
   },
 
+  /** [v1.6.8] 立即签到（Mock）：按协议给出与真实服务端同形状的结果 ——
+      含 claimed/none/error 三种 outcome，用于演示顶栏 Toast 的三种话术。
+      WorkBuddy 无 OAuth 时走「状态同步」分支（ok:true 但 outcome:none）。 */
+  providerSigninNow(id: string): Promise<{ ok: boolean; outcome: string; points: number | null; streak: number | null; message: string }> {
+    return sleep(700).then(() => {
+      const p = providerStore.find((x) => x.id === id);
+      if (!p) throw new ApiError(`提供商 ${id} 不存在`, 40401, 404);
+      const today = new Date().toISOString().slice(0, 10);
+      const already = p.signin.checkedOn === today;
+      const points = p.protocol === 'anthropic' ? 200 : p.protocol === 'qoder' ? 100 : 100;
+      if (!already) {
+        p.signin = { checkedOn: today, streak: (p.signin.streak ?? 0) + 1, lastPoints: points };
+      }
+      return already
+        ? { ok: true, outcome: 'none', points: p.signin.lastPoints, streak: p.signin.streak, message: '今天已经签过了。' }
+        : { ok: true, outcome: 'claimed', points, streak: p.signin.streak, message: '签到成功。' };
+    });
+  },
+
   /** 试通一个提供商（Mock：自定义示例故意回 11102 —— 演示「key 好但没订阅该模型」分支）。
       credential 参数在 Mock 下不影响结论（真值判定在服务端）。 */
   testProvider(id: string, _credential?: string): Promise<CredentialTestResult> {
