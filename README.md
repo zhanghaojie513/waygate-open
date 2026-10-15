@@ -8,8 +8,8 @@
 [![NestJS](https://img.shields.io/badge/NestJS-12-E0234E?style=flat-square)](https://nestjs.com)
 [![SQLite](https://img.shields.io/badge/SQLite-better--sqlite3-003B57?style=flat-square)](https://github.com/WiseLibs/better-sqlite3)
 [![Node](https://img.shields.io/badge/Node-%E2%89%A522.9-3C873A?style=flat-square)](https://nodejs.org)
-[![version](https://img.shields.io/badge/version-1.6.5-4A38C0?style=flat-square)](https://github.com/zhanghaojie513/waygate-open/releases)
-[![tests](https://img.shields.io/badge/tests-727%20passed-0A7247?style=flat-square)](./server)
+[![version](https://img.shields.io/badge/version-1.6.9-4A38C0?style=flat-square)](https://github.com/zhanghaojie513/waygate-open/releases)
+[![tests](https://img.shields.io/badge/tests-730%20passed-0A7247?style=flat-square)](./server)
 
 ![途关 · Waygate](docs/img/intro.png)
 
@@ -342,4 +342,16 @@ tools/                     仓库级工具（lint 门禁、token 合并、截图
 
 ---
 
-版本约定：`1.0.0` 起 API 契约稳定（当前 `1.6.5`，见 `server/src/version.ts`；历史版本见 [Releases](https://github.com/zhanghaojie513/waygate-open/releases)）。
+## 相关项目
+
+同一作者还开源了三个**轻量单家反代**（各是一个 npm 包，一条命令起服务，无需控制台）——
+只想接某一家时它们更轻；需要统一管理多家、看用量与请求日志时用本仓库：
+
+- **[waygate-workbuddy](https://github.com/zhanghaojie513/waygate-workbuddy)** —— WorkBuddy（命令 `wb`，`npm i -g waygate-workbuddy`，走官方 OAuth 登录）
+- **[waygate-qoder](https://github.com/zhanghaojie513/waygate-qoder)** —— Qoder CN（命令 `qoc`，`npm i -g waygate-qoder`）
+- **[waygate-mmcode](https://github.com/zhanghaojie513/waygate-mmcode)** —— MiniMax Code（命令 `mmcode`，`npm i -g waygate-mmcode`）
+- **[waygate-core](https://github.com/zhanghaojie513/waygate-core)** —— 上面三个共用的骨架（库，不面向最终用户）
+
+---
+
+版本约定：`1.0.0` 起 API 契约稳定（当前 `1.6.9`，见 `server/src/version.ts`；历史版本见 [Releases](https://github.com/zhanghaojie513/waygate-open/releases)）。
