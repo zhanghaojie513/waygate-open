@@ -591,8 +591,9 @@ function EditProviderDrawer({
                 ) : null}
                 {provider.protocol === 'qoder' ? (
                   <div className="cred-guide-note">
-                    本服务<b>不自动刷新</b> Qoder 令牌 —— 避免轮换顶掉桌面客户端登录；
+                    本服务<b>不自动刷新</b> Qoder 令牌；
                     <span className="code-chip">dt-</span> 过期后重跑一次导入即可。
+                    桌面客户端与它<b>互不影响</b>（Qoder 多会话并存，无需专用账号）。
                   </div>
                 ) : null}
               </div>

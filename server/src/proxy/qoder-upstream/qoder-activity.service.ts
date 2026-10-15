@@ -29,8 +29,8 @@
  * 有每日与累计上限。上游自带幂等（重复领取返回已领状态，带 `replayed` 标记）。
  *
  * ## 为什么由 relay 代签
- * Qoder 凭证是「同账号单会话」（客户端登录会顶掉 relay）。但签到**用的就是 relay
- * 已在维护的 access token** —— 于是不必登客户端，直接代签。
+ * 签到**用的就是 relay 已在维护的 access token** —— 于是不必登客户端，直接代签。
+ * （注：Qoder 其实**不互斥**、支持多会话并存，实测 2026-10-16；代签只是更省事。）
  */
 
 import { Inject, Injectable, Logger, Optional, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
