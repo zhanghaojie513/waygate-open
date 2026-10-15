@@ -241,7 +241,10 @@ export class ProvidersService implements OnApplicationBootstrap {
       id, name, baseUrl, active: false,
       protocol,
       credKind: protocol === 'anthropic' ? 'oauth_minimax' : 'static',
-    });    this.writeCredentialFile(id, credential);
+    });
+    /* [v1.6.10] 空凭证不落盘 —— 落一个空文件会让 `configured` 判断（读文件非空）
+       与实际不符。留空就是"待导入"，等「自动导入」写进来。 */
+    if (credential) this.writeCredentialFile(id, credential);
 
     /* 创建时不自动激活（除非显式要求）：先把提供商建好、填凭证、试通，再显式切换。
        默认自动激活会让"手滑建错一个"直接把服务切到错误上游。 */
@@ -575,15 +578,22 @@ export class ProvidersService implements OnApplicationBootstrap {
     throw this.bad('protocol 只能是 openai、anthropic 或 qoder。');
   }
 
+  /**
+   * [v1.6.10] anthropic / qoder 允许**先建后导**（凭证留空）。
+   *
+   * 这两家的凭证是客户端登录态里的东西（MiniMax = `mmort_` refresh token；
+   * Qoder = 一整段身份 JSON），用户手上没有、也手敲不出来 —— 「配置」抽屉为此在
+   * v1.6.4 已改为导入指引。但**新增**弹窗当时没跟着改，仍强制必填，
+   * 于是这两家在界面上**根本建不出来**：导入脚本 `qoder-import-credential.mjs <id>`
+   * 又要 provider id，而 id 建完才有 —— 死锁。
+   *
+   * 放行留空后：行先建出来（`configured=false`），再用「自动导入」把凭证灌进去。
+   * openai（WorkBuddy）保持必填 —— `ck_` 密钥用户从官方后台复制即可，没什么拿不到。
+   */
   private parseCredential(raw: unknown, protocol: 'openai' | 'anthropic' | 'qoder' = 'openai'): string {
     if (typeof raw !== 'string' || !raw.trim()) {
-      throw this.bad(
-        protocol === 'anthropic'
-          ? '凭证不能为空：MiniMax 客户端订阅贴 refresh token（mmort_ 开头），M Plan 贴平台 API key。'
-          : protocol === 'qoder'
-            ? '凭证不能为空：Qoder 贴身份 JSON（{token,refreshToken,uid,name,userType} —— 推荐 tools/qoder-import-credential.mjs 一键导入）。'
-            : `上游访问密钥不能为空。${UPSTREAM_KEY_HINT}。`,
-      );
+      if (protocol === 'anthropic' || protocol === 'qoder') return '';
+      throw this.bad(`上游访问密钥不能为空。${UPSTREAM_KEY_HINT}。`);
     }
     const key = raw.trim();
     /* [v0.6.0] Qoder：身份 JSON（五个必填字符串字段）。结构错误在出站前就报清楚，

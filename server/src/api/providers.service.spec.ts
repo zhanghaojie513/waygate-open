@@ -363,4 +363,37 @@ describe('凭证形状（与既有「上游访问密钥」同一条规则）', (
     const { item } = svc.create({ name: 'X', baseUrl: 'https://api.example.com', credential: real });
     expect(item.configured).toBe(true);
   });
+
+  /* ★★ [v1.6.10] anthropic / qoder 允许**先建后导**。
+     这两家的凭证在客户端登录态里（mmort_ / 身份 JSON），用户手上没有；
+     原先强制必填 → 界面上根本建不出来；而导入脚本要 provider id，id 建完才有 —— 死锁。
+     放行留空后必须满足两条：行能建出来，且**不得**被当成已配置（否则列表谎报"有效"）。 */
+  describe('anthropic / qoder 先建后导', () => {
+    it('空凭证可建 → configured=false（不是谎报有效），且不落空凭证文件', () => {
+      for (const protocol of ['anthropic', 'qoder'] as const) {
+        const { item } = svc.create({
+          name: `待导入-${protocol}`,
+          baseUrl: 'https://api.example.com',
+          credential: '',
+          protocol,
+        });
+        expect(item.configured).toBe(false);
+        expect(item.credentialMask).toBe('未配置');
+        /* 空凭证不能落盘：落一个空文件会让 configured 判断（读文件非空）与实际不符。 */
+        expect(existsSync(join(dir, 'providers', `${item.id}.key`))).toBe(false);
+      }
+    });
+
+    it('openai 仍必填 —— ck_ 密钥用户从官方后台复制即可，没有"拿不到"的问题', () => {
+      expect(() =>
+        svc.create({ name: 'X', baseUrl: 'https://api.example.com', credential: '', protocol: 'openai' }),
+      ).toThrow(/上游访问密钥/);
+    });
+
+    it('给了凭证就照常校验形状（留空放行 ≠ 任意字符串都收）', () => {
+      expect(() =>
+        svc.create({ name: 'X', baseUrl: 'https://api.example.com', credential: 'not-json', protocol: 'qoder' }),
+      ).toThrow(/格式不正确/);
+    });
+  });
 });

@@ -288,6 +288,7 @@ export const api = {
    * 同机部署 → 真·一键；分离部署 → `outcome: 'unavailable'`（前端降级给推送命令）。
    */
   providerImportLocal(id: string): Promise<{ ok: boolean; outcome: 'imported' | 'unavailable' | 'error'; message: string; detail?: string }> {
+    if (MOCKS_ENABLED) return mockApi.providerImportLocal(id);
     /* 带空 JSON body：服务端 content-type 为 application/json 时 Fastify 要求 body 非空。 */
     return apiRequestGuarded(`/api/providers/${encodeURIComponent(id)}/import-local`, {
       method: 'POST',

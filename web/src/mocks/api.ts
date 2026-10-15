@@ -394,7 +394,8 @@ export const mockApi = {
         name: input.name,
         baseUrl: input.baseUrl,
         credentialMask: maskProviderKey(input.credential),
-        configured: true,
+        /* [v1.6.10] 空凭证 = 待导入（anthropic / qoder 先建后导）—— 与真机同语义。 */
+        configured: Boolean(input.credential),
         active: false,
         protocol: input.protocol ?? 'openai',
         credKind: input.protocol === 'anthropic' ? 'oauth_minimax' : 'static',
@@ -420,9 +421,31 @@ export const mockApi = {
       if (input.baseUrl !== undefined) t.baseUrl = input.baseUrl;
       if (input.credential !== undefined) {
         t.credentialMask = maskProviderKey(input.credential);
-        t.configured = true;
+        t.configured = Boolean(input.credential);
       }
       return { ...t };
+    });
+  },
+
+  /**
+   * [v1.6.10] 自动导入凭证的 Mock —— 演示「同机部署 → 真·一键」的成功路径。
+   * 真机分离部署时服务端返回 unavailable 并给推送命令；要在 Mock 里看那条分支，
+   * 把 outcome 改成 'unavailable' 即可。
+   */
+  providerImportLocal(id: string): Promise<{ ok: boolean; outcome: 'imported' | 'unavailable' | 'error'; message: string }> {
+    return sleep(420).then(() => {
+      const t = providerStore.find((p) => p.id === id);
+      if (!t) throw new ApiError(`提供商 ${id} 不存在`, 40401, 404);
+      t.configured = true;
+      t.credentialMask = t.protocol === 'qoder'
+        ? '{"to••••pe"}'
+        : maskProviderKey('mmort_imported0000000000');
+      return {
+        ok: true,
+        outcome: 'imported' as const,
+        message: `已从本机 ${t.protocol === 'qoder' ? 'Qoder' : 'MiniMax Code'} 客户端登录态导入凭证。`,
+        detail: '令牌约 30 天过期，届时重新导入即可。',
+      };
     });
   },
 

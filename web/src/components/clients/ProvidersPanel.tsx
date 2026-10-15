@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Check, Copy, Download, Loader2 } from 'lucide-react';
+import { Check, Download, Loader2 } from 'lucide-react';
 import { api } from '../../services/api';
 import { ApiError } from '../../services/http';
 import { useResource } from '../../hooks/useResource';
@@ -17,6 +17,7 @@ import type { CatalogMsg } from './UpstreamModels';
 import { Tooltip } from '../ui/Tooltip';
 import { Banner } from '../ui/Banner';
 import { useToast } from '../ui/Toast';
+import { CopyCommand } from '../ui/CopyCommand';
 
 /**
  * 提供商与客户端面板（2026-10-09 从设置页搬来，随后与客户端用量**合并成一张表**）。
@@ -395,39 +396,6 @@ export function ProvidersPanel({ window }: { window: TimeWindow }) {
         </Modal>
       ) : null}
     </>
-  );
-}
-
-/**
- * [v1.6.4] 可复制的命令块（提供给「无法手填凭证」的两家：MiniMax / Qoder）。
- * 传空 command 则不渲染 —— 调用方按协议决定。
- * 复制失败降级为提示（无 clipboard 权限的浏览器），与 PlaintextKey 同策略。
- */
-function CopyCommand({ command }: { command: string }) {
-  const [copied, setCopied] = useState(false);
-  if (!command) return null;
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(command);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      setCopied(false);
-    }
-  };
-  return (
-    <div className="cred-guide-cmd">
-      <code>{command}</code>
-      <button
-        type="button"
-        className="copy"
-        aria-label={copied ? '已复制命令' : '复制命令'}
-        onClick={() => void copy()}
-      >
-        {copied ? <Check size={13} /> : <Copy size={13} />}
-        {copied ? '已复制' : '复制'}
-      </button>
-    </div>
   );
 }
 
