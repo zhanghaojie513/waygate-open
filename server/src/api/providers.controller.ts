@@ -18,6 +18,7 @@ import { WbClaimService } from '../proxy/openai-upstream/wb-claim.service';
 import { QoderActivityService } from '../proxy/qoder-upstream/qoder-activity.service';
 import { MinimaxTokenService } from '../proxy/anthropic-upstream/minimax-token.service';
 import { CredentialImportService } from './credential-import.service';
+import { DeviceImportService } from './device-import.service';
 import { ProvidersRepository } from '../store/repositories/providers.repo';
 import { ok } from '../common/errors';
 
@@ -34,6 +35,7 @@ export class ProvidersController {
     private readonly repo: ProvidersRepository,
     private readonly credentialImport: CredentialImportService,
     private readonly minimaxTokens: MinimaxTokenService,
+    private readonly deviceImport: DeviceImportService,
   ) {}
 
   @Get()
@@ -190,6 +192,43 @@ export class ProvidersController {
     /* 真导入了 → 作废 MiniMax 缓存的 access token（否则出站仍用旧令牌，看起来"没生效"）。 */
     if (result.ok && row.protocol === 'anthropic') this.minimaxTokens.invalidate(id);
     return ok(result);
+  }
+
+  /**
+   * [v1.6.11] 设备授权导入 ①：申请授权，返回浏览器要打开的地址。
+   *
+   * 三种客户端各有自己的授权机制（见 device-import.service 文件头表格）。
+   * 私有状态（device_code / code_verifier / state）**只存服务端**，不回传浏览器。
+   */
+  @Post(':id/import-device/start')
+  @HttpCode(200)
+  async importDeviceStart(@Param('id') id: string): Promise<unknown> {
+    const row = this.repo.findById(id);
+    if (!row) return ok({ ok: false, message: '提供商不存在。' });
+    return ok(await this.deviceImport.start(id, row.protocol as 'openai' | 'anthropic' | 'qoder'));
+  }
+
+  /**
+   * [v1.6.11] 设备授权导入 ②：轮询取票。
+   * `status='pending'` = 用户还没完成授权（前端继续轮询）；`done` = 已落盘凭证。
+   */
+  @Post(':id/import-device/poll')
+  @HttpCode(200)
+  async importDevicePoll(@Param('id') id: string): Promise<unknown> {
+    const row = this.repo.findById(id);
+    if (!row) return ok({ ok: false, status: 'error', message: '提供商不存在。' });
+    const result = await this.deviceImport.poll(id, row.protocol as 'openai' | 'anthropic' | 'qoder');
+    /* 导入成功后失效缓存的 access token（否则出站仍用旧令牌，看起来"没生效"）。 */
+    if (result.status === 'done' && row.protocol === 'anthropic') this.minimaxTokens.invalidate(id);
+    return ok(result);
+  }
+
+  /** [v1.6.11] 取消进行中的授权（前端关闭弹窗时调用）。 */
+  @Post(':id/import-device/cancel')
+  @HttpCode(200)
+  importDeviceCancel(@Param('id') id: string): unknown {
+    this.deviceImport.cancel(id);
+    return ok({ ok: true });
   }
 
   /** [v1.4.0] 删除 WorkBuddy OAuth 槽（回到纯状态同步模式）。 */

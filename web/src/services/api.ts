@@ -297,6 +297,39 @@ export const api = {
     });
   },
 
+  /**
+   * [v1.6.11] 设备授权导入 ①：申请授权，拿到浏览器要打开的地址。
+   * 私有状态（device_code / PKCE verifier）留在服务端，这里只拿到 authUrl。
+   */
+  providerImportDeviceStart(id: string): Promise<{ ok: boolean; authUrl?: string; userCode?: string; hint?: string; expiresInSec?: number; message?: string }> {
+    if (MOCKS_ENABLED) return mockApi.providerImportDeviceStart(id);
+    return apiRequestGuarded(`/api/providers/${encodeURIComponent(id)}/import-device/start`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    });
+  },
+
+  /** [v1.6.11] 设备授权导入 ②：轮询取票（`status='pending'` 表示用户还没点完）。 */
+  providerImportDevicePoll(id: string): Promise<{ ok: boolean; status: 'pending' | 'done' | 'error'; summary?: string; message?: string }> {
+    if (MOCKS_ENABLED) return mockApi.providerImportDevicePoll(id);
+    return apiRequestGuarded(`/api/providers/${encodeURIComponent(id)}/import-device/poll`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    });
+  },
+
+  /** [v1.6.11] 取消进行中的授权（关闭弹窗时调用，释放服务端会话）。 */
+  providerImportDeviceCancel(id: string): Promise<{ ok: boolean }> {
+    if (MOCKS_ENABLED) return mockApi.providerImportDeviceCancel(id);
+    return apiRequestGuarded(`/api/providers/${encodeURIComponent(id)}/import-device/cancel`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    });
+  },
+
   /** [v1.4.0] 手动跑一轮 WorkBuddy 领取（签到 + 任务 + 连登兑换；需已导入 OAuth）。 */
   providerGrowthRun(id: string): Promise<GrowthRunResult> {
     return apiRequestGuarded(`/api/providers/${encodeURIComponent(id)}/growth/run`, { method: 'POST' });

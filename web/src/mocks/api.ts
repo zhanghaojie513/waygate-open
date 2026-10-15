@@ -449,6 +449,49 @@ export const mockApi = {
     });
   },
 
+  /**
+   * [v1.6.11] 设备授权导入的 Mock —— 演示「申请 → 跳授权页 → 轮询 → 成功」全流程。
+   * 首次 poll 返回 pending（模拟用户还没点完），第二次 done —— 让前端轮询逻辑能被真实演练。
+   */
+  providerImportDeviceStart(id: string): Promise<{ ok: boolean; authUrl?: string; userCode?: string; hint?: string; expiresInSec?: number; message?: string }> {
+    return sleep(320).then(() => {
+      const t = providerStore.find((p) => p.id === id);
+      if (!t) throw new ApiError(`提供商 ${id} 不存在`, 40401, 404);
+      deviceImportPolls.delete(id);
+      const urls: Record<string, string> = {
+        openai: 'https://copilot.tencent.com/login?platform=CLI&state=mock-state',
+        anthropic: 'https://account.minimax.cn/oauth-authorize?user_code=MOCK-1234',
+        qoder: 'https://qoder.cn/device/selectAccounts?challenge=mock&client_id=mock',
+      };
+      return {
+        ok: true,
+        authUrl: urls[t.protocol ?? 'openai'] ?? urls.openai,
+        ...(t.protocol === 'openai' ? {} : { userCode: 'MOCK-1234' }),
+        hint: `请在打开的页面用 ${t.name} 账号完成授权`,
+        expiresInSec: 300,
+      };
+    });
+  },
+
+  providerImportDevicePoll(id: string): Promise<{ ok: boolean; status: 'pending' | 'done' | 'error'; summary?: string; message?: string }> {
+    return sleep(300).then(() => {
+      const t = providerStore.find((p) => p.id === id);
+      if (!t) throw new ApiError(`提供商 ${id} 不存在`, 40401, 404);
+      const n = (deviceImportPolls.get(id) ?? 0) + 1;
+      deviceImportPolls.set(id, n);
+      /* 前两次 pending（模拟用户在浏览器里操作），第三次成功。 */
+      if (n < 3) return { ok: true, status: 'pending' as const };
+      t.configured = true;
+      t.credentialMask = '••••（设备授权）';
+      return { ok: true, status: 'done' as const, summary: 'mock-account' };
+    });
+  },
+
+  providerImportDeviceCancel(id: string): Promise<{ ok: boolean }> {
+    deviceImportPolls.delete(id);
+    return sleep(80).then(() => ({ ok: true }));
+  },
+
   /** 激活 = 恰一个 active；Mock 下顺带把目录切成"另一个提供商的清单"，
       演示"模型列表随选择重新获取"的语义（真机上服务端清空并重拉）。 */
   activateProvider(id: string): Promise<ProviderItem> {
@@ -541,6 +584,9 @@ function switchMockCatalog(providerId: string): void {
   CATALOG.models = custom ? [...MOCK_CATALOG_CUSTOM.models] : [...DEFAULT_CATALOG_MODELS.map((m) => ({ ...m }))];
   CATALOG.fetchedAt = new Date().toISOString();
 }
+
+/** [v1.6.11] 设备授权导入的轮询计数（providerId → 已轮询次数），演示 pending → done。 */
+const deviceImportPolls = new Map<string, number>();
 
 let providerStore: ProviderItem[] = [
   /* 与服务端种子同名（DEFAULT_PROVIDER_NAME = 'WorkBuddy'）—— 现库那条上游连接

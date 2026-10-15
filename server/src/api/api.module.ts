@@ -18,6 +18,7 @@ import { ModelProbeService, PROBE_INTERVAL_MS } from '../catalog/probe';
 import { CatalogSyncService, CATALOG_PROBE_INTERVAL_MS } from '../catalog/catalog-sync';
 import { QuotaSourceService } from '../proxy/quota/quota-source.service';
 import { CredentialImportService } from './credential-import.service';
+import { DeviceImportService } from './device-import.service';
 
 /**
  * 控制台 API 模块（`/api/*`，api-contract §3）。
@@ -71,6 +72,8 @@ import { CredentialImportService } from './credential-import.service';
     QuotaSourceService,
     // [v1.6.5] 从服务端所在机器的客户端登录态一键导入 MiniMax / Qoder 凭证。
     CredentialImportService,
+    // [v1.6.11] 设备授权导入（控制台「导入」按钮）：选客户端 → 跳授权页 → 回来即已导入。
+    DeviceImportService,
   ],
 })
 export class ApiModule {}

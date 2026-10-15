@@ -12,6 +12,7 @@ import { StateBlock, errorDetail } from '../ui/StateBlock';
 import { ProviderTable, AddProviderButton } from './ProviderTable';
 import { ClientsSkeleton } from '../ui/PageSkeleton';
 import { CreateProviderModal } from './CreateProviderModal';
+import { ImportClientModal } from './ImportClientModal';
 import { UpstreamModels } from './UpstreamModels';
 import type { CatalogMsg } from './UpstreamModels';
 import { Tooltip } from '../ui/Tooltip';
@@ -43,6 +44,8 @@ export function ProvidersPanel({ window }: { window: TimeWindow }) {
   /* 客户端用量按本页的时间选择器取 —— 与表格头部的窗口选择器同源。 */
   const clientsRes = useResource(() => api.clients(window), [window], { cacheKey: `clients:${window}` });
   const [creating, setCreating] = useState(false);
+  /* [v1.6.11] 「导入客户端」弹窗（选客户端 → 官方授权 → 自动落盘凭证）。 */
+  const [importing, setImporting] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [editing, setEditing] = useState<ProviderItem | null>(null);
   const [deleting, setDeleting] = useState<ProviderItem | null>(null);
@@ -268,6 +271,14 @@ export function ProvidersPanel({ window }: { window: TimeWindow }) {
                 已启用 {activeCount} 家
               </Pill>
             ) : null}
+            {/* [v1.6.11] 「导入客户端」——选客户端走官方授权（凭证在客户端登录态里、用户拿不到）。
+                与「新增提供商」的分工写在 ImportClientModal 文件头。 */}
+            <Tooltip content="选一个客户端（WorkBuddy / MiniMax Code / Qoder CN），用它的官方授权导入凭证">
+              <button type="button" className="btn btn-quiet btn-sm" onClick={() => setImporting(true)}>
+                <Download size={14} />
+                导入客户端
+              </button>
+            </Tooltip>
             <AddProviderButton onClick={() => setCreating(true)} />
           </span>
         }
@@ -326,6 +337,17 @@ export function ProvidersPanel({ window }: { window: TimeWindow }) {
             setCreating(false);
             reload();
           }}
+        />
+      ) : null}
+
+      {/* [v1.6.11] 导入客户端：选客户端 → 官方授权 → 自动落盘凭证。 */}
+      {importing ? (
+        <ImportClientModal
+          onClose={() => {
+            setImporting(false);
+            reload();
+          }}
+          onImported={() => reload()}
         />
       ) : null}
 
