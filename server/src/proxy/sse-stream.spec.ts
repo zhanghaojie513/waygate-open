@@ -339,6 +339,66 @@ describe('集成：客户端流中途断开（走 controller 的 close 回调）
     expect(head()).toBe(200); // 已经写过头（客户端在流中途才断开）
     expect(proxy.activeCount).toBe(0); // 槽位不泄漏
   });
+
+  it('⑥ 心跳：写头前不提交 200；写头后以 SSE 注释 `: ping` 写给客户端', async () => {
+    vi.useFakeTimers();
+    try {
+      const { controller, proxy } = makeHarness();
+      let source!: ReadableStreamDefaultController<Uint8Array>;
+      const body = new ReadableStream<Uint8Array>({ start(c) { source = c; } });
+      vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, body })));
+      // 不断开的假 reply：只记录写头与写入
+      const raw = new EventEmitter() as unknown as {
+        on: (e: string, cb: () => void) => void;
+        writeHead: (s: number) => void;
+        write: (s: string) => boolean;
+        end: (s?: string) => void;
+      };
+      let head = 0;
+      const writes: string[] = [];
+      let resolveEnd!: () => void;
+      const ended = new Promise<void>((r) => { resolveEnd = r; });
+      raw.writeHead = (s: number) => { head = s; };
+      raw.write = (s: string) => { writes.push(s); return true; };
+      raw.end = () => resolveEnd();
+      const req = {
+        headers: { authorization: 'Bearer sk-waygate-aaaa', 'user-agent': 'claude-cli/1.0' },
+        ip: '127.0.0.1',
+        keyContext,
+      } as RequestWithKeyContext;
+
+      await controller.chatCompletions(req as never, { raw } as unknown as FastifyReply, {
+        model: 'kimi-k2.7',
+        messages: [{ role: 'user', content: 'hi' }],
+        stream: true,
+      } as never);
+
+      // 上游首字前心跳：不写头、不写任何字节（保留失败时回 502 JSON 的能力）
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(head).toBe(0);
+      expect(writes).toEqual([]);
+
+      // 首个数据帧到达 → 写头 200 并转发
+      source.enqueue(enc.encode(CHUNK1));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(head).toBe(200);
+      expect(writes).toHaveLength(1);
+
+      // 写头后心跳 → 以 SSE 注释保活
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(writes[1]).toBe(': ping\n\n');
+
+      source.enqueue(enc.encode(DONE));
+      source.close();
+      await vi.advanceTimersByTimeAsync(0);
+      await ended;
+      expect(writes.at(-1)).toBe('data: [DONE]\n\n');
+      expect(latest()?.status).toBe(200);
+      expect(proxy.activeCount).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 /**

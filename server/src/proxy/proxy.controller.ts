@@ -101,6 +101,11 @@ export class ProxyController {
     void (async () => {
       try {
         for await (const ev of events) {
+          // 心跳：已写头后才发 SSE 注释保活；写头前不因心跳提前提交 200（与「拿到首个事件才写头」一致）
+          if (ev.type === 'ping') {
+            if (started) reply.raw.write(': ping\n\n');
+            continue;
+          }
           if (!started) {
             started = true;
             reply.raw.writeHead(200, { ...SSE_HEADERS, 'x-trace-id': traceId });
