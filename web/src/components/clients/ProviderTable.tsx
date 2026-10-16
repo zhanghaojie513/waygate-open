@@ -1,4 +1,4 @@
-import { CalendarCheck, Download, Plus, RefreshCw, Trash2, Wrench } from 'lucide-react';
+import { CalendarCheck, Plus, RefreshCw, Trash2, Wrench } from 'lucide-react';
 import { Pill } from '../ui/Pill';
 import type { ProviderItem, ProviderUsageRow } from '../../types/api';
 
@@ -34,7 +34,6 @@ export function ProviderTable({
   byProvider,
   busyId,
   onEdit,
-  onReimport,
   onModels,
   onSignin,
   onGrowthRun,
@@ -49,8 +48,6 @@ export function ProviderTable({
   /** 活提供商的模型目录（非活的行没有清单，见下方「模型列表」的禁用理由）。 */
   busyId: string | null;
   onEdit: (row: ProviderItem) => void;
-  /** [v1.6.11] 重新导入授权（三家统一：走官方授权刷新凭证）。 */
-  onReimport: (row: ProviderItem) => void;
   onModels: (row: ProviderItem) => void;
   /** [v0.5.6] 立即签到（仅 MiniMax oauth 提供商有按钮）。 */
   onSignin: (row: ProviderItem) => void;
@@ -172,17 +169,11 @@ export function ProviderTable({
                   <span className="prov-row-actions">
                     {/* 「API Keys」不在这一行（2026-10-10 用户要求去掉）：
                         侧栏本来就有「API Keys」入口，这行再放一个是重复导航。
-                        「请求日志」也不在这一行（2026-10-09 同理由去掉）。 */}
-                    {/* [v1.6.11] 「重新导入授权」是三家统一的凭证入口 —— 凭证来自各客户端
-                        的官方授权，用户拿不到、无法手填（WorkBuddy 的 ck_ 密钥已退役）。
-                        换账号 / 令牌失效 / 首次配置，都点这里。 */}
-                    <Tooltip content="用官方授权重新导入凭证（换账号、令牌失效时点这个）">
-                      <button type="button" className="mini-pill" disabled={busy} onClick={() => onReimport(p)}>
-                        <Download size={12} />
-                        重新导入授权
-                      </button>
-                    </Tooltip>
-                    <Tooltip content="改名称与上游地址（凭证请用「重新导入授权」）">
+                        「请求日志」也不在这一行（2026-10-09 同理由去掉）。
+                        [v1.6.12] 「重新导入授权」也移出这一行（用户口径）：它属于
+                        凭证操作，放进「配置」抽屉里即可 —— 行内只留高频的
+                        配置 / 模型列表 / 签到 / 启停 / 删除。 */}
+                    <Tooltip content="改名称与上游地址；凭证可在抽屉内「重新导入授权」">
                       <button type="button" className="mini-pill" disabled={busy} onClick={() => onEdit(p)}>
                         <Wrench size={12} />
                         配置

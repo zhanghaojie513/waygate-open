@@ -310,7 +310,6 @@ export function ProvidersPanel({ window }: { window: TimeWindow }) {
             byProvider={byProvider}
             busyId={busyId}
             onEdit={setEditing}
-            onReimport={setReimporting}
             onSignin={(p) => void signin(p)}
             onGrowthRun={(p) => void growthRun(p)}
             onOauthImport={(p) => void oauthImport(p)}
@@ -663,7 +662,7 @@ function EditProviderDrawer({
         ) : null}
 
         <div className="up-note" style={{ marginTop: 18 }}>
-          <span>密钥是<b>只写</b>的：保存后只剩掩码，任何接口都读不回完整值。</span>
+          <span>凭证只存在<b>服务端</b>：界面只显示账号摘要或掩码，任何接口都读不回完整值。</span>
         </div>
       </div>
     </Drawer>
