@@ -169,6 +169,8 @@ export async function* readUpstreamSse(
   //   两者都为 false（读没到末尾、也没抛错，却被 .return() 终止）→ 客户端侧 → client_detached
   let endedNaturally = false;
   let upstreamFailed = false;
+  // 心跳只结束本轮等待，不取消读取；必须复用未完成的 read，避免旧读取吞掉后续分片。
+  let pendingRead: ReturnType<ReadableStreamDefaultReader<Uint8Array>['read']> | undefined;
 
   /**
    * 幂等落库：正常读完 / 抛异常 / 被 `.return()` 提前终止，都**恰好执行一次**。
@@ -197,11 +199,13 @@ export async function* readUpstreamSse(
 
   try {
     for (;;) {
-      const read = await readWithHeartbeat(reader);
+      pendingRead ??= reader.read();
+      const read = await readWithHeartbeat(pendingRead);
       if (read.heartbeat) {
         yield { type: 'ping' };
         continue;
       }
+      pendingRead = undefined; // 结果已消费，下一轮才能发起新的读取。
       if (read.done) {
         endedNaturally = true;
         break;
@@ -265,15 +269,14 @@ export async function* readUpstreamSse(
   }
 }
 
-/** 读一帧但最多等 HEARTBEAT_MS：超时返回 heartbeat 而不结束流（SSE 保活）。 */
+/** 等待已有读取最多 HEARTBEAT_MS：心跳胜出时保留该读取，供下一轮继续等待。 */
 async function readWithHeartbeat(
-  reader: ReadableStreamDefaultReader<Uint8Array>,
+  read: ReturnType<ReadableStreamDefaultReader<Uint8Array>['read']>,
 ): Promise<{ done: boolean; value?: Uint8Array; heartbeat?: boolean }> {
   let timer: NodeJS.Timeout | undefined;
   const beat = new Promise<{ done: boolean; heartbeat: true }>((resolve) => {
     timer = setTimeout(() => resolve({ done: false, heartbeat: true }), HEARTBEAT_MS);
   });
-  const read = reader.read().then((r) => ({ done: r.done, value: r.value }));
   try {
     return await Promise.race([read, beat]);
   } finally {

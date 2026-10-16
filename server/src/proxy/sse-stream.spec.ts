@@ -195,6 +195,70 @@ describe('readUpstreamSse · 落库结构性保证（task#36）', () => {
   });
 });
 
+describe('readUpstreamSse · 心跳不抢走上游读取结果', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it.each([1, 3])('连续 %i 次心跳后，首块与后续帧仍按序转发', async (beats) => {
+    const release = vi.fn();
+    let source!: ReadableStreamDefaultController<Uint8Array>;
+    const body = new ReadableStream<Uint8Array>({ start(c) { source = c; } });
+    const events: Array<{ type: string; data?: string }> = [];
+    // 持续消费，确保每次心跳之后生成器立即进入下一轮读取。
+    const consume = (async () => {
+      for await (const ev of readUpstreamSse(body, makeCtx(release), log)) events.push(ev);
+    })();
+    await vi.advanceTimersByTimeAsync(15_000 * beats);
+    expect(events.map((ev) => ev.type)).toEqual(Array(beats).fill('ping'));
+    source.enqueue(enc.encode(CHUNK1));
+    source.enqueue(enc.encode(CHUNK1.replace('你', '好')));
+    source.enqueue(enc.encode(DONE));
+    source.close();
+    await consume;
+    expect(events.filter((ev) => ev.type === 'chunk').map((ev) => JSON.parse(ev.data!).choices[0].delta.content))
+      .toEqual(['你', '好']);
+    expect(events.filter((ev) => ev.type === 'done')).toHaveLength(1);
+    expect(events.some((ev) => ev.type === 'error')).toBe(false);
+    expect(latest()?.status).toBe(200);
+    expect(release).toHaveBeenCalledTimes(1);
+    expect(body.locked).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('心跳后上游报错，仍失败落库并清理读取与定时器', async () => {
+    const release = vi.fn();
+    let source!: ReadableStreamDefaultController<Uint8Array>;
+    const body = new ReadableStream<Uint8Array>({ start(c) { source = c; } });
+    const events: Array<{ type: string }> = [];
+    const consume = (async () => {
+      for await (const ev of readUpstreamSse(body, makeCtx(release), log)) events.push(ev);
+    })();
+    await vi.advanceTimersByTimeAsync(15_000);
+    source.error(new Error('reset after heartbeat'));
+    await consume;
+    expect(events.map((ev) => ev.type)).toEqual(['ping', 'error']);
+    expect(String(latest()?.note)).toContain('stream_aborted');
+    expect(release).toHaveBeenCalledTimes(1);
+    expect(body.locked).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('心跳处客户端提前退出，未完成读取不产生未处理拒绝或泄漏锁', async () => {
+    const release = vi.fn();
+    const body = new ReadableStream<Uint8Array>();
+    const gen = readUpstreamSse(body, makeCtx(release), log);
+    const next = gen.next();
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect((await next).value).toEqual({ type: 'ping' });
+    await gen.return(undefined);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(String(latest()?.note)).toContain('client_detached');
+    expect(release).toHaveBeenCalledTimes(1);
+    expect(body.locked).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
 describe('集成：客户端流中途断开（走 controller 的 close 回调）', () => {
   function makeHarness() {
     const config = {
