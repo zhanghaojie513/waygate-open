@@ -149,6 +149,20 @@ export function toQoderRequest(body: ChatRequestBody, qoderModelKey: string, use
   if (body.max_tokens !== undefined) parameters.max_tokens = body.max_tokens;
   else if (parameters.max_tokens === undefined) parameters.max_tokens = 8192; // 官方客户端自己的回落
 
+  /*
+   * ★ 必须与上面的 `is_reasoning` **成对出现**。
+   *
+   * 只发 `is_reasoning: false`、**不发 `enable_thinking`** 的请求是自相矛盾的 ——
+   * 网关按它自己的默认（开着思考）走。后果在 qfmodel 上最明显：客户端**没要思考**，
+   * 模型却把整个 token 预算烧在 `reasoning_content` 上，`content` 只剩一两个字
+   * （实测极端 prompt：1850 reasoning token 对 4 字正文），客户端报
+   * 「模型未返回任何内容 / empty_model_response」。
+   *
+   * 官方 CLI 的做法是两个字段一起发：`enable_thinking = (reasoning_effort !== 'none')`。
+   * 语义：客户端给了 effort 才开思考，没给就明确关掉 —— 与 `is_reasoning` 同源判定。
+   */
+  parameters.enable_thinking = isReasoning;
+
   return {
     request_id: nid,
     request_set_id: randomUUID(),
