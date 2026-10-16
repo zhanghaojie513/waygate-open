@@ -204,9 +204,20 @@ export function ProviderTable({
                       <Tooltip
                         content={(() => {
                           const at = p.protocol === 'qoder' ? '10:05' : '08:05';
-                          return p.signin?.checkedOn
+                          const base = p.signin?.checkedOn
                             ? `最近签到 ${p.signin.checkedOn}${p.signin.lastPoints ? ` · +${p.signin.lastPoints} 积分` : ''}（relay 每天 ${at} 自动签）`
                             : `今天还没签到 —— 点一下立即签（relay 每天 ${at} 也会自动签）`;
+                          /* [v1.6.10] Qoder 补一行**官方标注**（用户口径）：上面的 10:05 是 relay
+                             自己的代签时刻，与官方的 10:00 刷新不是一回事，光给前者会让人以为
+                             "10:05 才有活动"；有效期 30 天更是结果里推不出来的信息。
+                             MiniMax 无此标注，故只对 qoder 追加（两家共用这一个 Tooltip）。 */
+                          return p.protocol === 'qoder' ? (
+                            <>
+                              {base}
+                              <br />
+                              Qoder 官方标注：每日 10:00（UTC+8）刷新，领取后 30 天有效。
+                            </>
+                          ) : base;
                         })()}
                       >
                         {/* ⚠️ 这里**不能**翻 `disabled`：Tooltip 在被包裹元素 `disabled` 时
