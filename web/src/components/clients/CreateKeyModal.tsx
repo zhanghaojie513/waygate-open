@@ -54,7 +54,7 @@ export function CreateKeyModal({
    * 所以这把密钥绑的是"哪个客户端订阅"，而不是某个 UA 工具名 ——
    * 候选因此取**提供商表**，不取 UA 解析出的工具名（那是"哪个工具发的"，另一个维度）。
    * **没有「自定义…」**（2026-10-09 用户要求）：反代场景下提供商只能来自登记表，
-   * 手输等于绑到一个不存在的名字。要绑新的，先去「客户端管理」页登记它。
+   * 手输等于绑到一个不存在的名字。要绑新的，先去「提供商管理」页登记它。
    */
   const providers = useResource(() => api.providers(), [], { cacheKey: 'providers' });
   /* [v0.4.20] 选中的提供商（有序，第 1 项优先级最高）。空数组 = 不绑定。 */
@@ -176,7 +176,7 @@ export function CreateKeyModal({
       }
     >
       <p className="ov-sub">
-        给一个客户端或用途起名。绑定客户端名后，识别规则第 2 条「密钥归属」就能直接命中。
+        给一个提供商或用途起名。绑定提供商名后，识别规则第 2 条「密钥归属」就能直接命中。
       </p>
       <form id="create-key-form" onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <div className="ov-field">
@@ -238,7 +238,7 @@ export function CreateKeyModal({
           {providers.loading ? (
             <div className="ov-hint">正在读取提供商…</div>
           ) : providerOptions.length === 0 ? (
-            <div className="ov-hint">还没有登记任何提供商 —— 先去「客户端管理」页登记。</div>
+            <div className="ov-hint">还没有登记任何提供商 —— 先去「提供商管理」页登记。</div>
           ) : (
             <>
               <div className="pick-list">

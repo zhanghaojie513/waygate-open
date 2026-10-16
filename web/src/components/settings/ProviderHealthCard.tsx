@@ -37,7 +37,7 @@ const PROTOCOL_LABEL: Record<string, string> = {
 export function ProviderHealthCard() {
   const res = useResource(() => api.providers(), [], { cacheKey: 'providers' });
   const rows = res.data?.items ?? [];
-  /* [v1.4.5] 任务面板（从客户端管理的提供商行迁来）：完成态/进度/奖励，只读抽屉。 */
+  /* [v1.4.5] 任务面板（从提供商管理的提供商行迁来）：完成态/进度/奖励，只读抽屉。 */
   const [viewingGrowth, setViewingGrowth] = useState<(typeof rows)[number] | null>(null);
   const growthRes = useResource(() => api.providerGrowthPanel(viewingGrowth!.id), [viewingGrowth?.id], {
     enabled: viewingGrowth !== null,
@@ -54,7 +54,7 @@ export function ProviderHealthCard() {
         <div className="empty-note" style={{ padding: '8px 0' }}>提供商列表没取到，稍后重试。</div>
       ) : rows.length === 0 ? (
         <div className="empty-note" style={{ padding: '8px 0' }}>
-          还没有登记任何提供商 —— 到「客户端管理 → 提供商」新增。
+          还没有登记任何提供商 —— 到「提供商管理 → 提供商」新增。
         </div>
       ) : (
         <div className="tbl-scroll">
@@ -130,7 +130,7 @@ export function ProviderHealthCard() {
                       '—'
                     )}
                   </td>
-                  {/* [v1.4.5] 任务面板入口移到这里（客户端管理行内太挤）：WorkBuddy 有 OAuth 时可看任务完成情况。 */}
+                  {/* [v1.4.5] 任务面板入口移到这里（提供商管理行内太挤）：WorkBuddy 有 OAuth 时可看任务完成情况。 */}
                   <td>
                     {p.protocol === 'openai' && p.wbOAuth?.configured ? (
                       <Tooltip content="查看成长任务的完成情况（进度/奖励/状态，只读）">
@@ -167,7 +167,7 @@ export function ProviderHealthCard() {
         </li>
         <li>
           <b>每日签到</b>：MiniMax Code 由本服务每天 08:05 后自动代签（OAuth 链）。WorkBuddy 分两档：
-          已导入桌面端 OAuth 凭证的（客户端管理 → 提供商 → 导入OAuth）每天 08:05 <b>自动代领</b>
+          已导入桌面端 OAuth 凭证的（提供商管理 → 提供商 → 导入OAuth）每天 08:05 <b>自动代领</b>
           签到 + 成长任务 + 连登兑换；未导入的只做状态同步（上游不允许 API 密钥代领，403 实证）。
           OAuth 与转发用的 API 密钥互不影响（实验实证多会话共存，桌面端不受干扰）。成长任务的
           完成情况点本表「任务」查看（未完成的需在官方客户端真实使用后才能领）。
@@ -177,7 +177,7 @@ export function ProviderHealthCard() {
           <b>MiniMax Code 是真互斥</b> —— refresh token 一次性，且「同一账号同时只有一个有效会话」，
           桌面客户端登录会把本服务顶下线，反之亦然；<b>建议给本服务用专用账号</b>。
           <b>Qoder CN 不互斥</b> —— 支持多会话并存，本服务与桌面客户端可同时用同一账号（实测 2026-10-16），
-          <b>无需</b>专用账号。任一凭证失效时到「客户端管理 → 提供商」重新导入。
+          <b>无需</b>专用账号。任一凭证失效时到「提供商管理 → 提供商」重新导入。
         </li>
         <li>
           <b>Qoder 零内容断流自动重试</b>：Qoder 网关在大上下文时偶发「返回 200 但零字节即断开」，
@@ -191,7 +191,7 @@ export function ProviderHealthCard() {
         </li>
       </ul>
 
-      {/* [v1.4.5] 任务面板抽屉（自客户端管理的提供商行迁来）。 */}
+      {/* [v1.4.5] 任务面板抽屉（自提供商管理的提供商行迁来）。 */}
       {viewingGrowth ? (
         <Drawer
           title={`成长任务 · ${viewingGrowth.name}`}

@@ -155,7 +155,7 @@ export function EditKeyModal({
           {providers.loading ? (
             <div className="ov-hint">正在读取提供商…</div>
           ) : providerOptions.length === 0 ? (
-            <div className="ov-hint">还没有登记任何提供商 —— 先去「客户端管理」页登记。</div>
+            <div className="ov-hint">还没有登记任何提供商 —— 先去「提供商管理」页登记。</div>
           ) : (
             <>
               <div className="pick-list">

@@ -569,7 +569,7 @@ export function makeOverview(win: MockWindow = 'today', nowMs: number = Date.now
      本窗口的积分总额由它给出，模型 / 工具两路再向这个总额对齐。 */
   const clientReqs = apportion(requests, CLIENT_MIX.map((m) => m.requests));
   /* [2026-10-11] 每客户端 tokens：契约 §3.4 要求 `byClient` 带 `tokens`（与 byModel 同口径）。
-     Mock 此前**没给这个字段** —— 于是「客户端用量摘要」在 mock 模式下也整列显示 0，
+     Mock 此前**没给这个字段** —— 于是「提供商用量摘要」在 mock 模式下也整列显示 0，
      正好把真机上那个真实缺陷（SQL 漏了 SUM(total_tokens)）掩盖掉了。
      现在按请求数把 tokens 总额分账到各路，与 metrics.totalTokens 同一总额。 */
   const totalTokens = requests * (TOKENS_PER_REQUEST_PROMPT + TOKENS_PER_REQUEST_COMPLETION);
@@ -794,7 +794,7 @@ export function assertOverviewConsistent(d: OverviewData): void {
   eq('ΣbyClient.share', sum(d.byClient, (r) => r.share), 1);
 
   /* [2026-10-08] byTool 是同一份 requests 的**第三种切法**，所以它也要守同一条口径 ——
-     少这一条，上面三路都对、唯独工具那一栏对不上，而页面上它和「按客户端消耗」
+     少这一条，上面三路都对、唯独工具那一栏对不上，而页面上它和「按提供商消耗」
      是并排的两块，观众一眼就能看出两个总数不一致。 */
   eq('ΣbyTool.credits 与 metrics.creditsUsed', sum(d.byTool, (r) => cents(r.credits)), totalCenti);
   eq('ΣbyTool.requests 与 metrics.requests', sum(d.byTool, (r) => r.requests), d.metrics.requests);
@@ -1034,9 +1034,9 @@ export function makeSettings(): SettingsData {
         id: 'credential',
         label: '提供商策略',
         items: [
-          { key: 'credential.source', label: '活动提供商', value: 'ck_x••••3f7a', type: 'text', why: '当前生效提供商的凭证掩码。各家凭证形态不同：WorkBuddy 是 ck_ 开头的 API 密钥、MiniMax Code 是 refresh token（mmort_）或 M Plan 平台 key、Qoder CN 是身份 JSON。逐家查看/修改请到「客户端管理 → 提供商」。', readonly: true, requiresRestart: false },
+          { key: 'credential.source', label: '活动提供商', value: 'ck_x••••3f7a', type: 'text', why: '当前生效提供商的凭证掩码。各家凭证形态不同：WorkBuddy 是 ck_ 开头的 API 密钥、MiniMax Code 是 refresh token（mmort_）或 M Plan 平台 key、Qoder CN 是身份 JSON。逐家查看/修改请到「提供商管理 → 提供商」。', readonly: true, requiresRestart: false },
           { key: 'credential.status', label: '凭证状态', value: '有效', type: 'badge', why: '活动提供商的凭证是否已配置（「有效」= 文件存在且非空）。只读运行态，只反映「填了没有」，不解析凭证到期时间 —— 各家续期方式不同：MiniMax 自动刷新 refresh token、Qoder 需重新导入、WorkBuddy 为静态密钥。', readonly: true, requiresRestart: false },
-          { key: 'upstream.baseUrl', label: '提供商地址', value: '（按家维护于「客户端管理 → 提供商」）', type: 'text', why: '【只读】多提供商后，出站转发、目录拉取、额度探测都读各自提供商的 base_url；本项仅作说明位。改地址请到「客户端管理 → 提供商 → 修改」。', readonly: true, requiresRestart: false },
+          { key: 'upstream.baseUrl', label: '提供商地址', value: '（按家维护于「提供商管理 → 提供商」）', type: 'text', why: '【只读】多提供商后，出站转发、目录拉取、额度探测都读各自提供商的 base_url；本项仅作说明位。改地址请到「提供商管理 → 提供商 → 修改」。', readonly: true, requiresRestart: false },
           { key: 'upstream.userAgent', label: 'WorkBuddy UA 基准值', value: 'WorkBuddy/5.8.0', type: 'text', why: '【仅对 WorkBuddy（openai 协议）生效】出站 User-Agent 的基准值，会展开成官方桌面端三段式。官方客户端升版后改这里即可跟上。MiniMax Code 固定发 MiniMaxCode、Qoder CN 固定发 qodercli/<ver>，不受本项影响。留空则沿用入站 UA。', readonly: false, requiresRestart: false },
           { key: 'upstream.spoofUA', label: '请求头伪装（WorkBuddy）', value: true, type: 'switch', why: '【仅对 WorkBuddy（openai 协议）生效】开启时把出站请求伪装成官方 WorkBuddy 桌面端：UA 展开为三段式，并注入用量归因头族，个人中心「使用端」才归因到 WorkBuddy。MiniMax Code 走标准 Anthropic SDK 头、Qoder CN 走 COSY 签名头，本开关对它们无效果。', readonly: false, requiresRestart: false },
           { key: 'upstream.promptRewrite', label: 'system 提示改写', value: 'template', type: 'select', options: [{ value: 'template', label: '模板行改写（默认·推荐）' }, { value: 'neutral', label: '中性提示全量替换（激进）' }, { value: 'off', label: '关闭' }], why: '转发前对 system 正文做改写，三家提供商都会应用。改写要解决的主要是 WorkBuddy 的 11128 渠道校验（按 system 模板指纹拦截 Claude Code 系客户端）；MiniMax Code / Qoder CN 无此校验。「模板行改写」语义等价地改标签行，被拒时自动降级重试一次；「中性替换」整段换掉；「关闭」即不改写。改后立即生效。', readonly: false, requiresRestart: false },

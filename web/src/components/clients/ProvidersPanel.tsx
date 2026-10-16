@@ -20,7 +20,7 @@ import { useToast } from '../ui/Toast';
 import { CopyCommand } from '../ui/CopyCommand';
 
 /**
- * 提供商与客户端面板（2026-10-09 从设置页搬来，随后与客户端用量**合并成一张表**）。
+ * 提供商面板（2026-10-09 从设置页搬来，随后与用量**合并成一张表**）。
  *
  * ## 为什么合成一张
  * 这个部署是**反代一个客户端订阅** —— 提供商本身就是"某个客户端的订阅"，
@@ -40,7 +40,7 @@ export function ProvidersPanel({ window }: { window: TimeWindow }) {
   const catalogRes = useResource(() => api.catalog(viewingModels?.id), [viewingModels?.id], {
     cacheKey: viewingModels?.id ? `catalog:${viewingModels.id}` : 'catalog',
   });
-  /* 客户端用量按本页的时间选择器取 —— 与表格头部的窗口选择器同源。 */
+  /* 提供商用量按本页的时间选择器取 —— 与表格头部的窗口选择器同源。 */
   const clientsRes = useResource(() => api.clients(window), [window], { cacheKey: `clients:${window}` });
   /* [v1.6.12] 「导入客户端」弹窗（选客户端 → 官方授权 → 自动落盘凭证）。
      [v1.6.11] 凭证的唯一入口（ck_ 退役、手填创建下线）；传 provider = 对该行重新导入。 */
@@ -258,7 +258,7 @@ export function ProvidersPanel({ window }: { window: TimeWindow }) {
             </button>
           }
         >
-          客户端用量没取到：{errorDetail(clientsRes.error)}
+          提供商用量没取到：{errorDetail(clientsRes.error)}
         </Banner>
       ) : null}
 
@@ -328,7 +328,7 @@ export function ProvidersPanel({ window }: { window: TimeWindow }) {
           三家凭证都来自各客户端的<b>官方授权</b>（用户无需也无法手填）——点「重新导入授权」即可换账号或刷新令牌；
           令牌只存在服务端，任何接口都读不回完整值。
           <br />
-          {'用量按'}<b>客户端</b>{'聚合、不按提供商：请求记录本身没有 provider 维度，因此不能把历史日志逐条归给某一家；未能确定的提供商用量保持为空。'}
+          {'行内三列用量按'}<b>提供商</b>{'归属：由「模型 id → 生效目录的提供商」解析（请求记录本身没有 provider 维度）。模型不属于任何生效目录的行归到「未归属」，不冒充某一家。'}
         </div>
       </Panel>
 

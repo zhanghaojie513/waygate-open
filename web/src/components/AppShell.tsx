@@ -19,7 +19,7 @@ import { Tooltip } from './ui/Tooltip';
 const NAV: Array<{ route: Route; label: string; icon: ReactNode }> = [
   { route: 'overview', label: '概览', icon: <LayoutGrid size={18} /> },
   { route: 'usage', label: '积分与用量', icon: <ChartColumn size={18} /> },
-  { route: 'clients', label: '客户端管理', icon: <Cable size={18} /> },
+  { route: 'clients', label: '提供商管理', icon: <Cable size={18} /> },
   { route: 'keys', label: 'API Keys', icon: <KeyRound size={18} /> },
   { route: 'requests', label: '请求日志', icon: <ScrollText size={18} /> },
   { route: 'settings', label: '设置', icon: <SlidersHorizontal size={18} /> },

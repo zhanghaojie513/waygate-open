@@ -93,7 +93,7 @@ export function QuotaSourceCard({
               <i>本机日志按天聚合</i>
             </li>
             <li>
-              <b>按模型 / 按客户端消耗</b>
+              <b>按模型 / 按提供商消耗</b>
               <i>同一次聚合的一体两面</i>
             </li>
           </ul>

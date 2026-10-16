@@ -1047,7 +1047,7 @@ completion 里，上游实扣 credit 也已含）。历史行（v6 之前）为 
 
 > **credential 组的渲染归属（2026-10-09 定案）**：组里 5 项分两类 ——
 > **身份三键**（`credential.source` / `credential.status` / `upstream.baseUrl`）是**活提供商**的属性，
-> 由「客户端管理 → 提供商」表的「修改」抽屉呈现；
+> 由「提供商管理」表的「修改」抽屉呈现；
 > **全局策略两项**（`upstream.spoofUA` / `upstream.promptRewrite`）不随提供商而变，
 > **留在设置页**渲染。设置页逐项滤掉身份三键（不整组滤）——
 > 此前整组滤掉，导致 `upstream.spoofUA` **没有任何界面可改**（它从未被渲染过）。
@@ -1068,11 +1068,11 @@ completion 里，上游实扣 credit 也已含）。历史行（v6 之前）为 
     ]},
     {"id":"credential","label":"提供商策略","items":[
       {"key":"credential.source","label":"活动提供商","value":"ck_x••••3f7a","type":"text",
-       "why":"当前生效提供商的凭证掩码。各家凭证形态不同：WorkBuddy 是 ck_ 开头的 API 密钥、MiniMax Code 是 refresh token（mmort_）或 M Plan 平台 key、Qoder CN 是身份 JSON。逐家查看/修改请到「客户端管理 → 提供商」。","readonly":true,"requiresRestart":false},
+       "why":"当前生效提供商的凭证掩码。各家凭证形态不同：WorkBuddy 是 ck_ 开头的 API 密钥、MiniMax Code 是 refresh token（mmort_）或 M Plan 平台 key、Qoder CN 是身份 JSON。逐家查看/修改请到「提供商管理」。","readonly":true,"requiresRestart":false},
       {"key":"credential.status","label":"凭证状态","value":"有效","type":"badge",
        "why":"活动提供商的凭证是否已配置（「有效」= 文件存在且非空）。只读运行态，只反映「填了没有」，不解析凭证到期时间 —— 各家续期方式不同：MiniMax 自动刷新 refresh token、Qoder 需重新导入、WorkBuddy 为静态密钥。","readonly":true,"requiresRestart":false},
-      {"key":"upstream.baseUrl","label":"提供商地址","value":"（按家维护于「客户端管理 → 提供商」）","type":"text",
-       "why":"【只读，v0.6.5 起】多提供商后，出站转发、目录拉取、额度探测都读各自提供商的 base_url；本项仅作说明位。改地址请到「客户端管理 → 提供商 → 修改」。","readonly":true,"requiresRestart":false},
+      {"key":"upstream.baseUrl","label":"提供商地址","value":"（按家维护于「提供商管理」）","type":"text",
+       "why":"【只读，v0.6.5 起】多提供商后，出站转发、目录拉取、额度探测都读各自提供商的 base_url；本项仅作说明位。改地址请到「提供商管理 → 配置」。","readonly":true,"requiresRestart":false},
       {"key":"upstream.userAgent","label":"WorkBuddy UA 基准值","value":"WorkBuddy/5.8.0","type":"text",
        "why":"【仅对 WorkBuddy（openai 协议）生效，v0.6.5 起可改】出站 User-Agent 的基准值，会展开成官方桌面端三段式（WorkBuddy/<ver> WorkBuddy/<ver> CLI/<cli>）。官方客户端升版后改这里即可跟上，无需改代码发版。MiniMax Code 固定发 MiniMaxCode、Qoder CN 固定发 qodercli/<ver>，不受本项影响。留空则沿用入站 UA。","readonly":false,"requiresRestart":false},
       {"key":"upstream.spoofUA","label":"请求头伪装（WorkBuddy）","value":true,"type":"switch",
@@ -1305,7 +1305,7 @@ CONTROL var-lib-relay: WRITE OK   ← touch /var/lib/relay/...
 
 > **[v0.6.5] 多提供商对齐**：本部署已从「单上游」演进为**三家提供商并存**
 > （WorkBuddy=openai / MiniMax Code=anthropic / Qoder CN=qoder，见 §3.12）。
-> 据此做的设置页调整：① 组 `credential` 更名「**提供商策略**」（身份键已移至「客户端管理 → 提供商」）；
+> 据此做的设置页调整：① 组 `credential` 更名「**提供商策略**」（身份键已移至「提供商管理」）；
 > ② `upstream.baseUrl` 由可写改为**只读说明位**（出站读 `provider.base_url`）；
 > ③ 新增可写 `upstream.userAgent`（WorkBuddy UA 基准值，跟随官方客户端版本不用改代码）；
 > ④ `upstream.spoofUA` / `upstream.promptRewrite` 的 `why` 如实标注**仅 openai 协议生效**（后者"三家都改写，但 11128 校验是 WorkBuddy 专有"）；
@@ -1332,7 +1332,7 @@ CONTROL var-lib-relay: WRITE OK   ← touch /var/lib/relay/...
 
 | key | 为什么只读 |
 |---|---|
-| `upstream.baseUrl` | **[v0.6.5 起只读]** 多提供商后，出站/目录/额度都读各自 `provider.base_url`（§3.12）；本项仅作"地址已按家维护"的说明位。改地址请到「客户端管理 → 提供商」。**字段本体保留**（首次种子与无 providers 的老部署回落仍读它）。 |
+| `upstream.baseUrl` | **[v0.6.5 起只读]** 多提供商后，出站/目录/额度都读各自 `provider.base_url`（§3.12）；本项仅作"地址已按家维护"的说明位。改地址请到「提供商管理」。**字段本体保留**（首次种子与无 providers 的老部署回落仍读它）。 |
 | `service.autostart` | 由部署时的 systemd 单元管理（`systemctl enable relay`）；控制台不设开关，避免与实际服务管理状态不一致。 |
 | `service.forceStreamRewrite` | 上游只接受流式请求，本服务恒开此兜底，**不可关闭**。 |
 | `limits.retryOn429` | **429 自动重试尚未实现**；此值当前不产生任何行为。 |
@@ -1399,7 +1399,7 @@ CONTROL var-lib-relay: WRITE OK   ← touch /var/lib/relay/...
 > 也得能先把密钥建出来。
 >
 > **为什么候选是提供商、不是工具名**：本项目的形态是**反代客户端订阅** ——
-> **提供商 ≡ 客户端**（所以「客户端管理」即「提供商管理」）。这把密钥绑的是
+> **提供商 ≡ 客户端**（所以「提供商管理」即「提供商管理」）。这把密钥绑的是
 > "哪个客户端订阅"，而 UA 解析出的工具名回答的是"哪个工具发的"，是**另一个维度**。
 > 不硬编码候选清单：真源是 `providers` 表，抄一份就多一个会漂移的副本。
 > 绑定名会**覆盖**密钥名进入显示名回落链（见 §4 的回落链），所以"同一家两种写法
@@ -1543,7 +1543,7 @@ settings 同步热更；改凭证时热载入内存。
 
 > **与既有设置的关系**：`credential.source` / `credential.status` / `upstream.baseUrl`
 > 三个设置项**继续存在**，描述的是"全局出站"的当前落点（= 活提供商）。控制台的
-> 「提供商」**表**读 `/api/providers`，位置在**「客户端管理」页**（2026-10-09 从设置页搬来，
+> 「提供商」**表**读 `/api/providers`，位置在**「提供商管理」页**（2026-10-09 从设置页搬来，
 > 与本页「客户端用量」表同构）；设置页只渲染它剩下的**全局策略两项**（见 §3.8 的归属说明），
 > 不渲染这三个键。
 >
@@ -1563,7 +1563,7 @@ settings 同步热更；改凭证时热载入内存。
 
 ## 4. 客户端识别（四级规则）
 
-决定 `requests.client` 与 `requests.client_rule`，是「客户端管理」「按客户端消耗」两个视图的唯一数据源。
+决定 `requests.client` 与 `requests.client_rule`，是「提供商管理」「按客户端消耗」两个视图的唯一数据源。
 
 | 优先级 | 依据 | 示例 | 落到 `client_rule` |
 |---|---|---|---|

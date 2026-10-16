@@ -20,7 +20,7 @@ import { ProviderHealthCard } from '../components/settings/ProviderHealthCard';
  * 提供商**身份**键 —— 密钥来源 / 密钥状态。
  *
  * 契约 §3.12 写明「设置页不再单独渲染这两个键」：它们是**活提供商**的属性，
- * 由「客户端管理 → 提供商」表的「修改」抽屉呈现。
+ * 由「提供商管理 → 提供商」表的「修改」抽屉呈现。
  *
  * [v0.6.5] `upstream.baseUrl` 已从滤除列表移出 —— 后端把它改成了**只读说明项**
  * （「提供商地址已按家维护」），保留显示反而能让用户找到正确入口，故留在页面上。
@@ -41,7 +41,7 @@ const NAV_TONE: Record<string, NavTone> = {
   mapping: 'cyan',
 };
 
-/** 提供商配置在客户端管理页即时保存；其余设置项批量保存，危险操作二次确认。 */
+/** 提供商配置在提供商管理页即时保存；其余设置项批量保存，危险操作二次确认。 */
 export function SettingsPage() {
   const res = useResource(() => api.settings(), [], { cacheKey: 'settings' });
   const [edits, setEdits] = useState<Record<string, unknown>>({});
@@ -57,7 +57,7 @@ export function SettingsPage() {
   const groups: SettingGroup[] = res.data?.groups ?? [];
 
   /** [v7.0] 导航项**由真实 group 数据派生** —— 不硬编码组名，改后端设置组不用改这里。
-   [2026-10-12 用户要求] 去掉「提供商健康」入口：它是只读总览，属于「客户端管理 → 提供商」
+   [2026-10-12 用户要求] 去掉「提供商健康」入口：它是只读总览，属于「提供商管理 → 提供商」
    的地盘；放在设置页的分组导航里会让导航读起来像"这里能改提供商状态"，而它一个字都改不了。
    `ProviderHealthCard` 本身仍在「接入地址」那一节渲染（它是接入信息的必要补充），
    只是不再单独占一个导航项。 */
@@ -404,7 +404,7 @@ function groupHint(id: string): string {
     service: '进程监听与启动方式',
     /* [v0.6.5] 组名从「上游连接」改为「提供商策略」：本部署已是三家提供商并存
        （WorkBuddy / MiniMax Code / Qoder CN），提供商身份（地址/凭证/模型清单）
-       在「客户端管理 → 提供商」；本组只剩跨提供商的全局策略，且各项生效范围不同
+       在「提供商管理 → 提供商」；本组只剩跨提供商的全局策略，且各项生效范围不同
        （userAgent / spoofUA 仅 WorkBuddy；promptRewrite 三家都改写）。 */
     credential: '跨提供商的全局策略（部分项仅对 WorkBuddy 生效）',
     /* [v0.6.5] 如实化：轮询只对 WorkBuddy 生效；MiniMax 走独立账本；Qoder 走 v2/me/usage（随活动检查拉取）。 */

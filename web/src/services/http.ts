@@ -95,17 +95,23 @@ export function isAbortError(err: unknown): boolean {
 export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const method = (init?.method ?? 'GET').toUpperCase();
   const guard = withTimeout(init?.signal, method === 'GET' ? READ_TIMEOUT_MS : null);
+  /* ★ 头必须用 `Headers` 合并：它按**大小写不敏感**去重。
+     此前用普通对象字面量展开 —— 调用方写 `'content-type'`（小写）而这里默认给
+     `'Content-Type'`，两个键在 JS 里不相等 → 都被保留 → `fetch` 归一化后
+     **拼接**成 `application/json, application/json` → Fastify 无法解析该媒体类型，
+     在**进入路由前**就抛 415（前端只看到 `40001 Unsupported Media Type`，
+     且 SessionGuard 都来不及跑 —— 所以是 415 而不是 403）。
+     实测复现：`-H "content-type: application/json, application/json"` → 415。 */
+  const headers = new Headers(init?.headers);
+  if (!headers.has('accept')) headers.set('Accept', 'application/json');
+  if (init?.body && !headers.has('content-type')) headers.set('Content-Type', 'application/json');
   let res: Response;
   try {
     res = await fetch(path, {
       ...init,
       signal: guard.signal,
       credentials: 'same-origin',
-      headers: {
-        Accept: 'application/json',
-        ...(init?.body ? { 'Content-Type': 'application/json' } : null),
-        ...init?.headers,
-      },
+      headers,
     });
   } catch (err) {
     guard.dispose();

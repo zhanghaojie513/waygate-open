@@ -231,7 +231,7 @@ export class ProxyService {
         httpStatus: 503,
         code: 'no_active_provider',
         apiCode: ApiCode.INTERNAL,
-        message: '没有生效中的提供商 —— 到「客户端管理 → 提供商」启用至少一家。',
+        message: '没有生效中的提供商 —— 到「提供商管理」启用至少一家。',
       });
     }
     const byName = new Map(actives.map((p) => [p.name, p]));
@@ -365,7 +365,7 @@ export class ProxyService {
           httpStatus: 502,
           code: 'upstream_credential_invalid',
           message: missing
-            ? `提供商 ${provider.name} 未导入授权 —— 到「客户端管理 → 配置 → 重新导入授权」完成官方授权。`
+            ? `提供商 ${provider.name} 未导入授权 —— 到「提供商管理 → 重新导入授权」完成官方授权。`
             : `获取 WorkBuddy access token 失败：${(err as Error).message}`,
         }), missing ? 'missing wb oauth credential' : 'wb token refresh failed'),
       };

@@ -52,7 +52,7 @@ export function OverviewPage({ navigate }: { navigate: (r: Route) => void }) {
   const avgRpm = d && winMinutes ? d.metrics.requests / winMinutes : null;
   const avgTpm = d && winMinutes ? d.metrics.totalTokens / winMinutes : null;
 
-  /* [v0.5.16 用户要求] 「请求数」「已消耗积分」指标卡悬停给按客户端拆分 ——
+  /* [v0.5.16 用户要求] 「请求数」「已消耗积分」指标卡悬停给按提供商拆分 ——
      与用量页指标卡同一格式；byClient 的归属口径是「模型→目录 provider」（v0.5.15）。 */
   const clientTip = (kind: 'requests' | 'credits'): ReactNode => {
     if (!d || d.byClient.length === 0) return undefined;
@@ -167,7 +167,7 @@ export function OverviewPage({ navigate }: { navigate: (r: Route) => void }) {
               <MetricCard
                 label="平均耗时"
                 value={formatDuration(d.metrics.avgLatencyMs)}
-                detail={`${formatInt(d.metrics.activeClients)} 个客户端活跃`}
+                detail={`${formatInt(d.metrics.activeClients)} 个密钥活跃`}
                 tone="rose"
                 icon={<Timer size={14} />}
               />
@@ -217,16 +217,16 @@ export function OverviewPage({ navigate }: { navigate: (r: Route) => void }) {
               </Panel>
             ) : null}
 
-            {/* [v0.5.2] 客户端用量摘要 —— 回答「谁在用」：哪把密钥消耗了多少。
+            {/* [v0.5.2] 提供商用量摘要 —— 回答「谁在用」：哪把密钥消耗了多少。
                 与下方模型摘要（"花在哪"）构成两个正交视角，数据同源同窗口。 */}
-            <Panel title="客户端用量摘要" aside={<Pill>{d.byClient.length} 个客户端 · 按 Token 排序</Pill>}>
+            <Panel title="提供商用量摘要" aside={<Pill>{d.byClient.length} 个提供商 · 按 Token 排序</Pill>}>
               {d.byClient.length > 0 ? (
                 <div className="tbl-scroll">
                   <table className="tbl">
-                    <caption className="sr-only">客户端用量摘要，共 {d.byClient.length} 个客户端</caption>
+                    <caption className="sr-only">提供商用量摘要，共 {d.byClient.length} 个提供商</caption>
                     <thead>
                       <tr>
-                        <th scope="col">客户端</th>
+                        <th scope="col">提供商</th>
                         <th scope="col" className="r">请求次数</th>
                         <th scope="col" className="r">Token 消耗</th>
                         <th scope="col" className="r">消耗积分</th>
@@ -240,7 +240,7 @@ export function OverviewPage({ navigate }: { navigate: (r: Route) => void }) {
                       {[...d.byClient].sort((a, b) => (b.tokens ?? 0) - (a.tokens ?? 0)).slice(0, 6).map((c) => (
                         <tr key={c.clientId ?? c.client ?? 'unknown'}>
                           <td className="td-strong">
-                            {/* 悬停客户端名 → 该客户端的按模型消耗；Portal Tooltip 会脱离表格滚动容器定位。 */}
+                            {/* 悬停提供商名 → 该提供商的按模型消耗；Portal Tooltip 会脱离表格滚动容器定位。 */}
                             <Tooltip content={<ClientModelTip row={c} />}>
                               <span>{c.client ?? '未识别'}</span>
                             </Tooltip>
@@ -260,7 +260,7 @@ export function OverviewPage({ navigate }: { navigate: (r: Route) => void }) {
                   </table>
                 </div>
               ) : (
-                <div className="empty-note" style={{ padding: '24px 0' }}>{WINDOW_LABEL[d.window]}没有客户端消耗记录。</div>
+                <div className="empty-note" style={{ padding: '24px 0' }}>{WINDOW_LABEL[d.window]}没有提供商消耗记录。</div>
               )}
             </Panel>
 

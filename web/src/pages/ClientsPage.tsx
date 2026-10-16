@@ -6,7 +6,7 @@ import { ProvidersPanel } from '../components/clients/ProvidersPanel';
 import { WINDOW_OPTIONS } from '../lib/console';
 
 /**
- * 客户端管理 —— **一张表**：提供商行 = 汇总，其下嵌套客户端行 = 明细。
+ * 提供商管理 —— **一张表**：提供商行 = 汇总，其下嵌套客户端行 = 明细。
  *
  * [2026-10-09] 本页原先有两张表（客户端用量 + 提供商），合并成一张：
  * 这个部署是**反代一个客户端订阅**，提供商本身就是"某个客户端的订阅"，
@@ -21,7 +21,7 @@ export function ClientsPage() {
   return (
     <div className="view on">
       <Topbar
-        title="客户端管理"
+        title="提供商管理"
         actions={<Select value={win} options={WINDOW_OPTIONS} onChange={setWin} width={148} />}
       />
       <div className="view-body stack">

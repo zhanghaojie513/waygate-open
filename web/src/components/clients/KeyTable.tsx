@@ -38,7 +38,7 @@ export function KeyTable({
       <thead>
         <tr>
           <th scope="col">名称 / 密钥</th>
-          <th scope="col">绑定客户端</th>
+          <th scope="col">绑定提供商</th>
           <th scope="col">权限范围</th>
           <th scope="col" className="r">近24h请求</th>
           <th scope="col" className="r">最后使用</th>

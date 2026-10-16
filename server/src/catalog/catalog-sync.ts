@@ -282,7 +282,7 @@ export class CatalogSyncService implements OnApplicationBootstrap, OnModuleDestr
           httpStatus: 400,
           code: 'upstream_credential_missing',
           apiCode: ApiCode.BAD_PARAM,
-          message: 'WorkBuddy 尚未导入授权，无法实测模型。请到「客户端管理 → 配置 → 重新导入授权」完成官方授权。',
+          message: 'WorkBuddy 尚未导入授权，无法实测模型。请到「提供商管理 → 重新导入授权」完成官方授权。',
         });
       }
     }

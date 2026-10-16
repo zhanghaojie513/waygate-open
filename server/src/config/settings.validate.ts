@@ -34,8 +34,8 @@ const READONLY_HINT: Record<string, string> = {
   'limits.retryCreditToOwner': '依赖自动重试，而自动重试尚未实现，不能通过 PUT 修改。',
   'logs.dir': '日志由 systemd / journald 收集，控制台不维护日志目录，不能通过 PUT 修改。',
   /* [v0.6.5] 多提供商后，出站/目录/额度都读 provider.base_url；这个全局位只作
-     种子/老部署回落，改它不影响出站。提供商的地址请在「客户端管理 → 提供商」改。 */
-  'upstream.baseUrl': '提供商地址已按家维护（见「客户端管理 → 提供商」），此全局位不再可改。',
+     种子/老部署回落，改它不影响出站。提供商的地址请在「提供商管理」改。 */
+  'upstream.baseUrl': '提供商地址已按家维护（见「提供商管理」），此全局位不再可改。',
 };
 
 export function validateListenHost(value: unknown): SettingCheck {

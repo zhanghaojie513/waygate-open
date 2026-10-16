@@ -22,7 +22,7 @@ export function signinGroup(settings: RelaySettings): SettingGroup {
         label: 'WorkBuddy 签到状态同步',
         value: settings.signin.workBuddyEnabled,
         type: 'switch',
-        why: '每日 08:05 后自动为 WorkBuddy（openai 协议）提供商签到领积分（100/天 + 连签加成），凭证用已导入的授权，对客户端无影响。关闭只停自动，客户端管理页的手动签到按钮不受影响。MiniMax Code 的签到恒开（其凭证链要求由 relay 代签，客户端不再登录）。',
+        why: '每日 08:05 后自动为 WorkBuddy（openai 协议）提供商签到领积分（100/天 + 连签加成），凭证用已导入的授权，对客户端无影响。关闭只停自动，提供商管理页的手动签到按钮不受影响。MiniMax Code 的签到恒开（其凭证链要求由 relay 代签，客户端不再登录）。',
         readonly: false,
         requiresRestart: false,
       },

@@ -280,7 +280,7 @@ export const api = {
   /** [v0.5.6] 立即签到。 */
   /** [v1.4.0] 导入 WorkBuddy OAuth 凭证（领取域：签到代领/成长任务）。 */
   providerOauthImport(id: string, payload: unknown): Promise<{ ok: boolean; message: string }> {
-    return apiRequestGuarded(`/api/providers/${encodeURIComponent(id)}/oauth-import`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+    return apiRequestGuarded(`/api/providers/${encodeURIComponent(id)}/oauth-import`, { method: 'POST', body: JSON.stringify(payload) });
   },
 
   /**
@@ -292,7 +292,6 @@ export const api = {
     /* 带空 JSON body：服务端 content-type 为 application/json 时 Fastify 要求 body 非空。 */
     return apiRequestGuarded(`/api/providers/${encodeURIComponent(id)}/import-local`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
       body: '{}',
     });
   },
@@ -305,7 +304,6 @@ export const api = {
     if (MOCKS_ENABLED) return mockApi.providerImportDeviceStart(id);
     return apiRequestGuarded(`/api/providers/${encodeURIComponent(id)}/import-device/start`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
       body: '{}',
     });
   },
@@ -315,7 +313,6 @@ export const api = {
     if (MOCKS_ENABLED) return mockApi.providerImportDevicePoll(id);
     return apiRequestGuarded(`/api/providers/${encodeURIComponent(id)}/import-device/poll`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
       body: '{}',
     });
   },
@@ -325,7 +322,6 @@ export const api = {
     if (MOCKS_ENABLED) return mockApi.providerImportDeviceCancel(id);
     return apiRequestGuarded(`/api/providers/${encodeURIComponent(id)}/import-device/cancel`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
       body: '{}',
     });
   },

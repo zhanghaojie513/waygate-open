@@ -8,7 +8,7 @@ import type { RuntimeInfo, SettingGroup } from './types';
  * 本部署已从**单上游**演进为**多提供商并存**（WorkBuddy=openai / MiniMax Code=anthropic /
  * Qoder CN=qoder，各按 `providers` 表一行、各带自己的地址/凭证/模型目录）。
  * 旧文案仍写「你那把 ck_ 密钥」「WorkBuddy 桌面端」，把一家当成全局 —— 会直接误导。
- * 且**提供商身份（地址 / 凭证 / 模型清单）已整体移到「客户端管理 → 提供商」**，
+ * 且**提供商身份（地址 / 凭证 / 模型清单）已整体移到「提供商管理」**，
  * 本组只剩**跨提供商的全局策略**；下面每一项的生效范围各不相同（见各 why）。
  *
  * ## 各项的生效范围（务必与实现一致，勿再笼统写"全局"）
@@ -26,7 +26,7 @@ export function credentialGroup(settings: RelaySettings, runtime: RuntimeInfo): 
         label: '活动提供商',
         value: runtime.credentialSource,
         type: 'text',
-        why: '当前生效提供商的凭证摘要（各家形态不同：WorkBuddy = 官方 OAuth 授权的账号前缀、MiniMax Code = 登录态 refresh token、Qoder CN = 身份 JSON）。逐家查看 / 重新导入请到「客户端管理 → 提供商 → 重新导入授权」。',
+        why: '当前生效提供商的凭证摘要（各家形态不同：WorkBuddy = 官方 OAuth 授权的账号前缀、MiniMax Code = 登录态 refresh token、Qoder CN = 身份 JSON）。逐家查看 / 重新导入请到「提供商管理 → 重新导入授权」。',
         readonly: true,
         requiresRestart: false,
       },
@@ -42,9 +42,9 @@ export function credentialGroup(settings: RelaySettings, runtime: RuntimeInfo): 
       {
         key: 'upstream.baseUrl',
         label: '提供商地址',
-        value: '（按家维护于「客户端管理 → 提供商」）',
+        value: '（按家维护于「提供商管理」）',
         type: 'text',
-        why: '【只读】多提供商后，出站转发、目录拉取、额度探测都读各自提供商的 base_url；本项曾是可改的全局地址，现仅作说明位。改地址请到「客户端管理 → 提供商 → 修改」。',
+        why: '【只读】多提供商后，出站转发、目录拉取、额度探测都读各自提供商的 base_url；本项曾是可改的全局地址，现仅作说明位。改地址请到「提供商管理 → 配置」。',
         readonly: true,
         requiresRestart: false,
       },

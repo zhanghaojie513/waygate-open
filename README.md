@@ -8,7 +8,7 @@
 [![NestJS](https://img.shields.io/badge/NestJS-12-E0234E?style=flat-square)](https://nestjs.com)
 [![SQLite](https://img.shields.io/badge/SQLite-better--sqlite3-003B57?style=flat-square)](https://github.com/WiseLibs/better-sqlite3)
 [![Node](https://img.shields.io/badge/Node-%E2%89%A522.9-3C873A?style=flat-square)](https://nodejs.org)
-[![version](https://img.shields.io/badge/version-1.6.11-4A38C0?style=flat-square)](https://github.com/zhanghaojie513/waygate-open/releases)
+[![version](https://img.shields.io/badge/version-1.6.12-4A38C0?style=flat-square)](https://github.com/zhanghaojie513/waygate-open/releases)
 [![tests](https://img.shields.io/badge/tests-732%20passed-0A7247?style=flat-square)](./server)
 
 ![途关 · Waygate](docs/img/intro.png)
@@ -28,7 +28,7 @@
 
 ## 控制台一览
 
-| 概览（按客户端归属的用量摘要） | 积分与用量（趋势 / 模型明细） |
+| 概览（按提供商归属的用量摘要） | 积分与用量（趋势 / 模型明细） |
 | --- | --- |
 | ![概览](docs/img/console-overview.png) | ![积分与用量](docs/img/console-usage.png) |
 
@@ -41,9 +41,9 @@
 - **双方言出口**：`/v1/chat/completions`（OpenAI 兼容）与 `/v1/messages`（Anthropic 兼容），流式/非流式；三种上游方言自动翻译
 - **多提供商**：目录按 `(provider_id, id)` 分区；来源分 `seed / upstream / observed / manual` 四类，observed 由真实流量并入；三家可同时生效
 - **导入客户端**（v1.6.11，本版起为**唯一**凭证入口）：控制台选客户端 → 跳各自**官方授权页** → 回来自动落盘凭证。三家的授权机制各不相同（WorkBuddy 业务码判等待 / MiniMax PKCE 设备码 / Qoder PKCE + 404 判等待），服务端按协议分派；私有状态（`device_code` / `code_verifier`）只存服务端，**绝不回传浏览器**。三家凭证都在客户端登录态里、用户拿不到，因此**不提供手填**（WorkBuddy 原用的 `ck_` 密钥已退役，转发也改走 OAuth）——行内「重新导入授权」用于换账号 / 刷新令牌
-- **API 密钥**：绑定客户端优先级、权限范围（全部/按族/按模型/按标签）、IP 上限、token 配额、IP 白名单
+- **API 密钥**：绑定提供商优先级、权限范围（全部/按族/按模型/按标签）、IP 上限、token 配额、IP 白名单
 - **请求日志**：提供商列按「模型 id → 目录归属」解析（`requests` 无 provider_id，绑定名只代表路由偏好）；SSE 流也留痕；**游标（keyset）分页**——翻页期间的新写入不产生重复行；按 `logs.retainDays` 每日自动清理过期日志（启动即补跑停机期间欠的账）
-- **积分与用量**：趋势图（Token / 请求数双口径，**等距时间轴**，空桶补零）、按模型 / 按客户端拆分、缓存命中率、缓存 token 计量（Anthropic 口径：prompt = input + cache_creation + cache_read）
+- **积分与用量**：趋势图（Token / 请求数双口径，**等距时间轴**，空桶补零）、按模型 / 按提供商拆分、缓存命中率、缓存 token 计量（Anthropic 口径：prompt = input + cache_creation + cache_read）
 - **积分账本**：MiniMax `credit/details` 真实余额（精确到 0.01）；凭证 refresh token 自动续期 + 每日签到（专用账号后即可代签）；WorkBuddy 资源包聚合余额（`get-user-resource` POST 实测口径）
 - **Qoder 签到与积分**（v1.6.0，积分口径 v1.6.1 更正）：`campaigns` 签到代领（每日 100 Credits，进**资源包**）+ 积分账本并入概览。走 `openapi.qoder.com.cn`，Bearer 令牌鉴权（**无需 COSY 签名**——那套只用于聊天路径），不顶掉桌面登录。**余额口径**：`v2/me/usage` 给真实余额（`userQuota` 套餐内 + `addOnQuota` 资源包），账本「发放/剩余/已消耗」为真实值；该端点**不提供到期时刻**，故「最近过期」列显示 `—`。另注意 `credits-summary.totalCredits` 是**历史累计消耗**（等于逐日用量之和），与余额不是一回事，单列展示不混算
 - **WorkBuddy 领取域**（v1.4.0；v1.6.11 起与转发统一）：签到代领 + 成长任务 + 连登兑换走**用户会话域**（OAuth，`providers/<id>.oauth`，多会话共存不互踢）——正是这条链路让 `ck_` 得以整体退役。诚实边界：任务多为「体验 XX」型，前置条件不满足就如实记 `skipped`，**绝不伪造行为去凑任务**；补登卡/抽奖等资源消耗型操作不自动化
@@ -224,7 +224,7 @@ mindmap
         趋势图等距时间轴补空桶
         模型明细表
         积分与额度
-      客户端管理
+      提供商管理
       API Keys
       请求日志
       设置
@@ -299,7 +299,7 @@ npm run dev                 # 联调：代理到 127.0.0.1:8787（推荐）
 **产物模式**（想跑构建后的单体）：`cd server && npm run build && npm start`，
 再用任意静态服务器托管 `web/dist/`。
 
-**同机一键导入凭证**：relay 与客户端在同一台机器时，「客户端管理 → 配置 → 自动导入」
+**同机一键导入凭证**：relay 与客户端在同一台机器时，「提供商管理 → 配置 → 自动导入」
 按钮可直接读本机客户端登录态完成导入（无需手抄令牌）。
 
 ### 放到服务器（可选）
@@ -361,4 +361,4 @@ tools/                     仓库级工具（lint 门禁、token 合并、截图
 
 ---
 
-版本约定：`1.0.0` 起 API 契约稳定（当前 `1.6.11`，见 `server/src/version.ts`；历史版本见 [Releases](https://github.com/zhanghaojie513/waygate-open/releases)）。
+版本约定：`1.0.0` 起 API 契约稳定（当前 `1.6.12`，见 `server/src/version.ts`；历史版本见 [Releases](https://github.com/zhanghaojie513/waygate-open/releases)）。

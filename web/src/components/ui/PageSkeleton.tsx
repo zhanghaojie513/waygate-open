@@ -8,7 +8,7 @@
  * 用的是已有的 `.skeleton` 类（app.css，带 shimmer 扫光动画）。
  * 每个变体对应一个页面的真实区块结构——改页面布局时同步改这里。
  * [v0.5.17] 概览/用量两页对齐当前布局：概览补「积分账本 + 客户端/模型摘要」
- * （替换掉早已下线的「最近请求」块）；用量补「按客户端条形 + 数据来源卡」，
+ * （替换掉早已下线的「最近请求」块）；用量补「按提供商条形 + 数据来源卡」，
  * 统计条格与趋势头部也对齐现结构（副注行 / 口径切换 seg + 单位 pill）。
  */
 
@@ -136,7 +136,7 @@ export function OverviewSkeleton() {
       {/* 积分账本（[v0.5.7]：提供商/剩余/已消耗/累计发放/最近过期，通常 1~2 行） */}
       <TablePanelSkeleton head={[140, 80, 70, 84, 116]} rows={2} footer />
 
-      {/* 客户端用量摘要（6 列 × 6 行，末列分布条） */}
+      {/* 提供商用量摘要（6 列 × 6 行，末列分布条） */}
       <TablePanelSkeleton head={[110, 72, 88, 76, 56, 'track']} rows={6} />
 
       {/* 模型用量摘要（6 列 × 8 行，末列分布条 + 底注） */}
@@ -145,7 +145,7 @@ export function OverviewSkeleton() {
   );
 }
 
-/** 用量页骨架：横幅 → 统计条 → 趋势图 → 按模型明细 → 按客户端条形 → 数据来源（v0.5.17 对齐当前布局） */
+/** 用量页骨架：横幅 → 统计条 → 趋势图 → 按模型明细 → 按提供商条形 → 数据来源（v0.5.17 对齐当前布局） */
 export function UsageSkeleton() {
   return (
     <div className="view-body stack">
@@ -184,7 +184,7 @@ export function UsageSkeleton() {
       {/* 按模型消耗明细（模型/请求/tokens/积分/平均单次，5 列 × 5 行） */}
       <TablePanelSkeleton head={[170, 72, 84, 76, 76]} rows={5} />
 
-      {/* 按客户端消耗（BreakdownBars：名称 + 全宽轨道条 + 尾注） */}
+      {/* 按提供商消耗（BreakdownBars：名称 + 全宽轨道条 + 尾注） */}
       <div className="card panel">
         <div className="panel-head">
           <Bar w={96} h={15} />
@@ -273,7 +273,7 @@ export function RequestsSkeleton() {
 
 /**
  * [v0.6.5] 统计条骨架（4 格，每格：标签 + 大数字 + 副注）。
- * 用于 API Keys / 客户端管理 —— 这两页顶部都是同一形状的 `.statbar`。
+ * 用于 API Keys / 提供商管理 —— 这两页顶部都是同一形状的 `.statbar`。
  */
 function StatBarSkeleton() {
   return (
@@ -327,7 +327,7 @@ export function KeysSkeleton() {
 }
 
 /**
- * [v0.6.5] 客户端管理页骨架：提供商表（名称/密钥/请求次数/消耗积分/最后活跃/操作，3 行）
+ * [v0.6.5] 提供商管理页骨架：提供商表（名称/密钥/请求次数/消耗积分/最后活跃/操作，3 行）
  * + 每行下方的嵌套客户端明细行。形状对齐 ProviderTable。
  * 注意：**不带 view-body 包装** —— 它被嵌进 ProvidersPanel 的 Panel 内使用。
  */

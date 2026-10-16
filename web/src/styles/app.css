@@ -608,7 +608,7 @@ button.switch:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--brand-t
   background: var(--bg-code); border: 1px solid var(--border-subtle);
   padding: 5px 10px; border-radius: var(--radius-sm); }
 
-/* ---------- 上游连接区块（客户端管理页） ----------
+/* ---------- 上游连接区块（提供商管理页） ----------
    两栏：左「连接信息与动作」、右「模型清单」。
    窄屏塌成单栏（见本文件底部的媒体查询）。 */
 .up-grid { display: grid; grid-template-columns: minmax(280px, 360px) 1fr; gap: 22px; }

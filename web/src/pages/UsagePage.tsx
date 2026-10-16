@@ -21,7 +21,7 @@ import { formatCredits, formatInt, formatPercent, formatRelative, formatTokens }
 import { WINDOW_OPTIONS, WINDOW_LABEL } from '../lib/console';
 
 /** 默认窗口「今日」（2026-10-09 用户口径：打开就看"今天到目前为止花了多少"）。
-    与概览、客户端管理三页一致；`1h/24h/7d/30d` 仍在下拉里可选。
+    与概览、提供商管理三页一致；`1h/24h/7d/30d` 仍在下拉里可选。
     [注意] today 是"今天到目前为止"不是完整一天，所以「日均消耗 / 按当前速度可用天数」
     这两块在它下面**按设计隐藏**（见下 WINDOW_DAYS_OF）—— 六块齐备的口径在 7d/30d 下验。 */
 const DEFAULT_WINDOW: TimeWindow = 'today';
@@ -31,7 +31,7 @@ const DEFAULT_WINDOW: TimeWindow = 'today';
 const WINDOW_DAYS_OF: Record<TimeWindow, number | null> = { today: null, '1h': null, '24h': null, '7d': 7, '30d': 30 };
 
 /**
- * 积分与用量 —— 概览删掉的趋势 / 模型分布 / 客户端排行在这里落地。
+ * 积分与用量 —— 概览删掉的趋势 / 模型分布 / 提供商排行在这里落地。
  *
  * 「积分涨得快，是贵模型用得多还是请求变多了」这个问题需要同时看到两个量，
  * 所以趋势卡可以在 `credits ⇄ requests` 之间切 —— 切的是同一个 `trend` 数组的
@@ -75,9 +75,9 @@ export function UsagePage() {
         ? `${WINDOW_LABEL[d.window]}无消耗记录`
         : `按日均 ${formatCredits(dailyCredits)} 积分估算`;
 
-  /* [v0.5.11] 指标卡的悬停分布：同一指标按客户端拆开（数据就是 byClient，
+  /* [v0.5.11] 指标卡的悬停分布：同一指标按提供商拆开（数据就是 byClient，
      同一窗口同一来源 —— 不是另一套数）。每张卡按**自己那个量**排序，
-     取前 6 名；没有客户端数据就不给 tip（悬停不出空框）。 */
+     取前 6 名；没有提供商数据就不给 tip（悬停不出空框）。 */
   const clientTip = (kind: 'credits' | 'tokens' | 'requests'): ReactNode => {
     if (!d || d.byClient.length === 0) return undefined;
     const rows = [...d.byClient].sort((a, b) => (b[kind] ?? 0) - (a[kind] ?? 0));
@@ -128,7 +128,7 @@ export function UsagePage() {
                 {
                   label: `${WINDOW_LABEL[d.window]}请求`,
                   value: formatInt(d.metrics.requests),
-                  detail: `${formatInt(d.metrics.activeClients)} 个客户端活跃`,
+                  detail: `${formatInt(d.metrics.activeClients)} 个密钥活跃`,
                   tip: clientTip('requests'),
                   tipPos: 'down',
                 },
@@ -205,12 +205,12 @@ export function UsagePage() {
               </div>
             </Panel>
 
-            {/* [v0.4.28 用户要求] 「按工具消耗」已删除（与按客户端高度重合、信息增量低）；
-                「按客户端消耗」改回全宽（duo 半宽对占比条太窄）。
+            {/* [v0.4.28 用户要求] 「按工具消耗」已删除（与按提供商高度重合、信息增量低）；
+                「按提供商消耗」改回全宽（duo 半宽对占比条太窄）。
                 [v0.5.18] 条形值从积分改为 **tokens**：列表按 token 排序而条长按积分画，
                 会出现「上面一行反而更短」的自相矛盾（用户实测报障）。条长/占比/排序
                 三者现在同源（tokens）；积分作为附带信息留在尾注里。 */}
-            <Panel title="按客户端消耗" aside={<Pill>按 Token 排序</Pill>}>
+            <Panel title="按提供商消耗" aside={<Pill>按 Token 排序</Pill>}>
               <BreakdownBars
                 windowLabel={WINDOW_LABEL[d.window]}
                 items={byClient.map((c) => ({
@@ -219,7 +219,7 @@ export function UsagePage() {
                   value: c.tokens ?? 0,
                   format: 'int' as const,
                   trailing: `${formatPercent(c.share)} · ${formatCredits(c.credits)} 积分 · ${formatInt(c.requests)} 次`,
-                  /* [v0.5.21] 悬停客户端名 → 该客户端的按模型消耗（服务端已按 tokens 取前 5）。 */
+                  /* [v0.5.21] 悬停提供商名 → 该提供商的按模型消耗（服务端已按 tokens 取前 5）。 */
                   tip: <ClientModelTip row={c} />,
                 }))}
               />

@@ -165,7 +165,7 @@ export const EDITABLE_KEYS = new Set<string>([
   'service.listenPort',
   /* [v0.6.5] `upstream.baseUrl` 已移出可写：出站/目录/额度都读 `provider.base_url`（多提供商），
      改这个全局位对出站无效（会被下次激活覆写）。字段本体保留（种子/老部署回落用），
-     但不再作为设置页可写项 —— 提供商的地址请在「客户端管理 → 提供商」改。 */
+     但不再作为设置页可写项 —— 提供商的地址请在「提供商管理」改。 */
   'upstream.userAgent', // [v0.6.5] 新增可写：WorkBuddy UA 基准值，跟随官方客户端版本不用改代码
   'upstream.spoofUA',
   'upstream.promptRewrite',
