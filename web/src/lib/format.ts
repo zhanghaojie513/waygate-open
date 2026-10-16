@@ -223,6 +223,10 @@ const NOTE_MAP: Record<string, string> = {
   'minimax tokens unavailable': 'MiniMax token 不可用',
   'token refresh failed': '上游 token 刷新失败',
   'missing credential': '缺少上游访问凭证',
+  /* [v1.6.11] WorkBuddy 转发改走 OAuth 后的三种失败留痕。 */
+  'wb oauth unavailable': 'WorkBuddy 授权服务不可用',
+  'missing wb oauth credential': 'WorkBuddy 未导入授权',
+  'wb token refresh failed': 'WorkBuddy 授权刷新失败',
   'qoder credential invalid': 'Qoder 凭证无效',
   // [历史·v0.5.8 起后端不再写入] 旧本地兜底公式的标记。保留映射只为**历史行仍可读**——
   // 公式已整段移除（上游未回报即 credits=null），新行不会再出现这两个 token。

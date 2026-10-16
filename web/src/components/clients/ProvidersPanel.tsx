@@ -9,9 +9,8 @@ import { Pill } from '../ui/Pill';
 import { Drawer } from '../ui/Drawer';
 import { Modal } from '../ui/Modal';
 import { StateBlock, errorDetail } from '../ui/StateBlock';
-import { ProviderTable, AddProviderButton } from './ProviderTable';
+import { ProviderTable } from './ProviderTable';
 import { ClientsSkeleton } from '../ui/PageSkeleton';
-import { CreateProviderModal } from './CreateProviderModal';
 import { ImportClientModal } from './ImportClientModal';
 import { UpstreamModels } from './UpstreamModels';
 import type { CatalogMsg } from './UpstreamModels';
@@ -43,9 +42,10 @@ export function ProvidersPanel({ window }: { window: TimeWindow }) {
   });
   /* 客户端用量按本页的时间选择器取 —— 与表格头部的窗口选择器同源。 */
   const clientsRes = useResource(() => api.clients(window), [window], { cacheKey: `clients:${window}` });
-  const [creating, setCreating] = useState(false);
-  /* [v1.6.11] 「导入客户端」弹窗（选客户端 → 官方授权 → 自动落盘凭证）。 */
+  /* [v1.6.12] 「导入客户端」弹窗（选客户端 → 官方授权 → 自动落盘凭证）。
+     [v1.6.11] 凭证的唯一入口（ck_ 退役、手填创建下线）；传 provider = 对该行重新导入。 */
   const [importing, setImporting] = useState(false);
+  const [reimporting, setReimporting] = useState<ProviderItem | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [editing, setEditing] = useState<ProviderItem | null>(null);
   const [deleting, setDeleting] = useState<ProviderItem | null>(null);
@@ -271,15 +271,15 @@ export function ProvidersPanel({ window }: { window: TimeWindow }) {
                 已启用 {activeCount} 家
               </Pill>
             ) : null}
-            {/* [v1.6.11] 「导入客户端」——选客户端走官方授权（凭证在客户端登录态里、用户拿不到）。
-                与「新增提供商」的分工写在 ImportClientModal 文件头。 */}
+            {/* [v1.6.12] 「导入客户端」——三家统一走官方授权（凭证在客户端登录态里、用户拿不到）。
+                [v1.6.11] 这是**唯一的凭证/新建入口**：「新增提供商」手填（含 WorkBuddy 的
+                ck_ 密钥）已下线 —— 三家都改用官方授权，行内「配置」也改为「重新导入授权」。 */}
             <Tooltip content="选一个客户端（WorkBuddy / MiniMax Code / Qoder CN），用它的官方授权导入凭证">
-              <button type="button" className="btn btn-quiet btn-sm" onClick={() => setImporting(true)}>
+              <button type="button" className="btn btn-primary btn-sm" onClick={() => setImporting(true)}>
                 <Download size={14} />
                 导入客户端
               </button>
             </Tooltip>
-            <AddProviderButton onClick={() => setCreating(true)} />
           </span>
         }
         padded={false}
@@ -310,6 +310,7 @@ export function ProvidersPanel({ window }: { window: TimeWindow }) {
             byProvider={byProvider}
             busyId={busyId}
             onEdit={setEditing}
+            onReimport={setReimporting}
             onSignin={(p) => void signin(p)}
             onGrowthRun={(p) => void growthRun(p)}
             onOauthImport={(p) => void oauthImport(p)}
@@ -324,27 +325,31 @@ export function ProvidersPanel({ window }: { window: TimeWindow }) {
         )}
         <div className="footer-note" style={{ padding: '0 20px 18px' }}>
           启用提供商会让它加入出站路由，并同步它自己的模型清单；已启用的提供商可以并行生效，模型按各自目录路由。
-          每个提供商的密钥都是<b>只写</b>的：保存后只剩掩码，任何接口都读不回完整值。
+          三家凭证都来自各客户端的<b>官方授权</b>（用户无需也无法手填）——点「重新导入授权」即可换账号或刷新令牌；
+          令牌只存在服务端，任何接口都读不回完整值。
           <br />
           {'用量按'}<b>客户端</b>{'聚合、不按提供商：请求记录本身没有 provider 维度，因此不能把历史日志逐条归给某一家；未能确定的提供商用量保持为空。'}
         </div>
       </Panel>
 
-      {creating ? (
-        <CreateProviderModal
-          onClose={() => setCreating(false)}
-          onCreated={() => {
-            setCreating(false);
-            reload();
-          }}
-        />
-      ) : null}
-
-      {/* [v1.6.11] 导入客户端：选客户端 → 官方授权 → 自动落盘凭证。 */}
+      {/* [v1.6.12] 导入客户端：选客户端 → 官方授权 → 自动落盘凭证。
+          [v1.6.11] 唯一的新建/凭证入口（手填「新增提供商」已下线）。 */}
       {importing ? (
         <ImportClientModal
           onClose={() => {
             setImporting(false);
+            reload();
+          }}
+          onImported={() => reload()}
+        />
+      ) : null}
+
+      {/* [v1.6.11] 行内「重新导入授权」：对该提供商重新走一次官方授权。 */}
+      {reimporting ? (
+        <ImportClientModal
+          provider={{ id: reimporting.id, name: reimporting.name, protocol: reimporting.protocol }}
+          onClose={() => {
+            setReimporting(null);
             reload();
           }}
           onImported={() => reload()}
@@ -358,6 +363,11 @@ export function ProvidersPanel({ window }: { window: TimeWindow }) {
           onSaved={() => {
             setEditing(null);
             reload();
+          }}
+          onReimport={() => {
+            const p = editing;
+            setEditing(null);
+            if (p) setReimporting(p);
           }}
         />
       ) : null}
@@ -422,26 +432,29 @@ export function ProvidersPanel({ window }: { window: TimeWindow }) {
 }
 
 /**
- * 「配置」抽屉 —— 改名称，WorkBuddy 可换密钥；MiniMax / Qoder 给**导入指引**（凭证不在用户手上）。
- * 试通语义（与 `POST /api/providers/:id/test` 同源）：
- *   草稿里有凭证 → 测**草稿**（先验后存）；否则测**已存**的那把。
+ * 「配置」抽屉 —— 只改**名称与地址**；凭证一律走「重新导入授权」（三家统一）。
  *
- * [v1.6.4] 为什么对 MiniMax / Qoder 不给输入框：这两家的凭证不是用户能手敲的东西
- *   （MiniMax = 客户端 auth.json 的 mmort_ refresh token；Qoder = 一整段身份 JSON），
- *   给空输入框等于让他去填一个无从获取的值 —— 改成「去哪取 + 复制命令」。
+ * [v1.6.11] 为什么这里没有任何凭证输入：三家凭证都来自各客户端的**官方授权**
+ *   （WorkBuddy OAuth / MiniMax 登录态 refresh token / Qoder 身份 JSON），
+ *   用户拿不到、也手敲不出来。给输入框等于让他填一个无从获取的值。
+ *   点「重新导入授权」走官方授权通道（`ImportClientModal`）。
+ *
+ * 试通语义（与 `POST /api/providers/:id/test` 同源）：测**已导入**的凭证是否还通。
  */
 function EditProviderDrawer({
   provider,
   onClose,
   onSaved,
+  onReimport,
 }: {
   provider: ProviderItem;
   onClose: () => void;
   onSaved: () => void;
+  /** [v1.6.11] 打开「重新导入授权」（由父组件挂出 ImportClientModal）。 */
+  onReimport: () => void;
 }) {
   const [name, setName] = useState(provider.name);
   const [baseUrl, setBaseUrl] = useState(provider.baseUrl);
-  const [credential, setCredential] = useState('');
   const [busy, setBusy] = useState(false);
   const [testing, setTesting] = useState(false);
   const [err, setErr] = useState<ApiError | null>(null);
@@ -495,10 +508,9 @@ function EditProviderDrawer({
     setBusy(true);
     setErr(null);
     try {
-      const input: { name?: string; baseUrl?: string; credential?: string } = {};
+      const input: { name?: string; baseUrl?: string } = {};
       if (name.trim() !== provider.name) input.name = name.trim();
       if (baseUrl.trim() !== provider.baseUrl) input.baseUrl = baseUrl.trim();
-      if (credential.trim()) input.credential = credential.trim();
       if (Object.keys(input).length > 0) await api.patchProvider(provider.id, input);
       onSaved();
     } catch (e2) {
@@ -514,8 +526,8 @@ function EditProviderDrawer({
     setErr(null);
     setTestResult(null);
     try {
-      const draft = credential.trim() ? credential.trim() : undefined;
-      setTestResult(await api.testProvider(provider.id, draft));
+      /* [v1.6.11] 不再传草稿凭证（ck_ 退役、三家都不手填）—— 测的就是已导入的授权。 */
+      setTestResult(await api.testProvider(provider.id, undefined));
     } catch (e) {
       setErr(e instanceof ApiError ? e : new ApiError(String(e), 0, 0));
     } finally {
@@ -551,82 +563,71 @@ function EditProviderDrawer({
             />
           </div>
           <div className="up-row">
-            <div className="up-lab">{provider.protocol === 'openai' ? '更换密钥' : '凭证'}</div>
-            {provider.protocol === 'openai' ? (
-              /* WorkBuddy：ck_ 静态密钥，用户手边就有（从官方后台复制），直接换是合理的。 */
-              <input
-                className="field-input text"
-                style={{ width: '100%' }}
-                type="password"
-                value={credential}
-                placeholder="留空 = 不改（只写，保存后只剩掩码）"
-                onChange={(e) => setCredential(e.target.value)}
-                aria-label="提供商访问密钥"
-              />
-            ) : (
-              /* [v1.6.5] MiniMax / Qoder 的凭证不是用户能手敲的东西（客户端登录态里的令牌）：
-                 主操作是**自动导入** —— 点按钮让服务端跑项目脚本读客户端登录态并落盘。
-                 · 同机部署（relay 与客户端同机 → 开源版场景）：真·一键。
-                 · 分离部署（relay 在服务器）：服务端读不到，返回 unavailable，
-                   这里降级给出「在本机跑一条推送命令」。 */
-              <div className="cred-guide">
-                <div className="cred-guide-note">
-                  {provider.protocol === 'anthropic' ? (
-                    <>
-                      凭证是客户端登录态里的 <span className="code-chip">mmort_…</span> refresh token
-                      （客户端数据目录 <span className="code-chip">auth.json</span> 的
-                      <span className="code-chip">refreshToken</span>）。点下方按钮自动从本机客户端读取，
-                      无需手填。请用<b>专用账号</b>（与桌面端共用会互相顶下线）。
-                    </>
-                  ) : (
-                    <>
-                      凭证是一段<b>身份 JSON</b>，来自本机 Qoder 客户端登录态。
-                      点下方按钮自动从客户端读取并导入，无需手填。
-                    </>
-                  )}
-                </div>
-                <div className="cred-guide-actions">
-                  <button
-                    type="button"
-                    className="btn btn-primary btn-sm"
-                    disabled={importing}
-                    onClick={() => void autoImport()}
-                  >
-                    {importing ? <Loader2 size={14} /> : <Download size={14} />}
-                    自动导入
-                  </button>
-                </div>
-                {/* 自动导入的结果 / 降级提示（分离部署时给推送命令） */}
-                {importMsg ? (
-                  <Banner tone={importMsg.kind === 'ok' ? 'success' : importMsg.kind === 'unavailable' ? 'warn' : 'error'}>
-                    <span>
-                      {importMsg.text}
-                      {importMsg.command ? (
-                        <>
-                          <br />
-                          在<b>装了客户端的那台机器</b>的仓库目录下跑：
-                          <CopyCommand command={importMsg.command} />
-                        </>
-                      ) : null}
-                    </span>
-                  </Banner>
-                ) : null}
-                {provider.protocol === 'qoder' ? (
-                  <div className="cred-guide-note">
-                    本服务<b>不自动刷新</b> Qoder 令牌；
-                    <span className="code-chip">dt-</span> 过期后重跑一次导入即可。
-                    桌面客户端与它<b>互不影响</b>（Qoder 多会话并存，无需专用账号）。
-                  </div>
-                ) : null}
+            <div className="up-lab">凭证</div>
+            {/* [v1.6.11] 三家统一：凭证来自各客户端的**官方授权**，用户拿不到、也手敲不出来
+                （WorkBuddy 的 ck_ 密钥已退役）。故这里不给任何输入框，只给一个授权入口。
+                「自动导入」（读本机客户端登录态）保留为同机部署的快捷方式。 */}
+            <div className="cred-guide">
+              <div className="cred-guide-note">
+                {provider.protocol === 'openai' ? (
+                  <>凭证来自 WorkBuddy <b>官方 OAuth 授权</b>（桌面端 / 插件同一条通道），无需手填。</>
+                ) : provider.protocol === 'anthropic' ? (
+                  <>
+                    凭证是客户端登录态里的 <span className="code-chip">mmort_…</span> refresh token。
+                    请用<b>专用账号</b>（与桌面端共用会互相顶下线）。
+                  </>
+                ) : (
+                  <>凭证来自 Qoder 客户端登录态（一段<b>身份 JSON</b>）。桌面客户端与它<b>互不影响</b>。</>
+                )}
               </div>
-            )}
+              <div className="cred-guide-actions">
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  disabled={busy}
+                  onClick={() => onReimport()}
+                >
+                  <Download size={14} />
+                  重新导入授权
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-quiet btn-sm"
+                  disabled={importing}
+                  onClick={() => void autoImport()}
+                >
+                  {importing ? <Loader2 size={14} /> : <Download size={14} />}
+                  从本机客户端读取
+                </button>
+              </div>
+              {/* 自动导入的结果 / 降级提示（分离部署时给推送命令） */}
+              {importMsg ? (
+                <Banner tone={importMsg.kind === 'ok' ? 'success' : importMsg.kind === 'unavailable' ? 'warn' : 'error'}>
+                  <span>
+                    {importMsg.text}
+                    {importMsg.command ? (
+                      <>
+                        <br />
+                        在<b>装了客户端的那台机器</b>的仓库目录下跑：
+                        <CopyCommand command={importMsg.command} />
+                      </>
+                    ) : null}
+                  </span>
+                </Banner>
+              ) : null}
+              {provider.protocol === 'qoder' ? (
+                <div className="cred-guide-note">
+                  本服务<b>不自动刷新</b> Qoder 令牌；过期后重跑一次导入即可。
+                </div>
+              ) : null}
+            </div>
           </div>
           <div className="up-actions">
             <button type="submit" className="btn btn-primary btn-sm" disabled={busy}>
               {busy ? <Loader2 size={14} /> : <Check size={14} />}
               保存
             </button>
-            <Tooltip content={credential.trim() ? '用草稿里的凭证测（先验后存）' : '用已保存的凭证测这家是否还通'}>
+            <Tooltip content="用已导入的授权测这家上游是否还通">
               <button
                 type="button"
                 className="btn btn-quiet btn-sm"

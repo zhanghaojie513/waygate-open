@@ -105,7 +105,9 @@ describe('WbSigninService（状态同步语义）', () => {
   });
 
   function makeSvc(settings = defaultSettings()): WbSigninService {
-    return new WbSigninService(providers, makeConfig(settings), false);
+    /* [v1.6.11] 修既存参数错位：第 3 参是 oauth、第 5 参才是 autoStart。
+     原先把 false 传给了 oauth（类型不符），本意是关定时器。 */
+    return new WbSigninService(providers, makeConfig(settings), undefined, undefined, false);
   }
 
   function row(): ProviderRow {

@@ -27,6 +27,7 @@ import { ProxyService } from './proxy.service';
 import { ProxyController } from './proxy.controller';
 import type { RelayConfigService } from '../config/config.service';
 import type { KeyContext, RequestWithKeyContext } from '../auth/key.guard';
+import { fakeWbOauth } from './openai-upstream/wb-oauth.harness';
 
 const SCHEMA_PATH = join(__dirname, '..', 'store', 'schema.sql');
 const KEY_ID = 'k_wire76';
@@ -132,7 +133,7 @@ function makeController() {
     }),
     upstreamKey: 'ck_test.SECRET',
   } as unknown as RelayConfigService;
-  return new ProxyController(new ProxyService(config, catalog, log, providers), catalog, providers);
+  return new ProxyController(new ProxyService(config, catalog, log, providers, undefined, fakeWbOauth('ck_test_0123456789abcdef')), catalog, providers);
 }
 
 const latest = (): Record<string, unknown> | undefined =>
@@ -407,7 +408,7 @@ describe('11128 · 降级重试（L2 fail-open）', () => {
       }),
       upstreamKey: 'ck_test.SECRET',
     } as unknown as RelayConfigService;
-    const controller = new ProxyController(new ProxyService(config, catalog, log, providers2), catalog, providers2);
+    const controller = new ProxyController(new ProxyService(config, catalog, log, providers2, undefined, fakeWbOauth('ck_test_0123456789abcdef')), catalog, providers2);
     const { reply, raw } = fakeReply();
 
     await controller.chatCompletions(req() as never, reply, streamBody() as never);

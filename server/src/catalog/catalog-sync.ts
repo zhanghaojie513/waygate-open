@@ -33,10 +33,8 @@ import { RelayHttpError, ApiCode } from '../common/errors';
 import { ModelProbeService, PROBE_INTERVAL_MS } from './probe';
 import { pullUpstreamModels, type CatalogEntry } from './pull';
 import { fetchV3ConfigModels } from './v3-config';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { resolveDataDir } from '../store/db';
 import { stripTrailingSlash } from '../proxy/upstream-url';
+import { WbOauthService } from '../proxy/openai-upstream/wb-oauth.service';
 import { pullQoderModels } from './qoder-models';
 import { QoderCredentialStore } from '../proxy/qoder-upstream/credential';
 
@@ -133,7 +131,10 @@ export class CatalogSyncService implements OnApplicationBootstrap, OnModuleDestr
   private timer: NodeJS.Timeout | null = null;
 
   constructor(
-    private readonly config: RelayConfigService,
+    /* [v1.6.11] openai 凭证改走 OAuth 后，本类不再读 config（原先只用于回落
+       `config.upstreamKey`）。参数保留（不加访问修饰符，仅作 DI 位占位）：
+       位置与 `design:paramtypes` 元数据不变，既有 spec / harness 按位置构造不受影响。 */
+    _config: RelayConfigService,
     private readonly catalog: ModelCatalogRepository,
     private readonly probe: ModelProbeService,
     /** 按提供商记住启停偏好（2026-10-09）—— 切换提供商机用。 */
@@ -143,6 +144,9 @@ export class CatalogSyncService implements OnApplicationBootstrap, OnModuleDestr
     /* [v0.5.0] 活提供商协议（anthropic 时目录走静态种子，不拉不测）。
        @Optional：既有 spec 按位置构造，末位新增不破坏它们。 */
     @Optional() private readonly providers?: ProvidersRepository,
+    /* [v1.6.11] WorkBuddy OAuth：openai 的目录拉取/实测凭证来源（ck_ 已退役）。
+       @Optional：既有 spec 按位置构造，末位新增不破坏它们。 */
+    @Optional() private readonly wbOauth?: WbOauthService,
   ) {}
 
   /** 活提供商集合（[v0.5.1] 多生效：列表而非单行）。未装配 providers 时返回空。 */
@@ -150,15 +154,17 @@ export class CatalogSyncService implements OnApplicationBootstrap, OnModuleDestr
     return this.providers?.listActive() ?? [];
   }
 
-  /** openai 提供商的出站凭证（读该提供商凭证文件，回落全局位 —— 与 proxy 同规则）。 */
-  private openAiCredential(provider: ProviderRow): string {
+  /**
+   * [v1.6.11] openai 提供商的出站凭证：改从 **OAuth 槽**取 access token（ck_ 已退役）。
+   * 取不到返回空串 —— 调用方据此判「未授权」（不回落任何全局密钥，用户口径）。
+   */
+  private async openAiCredential(provider: ProviderRow): Promise<string> {
+    if (!this.wbOauth) return '';
     try {
-      const key = readFileSync(join(resolveDataDir(), 'providers', `${provider.id}.key`), 'utf8').trim();
-      if (key) return key;
+      return await this.wbOauth.accessToken(provider);
     } catch {
-      /* 回落全局位 */
+      return '';
     }
-    return this.config.upstreamKey;
   }
 
   /** [v0.5.1] anthropic 提供商的目录：静态种子（无上游清单端点、不做方言实测）。 */
@@ -269,17 +275,16 @@ export class CatalogSyncService implements OnApplicationBootstrap, OnModuleDestr
        （E2E 实测踩过：qoder 单独可用，却因 openai 默认行无凭证而整轮 400）。 */
     const actives = this.activeProviders();
     const openAiActives = actives.filter((p) => p.protocol === 'openai');
-    if (
-      openAiActives.length > 0 &&
-      openAiActives.length === actives.length &&
-      openAiActives.every((p) => !this.openAiCredential(p))
-    ) {
-      throw new RelayHttpError({
-        httpStatus: 400,
-        code: 'upstream_credential_missing',
-        apiCode: ApiCode.BAD_PARAM,
-        message: '未配置上游访问密钥（RELAY_UPSTREAM_KEY），无法实测模型。请先配置后重启服务。',
-      });
+    if (openAiActives.length > 0 && openAiActives.length === actives.length) {
+      const creds = await Promise.all(openAiActives.map((p) => this.openAiCredential(p)));
+      if (creds.every((c) => !c)) {
+        throw new RelayHttpError({
+          httpStatus: 400,
+          code: 'upstream_credential_missing',
+          apiCode: ApiCode.BAD_PARAM,
+          message: 'WorkBuddy 尚未导入授权，无法实测模型。请到「客户端管理 → 配置 → 重新导入授权」完成官方授权。',
+        });
+      }
     }
 
     this.refreshing = true;
@@ -309,7 +314,7 @@ export class CatalogSyncService implements OnApplicationBootstrap, OnModuleDestr
           perProvider.push({ id: provider.id, name: provider.name, checked: rows.length, ok: rows.length, failed: [] });
           continue;
         }
-        const key = this.openAiCredential(provider);
+        const key = await this.openAiCredential(provider);
         const outcomes = await this.probe.probeAll(
           rows.map((r) => r.id),
           this.probeIntervalMs,
@@ -369,7 +374,7 @@ export class CatalogSyncService implements OnApplicationBootstrap, OnModuleDestr
     /* qoder 协议：网关有 /model/list —— 真拉取，替换式。 */
     if (provider.protocol === 'qoder') return await this.pullQoderCatalog(provider);
     const base = stripTrailingSlash(provider.base_url);
-    const key = this.openAiCredential(provider);
+    const key = await this.openAiCredential(provider);
     const [pull, config] = await Promise.all([
       pullUpstreamModels({ baseUrl: base, upstreamKey: key, timeoutMs: PULL_TIMEOUT_MS }),
       fetchV3ConfigModels({ baseUrl: base, upstreamKey: key, timeoutMs: PULL_TIMEOUT_MS }),
@@ -412,9 +417,11 @@ export class CatalogSyncService implements OnApplicationBootstrap, OnModuleDestr
     if (this.refreshing) return; // 手动刷新在做同样的事（且更多），让路
     const actives = this.activeProviders();
     if (actives.length === 0) return;
-    if (actives.every((p) => p.protocol !== 'anthropic' && !this.openAiCredential(p) && !this.config.upstreamConfigured())) return;
-    /* [v0.5.1] 多生效：逐家同步，汇总一页日志。 */
+    /* [v1.6.11] openai 家需已导入 OAuth 授权才同步（ck_ 已退役，不再看全局位）。 */
     void (async () => {
+      const openAiActives = actives.filter((p) => p.protocol === 'openai');
+      const creds = await Promise.all(openAiActives.map((p) => this.openAiCredential(p)));
+      if (openAiActives.length === actives.length && creds.every((c) => !c)) return;
       const results = await Promise.allSettled(actives.map((p) => this.pullAndMergeFor(p)));
       let pullOk = false, configOk = false, added = 0, mult = 0;
       for (const r of results) {

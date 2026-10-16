@@ -8,10 +8,7 @@ import { ModelCatalogRepository } from '../store/repositories/model-catalog.repo
 import { ProxyLogger, rejectionNote, type StreamContext } from './proxy-log';
 import { createReadGuard, readUpstreamSse } from './sse-stream';
 import { capBody } from './body-capture';
-import { readTextFileCached } from '../common/file-cache';
 import { upstreamFetch } from './upstream-fetch';
-import { join } from 'node:path';
-import { resolveDataDir } from '../store/db';
 import { resolveConcurrencyLimit } from './concurrency';
 import { buildChatCompletionsUrl, stripTrailingSlash } from './upstream-url';
 import { scopeAllowsModel, describeScope } from './model-scope';
@@ -23,6 +20,7 @@ import { qoderToOpenAiSse } from './qoder-upstream/stream-decode';
 import { QoderCredentialStore } from './qoder-upstream/credential';
 import { buildCosyBearer, cosyChatHeaders, qEncode, DEFAULT_QODER_CHAT_PATH } from './qoder-upstream/cosy';
 import { ProvidersRepository, type ProviderRow } from '../store/repositories/providers.repo';
+import { WbOauthService, wbOauthHeaders } from './openai-upstream/wb-oauth.service';
 import type { ChatChunk, ChatRequestBody } from './types';
 
 /** 写回客户端的动作，由 controller 负责真正落到 reply 上（service 不碰 req/res）。 */
@@ -149,6 +147,9 @@ export class ProxyService {
        不改它们的构造调用（openai 路径不碰这两个依赖，行为不变）。 */
     @Optional() private readonly providers?: ProvidersRepository,
     @Optional() private readonly minimaxTokens?: MinimaxTokenService,
+    /* [v1.6.11] WorkBuddy OAuth 令牌（openai 转发凭证）。@Optional：三个 wiring spec
+       手动 new ProxyService(...)，不改它们的构造调用（openai 路径缺失时会明确报错）。 */
+    @Optional() private readonly wbOauth?: WbOauthService,
   ) {
     this.log = log;
   }
@@ -330,20 +331,56 @@ export class ProxyService {
   }
 
   /**
-   * [v0.5.1] openai 提供商的出站凭证：优先该提供商自己的凭证文件；
-   * 文件缺失（如 env 注入 RELAY_UPSTREAM_KEY 的老部署没落到文件）回落全局位。
-   * 与 MinimaxTokenService 读 .key 同一布局：<dataDir>/providers/<id>.key。
+   * [v1.6.11] WorkBuddy 出站头（OAuth 形态）—— ck_ 退役后的转发凭证。
+   *
+   * 与旧 `buildUpstreamHeaders` + ck_ 的差异：令牌来自 `WbOauthService`（按需刷新），
+   * 并在指纹头之外补账号级设备头（x-user-id / x-machine-id / x-session-id，按 uid
+   * 稳定派生）—— 与独立版 wb 工具的 `authedHeaders` 同一形态（那边已在生产验证）。
+   *
+   * 未导入授权时**不回落**任何全局密钥，直接报错并指引「重新导入授权」（用户口径）。
    */
-  private openAiCredential(provider: ProviderRow): string {
-    try {
-      const file = join(resolveDataDir(), 'providers', provider.id + '.key');
-      // 按 mtime 缓存：热路径不再每请求同步读文件（见 common/file-cache.ts）
-      const key = readTextFileCached(file).trim();
-      if (key) return key;
-    } catch {
-      /* 文件不存在 → 回落全局位（老部署兼容） */
+  private async buildWorkBuddyHeaders(
+    ctx: StreamContext,
+    provider: ProviderRow,
+    incomingHeaders: Record<string, string | string[] | undefined>,
+    cfg: ReturnType<RelayConfigService['get']>,
+    slot: ActiveSlot,
+  ): Promise<{ headers: Record<string, string> } | { error: UpstreamStream }> {
+    if (!this.wbOauth) {
+      slot.release();
+      return {
+        error: this.fail(ctx, new RelayHttpError({
+          httpStatus: 500, code: 'internal_error', message: 'WorkBuddy OAuth 服务未装配（部署异常）。',
+        }), 'wb oauth unavailable'),
+      };
     }
-    return this.config.upstreamKey;
+    let token: string;
+    try {
+      token = await this.wbOauth.accessToken(provider);
+    } catch (err) {
+      slot.release();
+      const missing = !this.wbOauth.credentialSnapshot(provider.id);
+      return {
+        error: this.fail(ctx, new RelayHttpError({
+          httpStatus: 502,
+          code: 'upstream_credential_invalid',
+          message: missing
+            ? `提供商 ${provider.name} 未导入授权 —— 到「客户端管理 → 配置 → 重新导入授权」完成官方授权。`
+            : `获取 WorkBuddy access token 失败：${(err as Error).message}`,
+        }), missing ? 'missing wb oauth credential' : 'wb token refresh failed'),
+      };
+    }
+    const snapshot = this.wbOauth.credentialSnapshot(provider.id);
+    const cred = { accessToken: token, refreshToken: '', uid: snapshot?.uid ?? '', deviceToken: snapshot?.deviceToken };
+    /* 入站 allowlist 透传（UA/accept 等）后叠加 OAuth 头族 —— 与旧路径同一纪律：
+       本机密钥绝不外泄（wbOauthHeaders 只放上游令牌）。 */
+    const { headers } = buildUpstreamHeaders(incomingHeaders, token, cfg.upstream.spoofUA, cfg.upstream.userAgent);
+    const wb = wbOauthHeaders(cred, token);
+    delete (wb as Record<string, string>)['content-type'];
+    delete (wb as Record<string, string>)['x-requested-with'];
+    Object.assign(headers, wb);
+    if (cred.uid) headers['x-user-id'] = cred.uid;
+    return { headers };
   }
 
   /** 兼容旧调用形状（测试/探测用）：只取模型 id 与显示名，不关心路由到哪家。 */
@@ -431,12 +468,12 @@ export class ProxyService {
       return await this.doCallQoder(ctx, body, rewritten.body, cfg, slot, routed.provider);
     }
 
-    const { headers } = buildUpstreamHeaders(
-      incomingHeaders,
-      this.openAiCredential(routed.provider),
-      cfg.upstream.spoofUA,
-      cfg.upstream.userAgent,
-    );
+    /* [v1.6.11] openai（WorkBuddy）转发改走 **OAuth** —— ck_ 已退役。
+       令牌与账号级设备头由 WbOauthService 维护（与独立版 wb 工具同一形态）：
+       access token 按需刷新，machine/session id 按 uid 稳定派生。 */
+    const wbHeaders = await this.buildWorkBuddyHeaders(ctx, routed.provider, incomingHeaders, cfg, slot);
+    if ('error' in wbHeaders) return wbHeaders.error;
+    const headers = wbHeaders.headers;
     headers['x-request-id'] = ctx.traceId;
     headers['accept'] = 'text/event-stream';
 

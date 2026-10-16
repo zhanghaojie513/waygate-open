@@ -25,6 +25,7 @@ import { ProxyController } from './proxy.controller';
 import { BODY_CAP_CHARS, TRUNCATION_MARK } from './body-capture';
 import type { RelayConfigService } from '../config/config.service';
 import type { KeyContext, RequestWithKeyContext } from '../auth/key.guard';
+import { fakeWbOauth } from './openai-upstream/wb-oauth.harness';
 
 const SCHEMA_PATH = join(__dirname, '..', 'store', 'schema.sql');
 const KEY_ID = 'k_wire';
@@ -101,7 +102,7 @@ function makeHarness(opts: WiringOptions = {}) {
     source: 'console',
   });
 
-  const controller = new ProxyController(new ProxyService(config, catalog, log, providers), catalog, providers);
+  const controller = new ProxyController(new ProxyService(config, catalog, log, providers, undefined, fakeWbOauth(UPSTREAM_KEY)), catalog, providers);
   const latest = (): Record<string, unknown> | undefined =>
     db.prepare('SELECT * FROM requests ORDER BY id DESC LIMIT 1').get() as
       | Record<string, unknown>

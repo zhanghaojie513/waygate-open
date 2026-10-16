@@ -23,6 +23,7 @@ import { ModelCatalogRepository } from '../store/repositories/model-catalog.repo
 import { ProvidersRepository } from '../store/repositories/providers.repo';
 import { RequestsRepository } from '../store/repositories/requests.repo';
 import { AggregatesRepository } from '../store/repositories/aggregates.repo';
+import { fakeWbOauth } from './openai-upstream/wb-oauth.harness';
 
 const SCHEMA_PATH = join(__dirname, '..', 'store', 'schema.sql');
 
@@ -149,7 +150,7 @@ describe('persist 幂等 · 一次请求恰好一行', () => {
       }),
       upstreamKey: 'ck_test_0123456789abcdef',
     } as unknown as RelayConfigService;
-    return new ProxyService(config, catalog, log);
+    return new ProxyService(config, catalog, log, undefined, undefined, fakeWbOauth('ck_test_0123456789abcdef'));
   }
 
   it('★ 成功落库后再 persistFailure（浅拷贝 ctx）→ 仍只有一行', async () => {

@@ -21,6 +21,7 @@ import type { KeyContext, RequestWithKeyContext } from '../../auth/key.guard';
 import { ProxyLogger } from '../proxy-log';
 import { ProxyService } from '../proxy.service';
 import { AnthropicController } from './anthropic.controller';
+import { fakeWbOauth } from '../openai-upstream/wb-oauth.harness';
 
 const SCHEMA_PATH = join(__dirname, '..', '..', 'store', 'schema.sql');
 const enc = new TextEncoder();
@@ -113,7 +114,7 @@ export function makeHarness(): Harness {
     source: 'console',
   });
 
-  const proxy = new ProxyService(config, catalog, log, providers);
+  const proxy = new ProxyService(config, catalog, log, providers, undefined, fakeWbOauth('ck_test_0123456789abcdef'));
   const controller = new AnthropicController(proxy);
 
   // 混合 reply：非流式用 code/header/send，流式用 raw

@@ -1,5 +1,5 @@
 /**
- * 设备授权导入（v1.6.11）—— 控制台「导入」按钮的服务端。
+ * 设备授权导入（v1.6.12）—— 控制台「导入」按钮的服务端。
  *
  * ## 解决什么
  * 三种客户端（WorkBuddy / MiniMax Code / Qoder CN）的凭证都不在用户手上，
@@ -28,6 +28,8 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { resolveDataDir } from '../store/db';
+import { ProvidersRepository } from '../store/repositories/providers.repo';
+import { WbOauthService } from '../proxy/openai-upstream/wb-oauth.service';
 
 /** 可导入的客户端种类（= 三种协议）。 */
 export type ImportKind = 'openai' | 'anthropic' | 'qoder';
@@ -86,6 +88,11 @@ export class DeviceImportService {
   private readonly logger = new Logger(DeviceImportService.name);
   /** 待完成的授权会话（providerId → 私有状态）。进程内存即可：授权本就是短时交互。 */
   private readonly pending = new Map<string, PendingSession>();
+
+  constructor(
+    private readonly providers: ProvidersRepository,
+    private readonly wbOauth: WbOauthService,
+  ) {}
 
   private providersDir(): string {
     return join(resolveDataDir(), 'providers');
@@ -216,11 +223,15 @@ export class DeviceImportService {
       uid,
       ...(nickname ? { nickname } : {}),
       ...(tok.domain ? { domain: tok.domain } : {}),
-      expiresAt: typeof tok.expiresIn === 'number' && tok.expiresIn > 0 ? Date.now() + tok.expiresIn * 1000 : null,
+      expiresAt: typeof tok.expiresIn === 'number' && tok.expiresIn > 0 ? Date.now() + tok.expiresIn * 1000 : undefined,
     };
-    this.writeCredential(providerId, JSON.stringify(credential, null, 2) + '\n');
+    /* [v1.6.11] WorkBuddy 落 **.oauth 槽**（不是 .key）—— ck_ 已退役，
+       转发与领取域统一走 OAuth（WbOauthService 维护刷新）。 */
+    const row = this.providers.findById(providerId);
+    if (!row) return { ok: false, status: 'error', message: '提供商不存在（可能已被删除）。' };
+    this.wbOauth.importCredential(row, credential);
     this.pending.delete(providerId);
-    this.logger.log(`WorkBuddy 凭证已导入：${providerId}（uid=${uid.slice(0, 8)}…）`);
+    this.logger.log(`WorkBuddy 授权已导入：${providerId}（uid=${uid.slice(0, 8)}…）`);
     return { ok: true, status: 'done', summary: nickname ? `${nickname}` : `uid ${uid.slice(0, 8)}…` };
   }
 

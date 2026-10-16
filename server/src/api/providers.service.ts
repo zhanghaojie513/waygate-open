@@ -46,7 +46,6 @@ import { ProviderModelPrefsRepository } from '../store/repositories/provider-mod
 import { RelayConfigService } from '../config/config.service';
 import { RelayHttpError, ApiCode } from '../common/errors';
 import { maskSecret } from '../common/mask';
-import { UPSTREAM_KEY_PATTERN, UPSTREAM_KEY_HINT } from './credential.service';
 import { CatalogSyncService } from '../catalog/catalog-sync';
 import { ModelCatalogRepository } from '../store/repositories/model-catalog.repo';
 import { seedDefaultModels } from '../catalog/seed-models';
@@ -187,14 +186,9 @@ export class ProvidersService implements OnApplicationBootstrap {
     const baseUrl = this.config.get().upstream.baseUrl;
     this.repo.create({ id: DEFAULT_PROVIDER_ID, name: DEFAULT_PROVIDER_NAME, baseUrl, active: true });
 
-    const key = this.config.upstreamKey;
-    if (key) {
-      try {
-        this.writeCredentialFile(DEFAULT_PROVIDER_ID, key);
-      } catch (err) {
-        this.logger.warn(`默认提供商凭证落盘失败（不影响运行）：${(err as Error).message}`);
-      }
-    }
+    /* [v1.6.11] 不再把 config.upstreamKey 迁到 .key —— WorkBuddy 的凭证是 OAuth 槽
+       （ck_ 已退役）。升级后该行显示「未配置」，用户在控制台点「重新导入授权」即可。
+       旧 .key 文件如存在也不读（不再是凭证来源），保留不删以免误伤回滚。 */
     if (this.catalog) {
       try {
         const n = seedDefaultModels(this.catalog, DEFAULT_PROVIDER_ID);
@@ -203,7 +197,9 @@ export class ProvidersService implements OnApplicationBootstrap {
         this.logger.warn(`内置模型清单种入失败（不影响运行，可手动「获取模型」）：${(err as Error).message}`);
       }
     }
-    this.logger.log(`已种子默认提供商 ${DEFAULT_PROVIDER_NAME}（${baseUrl}，凭证${key ? '已迁移' : '为空'}）`);
+    this.logger.log(
+      `已种子默认提供商 ${DEFAULT_PROVIDER_NAME}（${baseUrl}）—— 凭证需在控制台「重新导入授权」`,
+    );
   }
 
   /**
@@ -242,7 +238,7 @@ export class ProvidersService implements OnApplicationBootstrap {
       protocol,
       credKind: protocol === 'anthropic' ? 'oauth_minimax' : 'static',
     });
-    /* [v1.6.10] 空凭证不落盘 —— 落一个空文件会让 `configured` 判断（读文件非空）
+    /* [v1.6.11] 空凭证不落盘 —— 落一个空文件会让 `configured` 判断（读文件非空）
        与实际不符。留空就是"待导入"，等「自动导入」写进来。 */
     if (credential) this.writeCredentialFile(id, credential);
 
@@ -283,13 +279,16 @@ export class ProvidersService implements OnApplicationBootstrap {
     /* 凭证单独走（只写文件；改的是活提供商时还要热载入内存） */
     if (input.credential !== undefined) {
       const credential = this.parseCredential(input.credential, row.protocol as 'openai' | 'anthropic' | 'qoder');
-      this.writeCredentialFile(id, credential);
-      /* [v0.5.0] oauth 提供商的凭证不进全局位 —— 出站时由 MinimaxTokenService 换新。
-         [v0.6.0] qoder 同理：凭证是身份 JSON，出站由 QoderCredentialStore 直读文件。 */
-      if (row.active && row.protocol !== 'anthropic' && row.protocol !== 'qoder') this.config.setUpstreamKey(credential);
-      /* [v1.6.5] anthropic：换了 refresh token 必须作废旧 access token，
-         否则出站继续用旧令牌 —— 用户视角就是「改了凭证却没生效」。 */
-      if (row.protocol === 'anthropic') this.minimaxTokens?.invalidate(id);
+      if (row.protocol !== 'openai') {
+        this.writeCredentialFile(id, credential);
+        /* [v0.5.0] oauth 提供商的凭证不进全局位 —— 出站时由 MinimaxTokenService 换新。
+           [v0.6.0] qoder 同理：凭证是身份 JSON，出站由 QoderCredentialStore 直读文件。 */
+        if (row.active && row.protocol !== 'anthropic' && row.protocol !== 'qoder') this.config.setUpstreamKey(credential);
+        /* [v1.6.5] anthropic：换了 refresh token 必须作废旧 access token，
+           否则出站继续用旧令牌 —— 用户视角就是「改了凭证却没生效」。 */
+        if (row.protocol === 'anthropic') this.minimaxTokens?.invalidate(id);
+      }
+      /* [v1.6.11] openai 走上面的 parseCredential 报错（ck_ 已退役）—— 这里到不了。 */
     }
 
     /* 活提供商的地址改了 → 立即写进设置（转发/实测/目录拉取都读它） */
@@ -313,11 +312,12 @@ export class ProvidersService implements OnApplicationBootstrap {
   private activateInternal(id: string): void {
     const row = this.mustFind(id);
     this.repo.activate(id);
-    /* [v0.5.0] oauth 提供商的凭证文件存的是 refresh token —— 不进全局出站位
-       （出站时由 MinimaxTokenService 换 access token）。anthropic+static（M Plan key）
-       与 openai（ck_）照旧热载入。
-       [v0.6.0] qoder 也不进：凭证是身份 JSON，出站由 QoderCredentialStore 直读文件。 */
-    if (row.cred_kind !== 'oauth_minimax' && row.protocol !== 'qoder') {
+    /* 谁把凭证放进「全局出站位」（config.upstreamKey）？只有 anthropic+static（M Plan 平台 key）。
+       其余都不放：
+       · [v0.5.0] anthropic+oauth_minimax：文件里是 refresh token，出站时换 access token；
+       · [v0.6.0] qoder：凭证是身份 JSON，出站由 QoderCredentialStore 直读文件；
+       · [v1.6.11] openai（WorkBuddy）：凭证是 OAuth 槽，出站由 WbOauthService 取（ck_ 已退役）。 */
+    if (row.protocol === 'anthropic' && row.cred_kind !== 'oauth_minimax') {
       this.config.setUpstreamKey(this.readCredentialFile(id));
     }
     this.applyBaseUrlToSettings(row.base_url);
@@ -403,7 +403,19 @@ export class ProvidersService implements OnApplicationBootstrap {
   }> {
     const row = this.mustFind(id);
     let key: string;
-    if (rawKey === undefined || rawKey === null || rawKey === '') {
+    if (row.protocol === 'openai') {
+      /* [v1.6.11] WorkBuddy 的凭证是 OAuth 槽（不与行内文件同址）—— 从服务取 access token。
+         不接草稿 credential（ck_ 已退役，界面也不再提供输入框）。 */
+      if (rawKey !== undefined && rawKey !== null && rawKey !== '') {
+        throw this.bad('WorkBuddy 已不再使用 ck_ 密钥 —— 请用「重新导入授权」完成官方授权。');
+      }
+      if (!this.wbOauth) throw this.bad('WorkBuddy OAuth 服务未装配（部署异常）。');
+      try {
+        key = await this.wbOauth.accessToken(row);
+      } catch {
+        throw this.bad(`该提供商还没导入授权 —— 到「配置 → 重新导入授权」完成官方授权。`);
+      }
+    } else if (rawKey === undefined || rawKey === null || rawKey === '') {
       key = this.readCredentialFile(id);
       if (!key) {
         throw this.bad(`该提供商还没配置凭证 —— 先在「修改」里填一个，或带上 credential 再测。`);
@@ -420,8 +432,6 @@ export class ProvidersService implements OnApplicationBootstrap {
             '凭证格式不正确：MiniMax 客户端订阅请贴 refresh token（mmort_ 开头，客户端数据目录 auth.json 里）；M Plan 则贴平台 API key。',
           );
         }
-      } else if (!UPSTREAM_KEY_PATTERN.test(key)) {
-        throw this.bad(`上游访问密钥格式不正确：${UPSTREAM_KEY_HINT}`);
       }
     }
     const modelId =
@@ -455,12 +465,20 @@ export class ProvidersService implements OnApplicationBootstrap {
 
   private toItem(row: ProviderRow): ProviderItem {
     const key = this.readCredentialFile(row.id);
+    /* [v1.6.11] openai（WorkBuddy）的「已配置」改看 **OAuth 槽** —— ck_ 已退役。
+       其余两家仍看凭证文件（anthropic = mmort_ refresh token / M Plan key；
+       qoder = 身份 JSON）。 */
+    const isOpenai = row.protocol !== 'anthropic' && row.protocol !== 'qoder';
+    const wbStatus = this.wbOauth?.statusOf(row.id);
+    const configured = isOpenai ? Boolean(wbStatus?.configured) : key !== '';
     return {
       id: row.id,
       name: row.name,
       baseUrl: row.base_url,
-      credentialMask: maskSecret(key),
-      configured: key !== '',
+      credentialMask: isOpenai
+        ? (wbStatus?.configured ? `oauth(${wbStatus.uidMask ?? '已授权'})` : '未配置')
+        : maskSecret(key),
+      configured,
       active: row.active === 1,
       /* [v0.6.0] 三方言语义透传 —— 此前非 anthropic 一律写 openai，会把 qoder 谎报成 openai。 */
       protocol: (row.protocol === 'anthropic' ? 'anthropic' : row.protocol === 'qoder' ? 'qoder' : 'openai'),
@@ -579,7 +597,7 @@ export class ProvidersService implements OnApplicationBootstrap {
   }
 
   /**
-   * [v1.6.10] anthropic / qoder 允许**先建后导**（凭证留空）。
+   * [v1.6.11] anthropic / qoder 允许**先建后导**（凭证留空）。
    *
    * 这两家的凭证是客户端登录态里的东西（MiniMax = `mmort_` refresh token；
    * Qoder = 一整段身份 JSON），用户手上没有、也手敲不出来 —— 「配置」抽屉为此在
@@ -588,14 +606,20 @@ export class ProvidersService implements OnApplicationBootstrap {
    * 又要 provider id，而 id 建完才有 —— 死锁。
    *
    * 放行留空后：行先建出来（`configured=false`），再用「自动导入」把凭证灌进去。
-   * openai（WorkBuddy）保持必填 —— `ck_` 密钥用户从官方后台复制即可，没什么拿不到。
+   * [v1.6.11] openai（WorkBuddy）也放行留空 —— **ck_ 已退役**，三家统一走
+   * 「导入客户端 → 官方授权」；凭证分别落 .oauth（WorkBuddy）/ .key（另两家）。
    */
   private parseCredential(raw: unknown, protocol: 'openai' | 'anthropic' | 'qoder' = 'openai'): string {
     if (typeof raw !== 'string' || !raw.trim()) {
-      if (protocol === 'anthropic' || protocol === 'qoder') return '';
-      throw this.bad(`上游访问密钥不能为空。${UPSTREAM_KEY_HINT}。`);
+      /* 三家都可先建后导（openai 的 ck_ 已退役，凭证来自 OAuth 授权）。 */
+      return '';
     }
     const key = raw.trim();
+    if (protocol === 'openai') {
+      throw this.bad(
+        'WorkBuddy 已不再使用 ck_ 密钥 —— 请用「导入客户端」完成官方授权（凭证自动落盘，无需手填）。',
+      );
+    }
     /* [v0.6.0] Qoder：身份 JSON（五个必填字符串字段）。结构错误在出站前就报清楚，
        不把坏凭证存进去、也不等出站半路炸。 */
     if (protocol === 'qoder') {
@@ -620,10 +644,8 @@ export class ProvidersService implements OnApplicationBootstrap {
       }
       return key;
     }
-    if (!UPSTREAM_KEY_PATTERN.test(key)) {
-      throw this.bad(`上游访问密钥格式不正确：${UPSTREAM_KEY_HINT}`);
-    }
-    return key;
+    /* openai 分支已在上面拦下（ck_ 退役），此处只可能是 anthropic / qoder。 */
+    return '';
   }
 
   private bad(message: string): RelayHttpError {

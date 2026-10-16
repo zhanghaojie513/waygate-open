@@ -407,6 +407,9 @@ credits = NULL           ← 上游未回报该次费用（未知）            
 | `minimax tokens unavailable` | `proxy/proxy.service.ts:ProxyService.doCall()` | Anthropic/MiniMax 出站所需 token 未能取得，无法建立上游请求 | MiniMax token 不可用 |
 | `token refresh failed` | `proxy/proxy.service.ts:ProxyService.doCall()` | 已有 token 过期或刷新失败，出站请求未能建立 | 上游 token 刷新失败 |
 | `missing credential` | `proxy/proxy.service.ts:ProxyService.doCall()` | 当前提供商未配置必要的上游访问凭证 | 缺少上游访问凭证 |
+| `wb oauth unavailable` | `proxy/proxy.service.ts:ProxyService.buildWorkBuddyHeaders()` | [v1.6.11] WorkBuddy OAuth 服务未装配（部署异常），无法建立上游请求 | WorkBuddy 授权服务不可用 |
+| `missing wb oauth credential` | `proxy/proxy.service.ts:ProxyService.buildWorkBuddyHeaders()` | [v1.6.11] WorkBuddy 尚未导入官方授权（ck_ 已退役）—— 需在控制台「重新导入授权」 | WorkBuddy 未导入授权 |
+| `wb token refresh failed` | `proxy/proxy.service.ts:ProxyService.buildWorkBuddyHeaders()` | [v1.6.11] 已有 WorkBuddy 授权刷新失败，出站请求未能建立 | WorkBuddy 授权刷新失败 |
 | `qoder credential invalid` | `proxy/proxy.service.ts:ProxyService.doCall()` | Qoder COSY 凭证无法通过网关校验，出站请求未建立 | Qoder 凭证无效 |
 | `multiplier-unknown` | ~~`proxy/proxy-log.ts:ProxyLogger.persist()`~~ | **[历史·v0.5.8 起不再写入]** 旧本地兜底公式在倍率未知时按 1.0 中性估算并打此标记；公式已整段移除（上游未回报即 `credits = NULL`）。保留此行仅为**历史行仍可读**（前端映射表亦保留） | 倍率未知（历史：积分按中性估算） |
 | `cache_discounted` | ~~`proxy/proxy-log.ts:ProxyLogger.persist()`~~ | **[历史·v0.5.8 起不再写入]** 旧本地兜底公式对缓存命中部分打折计价时打此标记；公式已移除。保留此行仅为**历史行仍可读** | 缓存命中已按折扣计（历史） |

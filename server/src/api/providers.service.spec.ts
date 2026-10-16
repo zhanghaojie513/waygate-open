@@ -12,7 +12,7 @@
  */
 import 'reflect-metadata';
 import Database from 'better-sqlite3';
-import { mkdtempSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -21,6 +21,7 @@ import { ProvidersRepository } from '../store/repositories/providers.repo';
 import { ProviderModelPrefsRepository } from '../store/repositories/provider-model-prefs.repo';
 import { ProvidersService, DEFAULT_PROVIDER_ID } from './providers.service';
 import { CatalogSyncService } from '../catalog/catalog-sync';
+import { fakeWbOauth } from '../proxy/openai-upstream/wb-oauth.harness';
 import type { ModelProbeService } from '../catalog/probe';
 import type { RelayConfigService } from '../config/config.service';
 import type { Db } from '../store/db';
@@ -67,7 +68,8 @@ function makeService(overrides: { baseUrl?: string; key?: string } = {}) {
   };
   /* 偏好仓库用真表（prefs 表在 schema 里），删除护栏的测试要断言连带清理。 */
   prefs = new ProviderModelPrefsRepository(db);
-  svc = new ProvidersService(repo, config, sync, probe as unknown as ModelProbeService, prefs);
+  /* [v1.6.11] 第 8 参 = WorkBuddy OAuth 替身（openai 转发/试通已改走它）。 */
+  svc = new ProvidersService(repo, config, sync, probe as unknown as ModelProbeService, prefs, undefined, undefined, fakeWbOauth('oauth-access-token-test', 'uidseed0000'));
   svc.setProvidersDirForTest(join(dir, 'providers'));
   return { config, resyncCalls, probes, prefs };
 }
@@ -85,7 +87,7 @@ afterEach(() => {
 });
 
 describe('种子（升级零行为变化）', () => {
-  it('★ 空表 → 默认行 = settings 的 baseUrl + 现有凭证，且 active，名字是 WorkBuddy', () => {
+  it('★ 空表 → 默认行 = settings 的 baseUrl，且 active，名字是 WorkBuddy', () => {
     makeService({ baseUrl: 'https://copilot.tencent.com', key: 'ck_seed0000000000.zzz' });
     // onApplicationBootstrap 等价物：手动触发
     (svc as unknown as { onApplicationBootstrap: () => void }).onApplicationBootstrap();
@@ -99,12 +101,12 @@ describe('种子（升级零行为变化）', () => {
       name: 'WorkBuddy',
       baseUrl: 'https://copilot.tencent.com',
       active: true,
+      /* [v1.6.11] ck_ 退役：种子不再把 config.upstreamKey 迁到 .key。
+         本 spec 注入了「已授权」的 OAuth 替身 → configured=true（真机上未授权时为 false）。 */
       configured: true,
     });
-    // 凭证文件真的写下来了（升级前的 upstream.key 迁到 providers/<id>.key）
-    const file = join(dir, 'providers', `${DEFAULT_PROVIDER_ID}.key`);
-    expect(existsSync(file)).toBe(true);
-    expect(readFileSync(file, 'utf8').trim()).toBe('ck_seed0000000000.zzz');
+    // 不再落 .key（凭证来自 OAuth 槽，由 device-import 写入）
+    expect(existsSync(join(dir, 'providers', `${DEFAULT_PROVIDER_ID}.key`))).toBe(false);
   });
 
   it('★ 存量库里的旧名「默认提供商」→ 启动时改名为 WorkBuddy（幂等，不动别的行）', () => {
@@ -132,12 +134,14 @@ describe('种子（升级零行为变化）', () => {
     expect(svc.list().items).toHaveLength(1);
   });
 
-  it('★ 凭证掩码：列表里永远没有明文', () => {
+  it('★ 凭证掩码：WorkBuddy 行绝不含令牌明文（OAuth 形态只显示账号前缀）', () => {
     makeService({ key: 'ck_abcdefgh12345678.zzzz' });
     (svc as unknown as { onApplicationBootstrap: () => void }).onApplicationBootstrap();
     const raw = JSON.stringify(svc.list());
+    /* [v1.6.11] openai 的掩码来自 OAuth 替身（uid 前 8 位），没有 ck_ 参与。 */
     expect(raw).not.toContain('ck_abcdefgh12345678');
-    expect(raw).toContain('ck_a••••zzzz');
+    expect(raw).not.toContain('oauth-access-token-test');
+    expect(raw).toContain('oauth(');
   });
 });
 
@@ -147,36 +151,46 @@ describe('新增 / 激活', () => {
     (svc as unknown as { onApplicationBootstrap: () => void }).onApplicationBootstrap();
   });
 
-  it('★ 新增不自动激活（默认），创建后 configured=true', () => {
+  it('★ 新增不自动激活（默认）', () => {
     const { item, activated } = svc.create({
       name: '测试上游',
       baseUrl: 'https://api.test.example.com',
-      credential: 'ck_newkey0000000001.abc',
+      credential: 'mmort_abcdefghijklmnopqrst',
+      protocol: 'anthropic',
     });
     expect(activated).toBe(false);
     expect(item.active).toBe(false);
-    expect(item.configured).toBe(true);
     // active 仍是默认那行
     expect(svc.findActive()?.id).toBe(DEFAULT_PROVIDER_ID);
   });
 
-  it('★ 激活 = 恰一行 active + settings 的 baseUrl 热更 + 凭证载入', () => {
+  it('★ openai 建行不再接受 ck_ 密钥（指向「重新导入授权」）', () => {
+    expect(() =>
+      svc.create({ name: 'X', baseUrl: 'https://api.example.com', credential: 'ck_newkey0000000001.abc', protocol: 'openai' }),
+    ).toThrow(/不再使用 ck_/);
+  });
+
+  it('★ openai 空凭证可建 → configured=false（待导入授权）', () => {
+    const { item } = svc.create({ name: 'WB2', baseUrl: 'https://api.example.com', credential: '', protocol: 'openai' });
+    /* 替身是「已授权」的，故 openai 行的 configured 由替身决定 —— 用真默认行（同样走替身）验证形态即可。 */
+    expect(item.credentialMask).toMatch(/oauth\(|未配置/);
+  });
+
+  it('★ 激活 = settings 的 baseUrl 热更 + 该行进入生效集合', () => {
     const { item } = svc.create({
       name: '测试上游',
       baseUrl: 'https://api.test.example.com',
-      credential: 'ck_newkey0000000001.abc',
+      credential: 'mmort_abcdefghijklmnopqrst',
+      protocol: 'anthropic',
     });
     const after = svc.activate(item.id);
     expect(after.active).toBe(true);
-    // 不变式：旧的熄了
     /* [v0.5.1] 多生效：激活不再互斥 —— 默认行保持 active，两行都生效。 */
     const actives = svc.list().items.filter((p) => p.active);
     expect(actives.length).toBeGreaterThanOrEqual(1);
     expect(actives.map((a) => a.id)).toContain(item.id);
     // settings.upstream.baseUrl 被写成新行 —— 转发/实测/目录拉取都读它
     expect(configSet.baseUrl).toContain('https://api.test.example.com');
-    // 新凭证文件载入 config（打到新上游用的就是它）
-    expect(configSet.key[configSet.key.length - 1]).toBe('ck_newkey0000000001.abc');
   });
 
   it('★ 激活触发**该提供商自己的**目录同步（多生效：不再有切走/切向）', () => {
@@ -185,7 +199,8 @@ describe('新增 / 激活', () => {
     const { item } = svc.create({
       name: 'T',
       baseUrl: 'https://api.t.example.com',
-      credential: 'ck_newkey0000000001.abc',
+      credential: 'mmort_abcdefghijklmnopqrst',
+      protocol: 'anthropic',
     });
     svc.activate(item.id);
     // [v0.5.1] 多生效：只同步被启用的那家（id 传错，偏好就会恢复到别人头上）
@@ -198,7 +213,8 @@ describe('新增 / 激活', () => {
     svc.create({
       name: '即刻',
       baseUrl: 'https://api.now.example.com',
-      credential: 'ck_newkey0000000001.abc',
+      credential: 'mmort_abcdefghijklmnopqrst',
+      protocol: 'anthropic',
       activate: true,
     });
     expect(resyncCalls).toHaveLength(1);
@@ -227,7 +243,8 @@ describe('修改 / 删除的护栏', () => {
     const { item } = svc.create({
       name: 'T',
       baseUrl: 'https://api.t.example.com',
-      credential: 'ck_newkey0000000001.abc',
+      credential: 'mmort_abcdefghijklmnopqrst',
+      protocol: 'anthropic',
     });
     svc.activate(item.id);
     expect(() => svc.remove(DEFAULT_PROVIDER_ID)).not.toThrow();
@@ -239,7 +256,8 @@ describe('修改 / 删除的护栏', () => {
     const { item } = svc.create({
       name: 'T',
       baseUrl: 'https://api.t.example.com',
-      credential: 'ck_newkey0000000001.abc',
+      credential: 'mmort_abcdefghijklmnopqrst',
+      protocol: 'anthropic',
     });
     /* 给它塞一份偏好（模拟它曾生效过、用户停过模型再切走）。 */
     prefs.save(item.id, [{ modelId: 'm-1', enabled: false }]);
@@ -263,32 +281,38 @@ describe('试通（不切换就能测）', () => {
     const { item } = svc.create({
       name: 'T',
       baseUrl: 'https://api.t.example.com',
-      credential: 'ck_newkey0000000001.abc',
+      credential: 'mmort_abcdefghijklmnopqrst',
+      protocol: 'anthropic',
     });
-    await svc.test(item.id, 'ck_OverRide0000001.zzz');
+    await svc.test(item.id, 'mmort_override00000000zz');
     /* 关键断言：probe 收到的 baseUrl 是该行的，key 是传入的那把 ——
        这正是"测非活提供商"的全部意义（此前只能切过去再测）。 */
     expect(probes[probes.length - 1]).toEqual({
       model: 'hunyuan-lite',
-      key: 'ck_OverRide0000001.zzz',
+      key: 'mmort_override00000000zz',
       baseUrl: 'https://api.t.example.com',
     });
   });
 
-  it('★ 省 credential 时用该提供商**已保存**的那把（「已存的还活着吗」）', async () => {
+  it('★ openai 试通用 OAuth 替身的 token（不接受手填 credential）', async () => {
     await svc.test(DEFAULT_PROVIDER_ID, undefined);
     expect(probes[probes.length - 1]).toEqual({
       model: 'hunyuan-lite',
-      key: 'ck_seed0000000000.zzz', // 种子时落盘的那把
+      key: 'oauth-access-token-test',
       baseUrl: 'https://copilot.tencent.com',
     });
+  });
+
+  it('★ openai 传 credential → 400（ck_ 已退役，指向重新导入授权）', async () => {
+    await expect(svc.test(DEFAULT_PROVIDER_ID, 'ck_OverRide0000001.zzz')).rejects.toThrow(/不再使用 ck_/);
   });
 
   it('★ 该提供商没有凭证又没带 credential → 400（不悄悄拿全局那把凑）', async () => {
     const { item } = svc.create({
       name: 'T',
       baseUrl: 'https://api.t.example.com',
-      credential: 'ck_newkey0000000001.abc',
+      credential: 'mmort_abcdefghijklmnopqrst',
+      protocol: 'anthropic',
     });
     // 把凭证文件删掉，模拟"建了但从没填过"
     const { unlinkSync } = await import('node:fs');
@@ -303,8 +327,11 @@ describe('试通（不切换就能测）', () => {
     expect(probes[probes.length - 1]!.model).toBe('hunyuan-lite');
   });
 
-  it('credential 形状不合法 → 400（与既有试通同一条规则）', async () => {
-    await expect(svc.test(DEFAULT_PROVIDER_ID, 'short')).rejects.toThrow(/格式不正确/);
+  it('anthropic credential 形状不合法 → 400（与既有试通同一条规则）', async () => {
+    const { item } = svc.create({
+      name: 'T', baseUrl: 'https://api.t.example.com', credential: 'mmort_abcdefghijklmnopqrst', protocol: 'anthropic',
+    });
+    await expect(svc.test(item.id, 'short')).rejects.toThrow(/格式不正确/);
   });
 
   it('不存在的提供商 → 404', async () => {
@@ -332,39 +359,41 @@ describe('SSRF 防线（提供商地址是用户输入、服务端会真实请�
   ];
   it.each(BAD)('★ 拒绝 %s', (url) => {
     expect(() =>
-      svc.create({ name: 'X', baseUrl: url, credential: 'ck_newkey0000000001.abc' }),
+      svc.create({ name: 'X', baseUrl: url, credential: 'mmort_abcdefghijklmnopqrst', protocol: 'anthropic' }),
     ).toThrow(/不允许|只允许|不是合法 URL/);
   });
 
   const OK = ['https://api.example.com', 'https://api.example.com/', 'http://api.example.com'];
   it.each(OK)('放行 %s（公网 http/https）', (url) => {
-    const { item } = svc.create({ name: 'X', baseUrl: url, credential: 'ck_newkey0000000001.abc' });
+    const { item } = svc.create({
+      name: 'X', baseUrl: url, credential: 'mmort_abcdefghijklmnopqrst', protocol: 'anthropic',
+    });
     // 尾斜杠被规整掉（与 resolveUpstreamBase 的去斜杠语义一致）
     expect(item.baseUrl).not.toMatch(/\/$/);
   });
 });
 
-describe('凭证形状（与既有「上游访问密钥」同一条规则）', () => {
+describe('凭证形状', () => {
   beforeEach(() => {
     makeService();
     (svc as unknown as { onApplicationBootstrap: () => void }).onApplicationBootstrap();
   });
 
-  it('空 / 非 ck_ 前缀 / 太短 → 400', () => {
-    for (const bad of ['', 'short', 'xx_1234567890123456']) {
+  /* ★★ [v1.6.11] ck_ 已退役：openai 走 OAuth，手填密钥一律拒绝并指向「重新导入授权」。 */
+  it('★ openai 不再支持手填 ck_ 密钥', () => {
+    for (const bad of ['ck_1234567890abcdef.zzzz', 'anything']) {
       expect(() =>
-        svc.create({ name: 'X', baseUrl: 'https://api.example.com', credential: bad }),
-      ).toThrow(/上游访问密钥/);
+        svc.create({ name: 'X', baseUrl: 'https://api.example.com', credential: bad, protocol: 'openai' }),
+      ).toThrow(/不再使用 ck_/);
     }
   });
 
-  it('★ 含点号的真实形态（ck_<16>.<40>）被接受', () => {
-    const real = 'ck_1234567890abcdef.FFfFfFfFfFfFfFfFfFfFfFfFfFfFfFfFfFfFfFfFfFf';
-    const { item } = svc.create({ name: 'X', baseUrl: 'https://api.example.com', credential: real });
-    expect(item.configured).toBe(true);
+  it('★ openai 空凭证可建（待导入授权）', () => {
+    const { item } = svc.create({ name: 'X', baseUrl: 'https://api.example.com', credential: '', protocol: 'openai' });
+    expect(item.credentialMask).toMatch(/oauth\(|未配置/);
   });
 
-  /* ★★ [v1.6.10] anthropic / qoder 允许**先建后导**。
+  /* ★★ [v1.6.11] anthropic / qoder 允许**先建后导**。
      这两家的凭证在客户端登录态里（mmort_ / 身份 JSON），用户手上没有；
      原先强制必填 → 界面上根本建不出来；而导入脚本要 provider id，id 建完才有 —— 死锁。
      放行留空后必须满足两条：行能建出来，且**不得**被当成已配置（否则列表谎报"有效"）。 */
@@ -382,12 +411,6 @@ describe('凭证形状（与既有「上游访问密钥」同一条规则）', (
         /* 空凭证不能落盘：落一个空文件会让 configured 判断（读文件非空）与实际不符。 */
         expect(existsSync(join(dir, 'providers', `${item.id}.key`))).toBe(false);
       }
-    });
-
-    it('openai 仍必填 —— ck_ 密钥用户从官方后台复制即可，没有"拿不到"的问题', () => {
-      expect(() =>
-        svc.create({ name: 'X', baseUrl: 'https://api.example.com', credential: '', protocol: 'openai' }),
-      ).toThrow(/上游访问密钥/);
     });
 
     it('给了凭证就照常校验形状（留空放行 ≠ 任意字符串都收）', () => {

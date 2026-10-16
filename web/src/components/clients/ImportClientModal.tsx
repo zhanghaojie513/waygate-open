@@ -9,17 +9,21 @@ import { CopyCommand } from '../ui/CopyCommand';
 import { useToast } from '../ui/Toast';
 
 /**
- * 「导入客户端」—— 新增提供商旁的授权式入口（v1.6.11）。
+ * 「导入客户端」/「重新导入授权」（v1.6.12，v1.6.11 起为唯一凭证入口）。
  *
- * ## 与「新增提供商」的分工
- *   · **新增提供商**：手填名称/地址/凭证（WorkBuddy 的 `ck_` 密钥走这条）。
- *   · **导入客户端**（本弹窗）：**选一个客户端 → 跳官方授权页 → 回来自动导入**。
- *     适用于凭证在客户端登录态里、用户拿不到的两家（MiniMax Code / Qoder CN）。
+ * ## 两种用法
+ *   · **建新行**（`provider` 缺省）：选客户端 + 起个名字 → 建行（无凭证）→ 官方授权。
+ *   · **重新导入**（传 `provider`）：对该行重新走一次官方授权（换账号 / 令牌失效时）。
+ *     此时不建行、不可改协议与名称，直接进确认步骤。
  *
- * ## 流程（用户口径：选完点导入 → 提示即将跳授权页 → 确定跳转）
- *   ① 选客户端（三选一）+ 起个名字
+ * ## 为什么凭证只能这样来
+ * 三家的凭证都在**客户端登录态**里，用户拿不到、也手敲不出来（WorkBuddy 曾用 ck_
+ * 密钥，v1.6.11 起也统一走官方 OAuth 设备授权）。所以「授权导入」是唯一的凭证入口。
+ *
+ * ## 流程
+ *   ① 选客户端（建新行时）+ 起个名字
  *   ② 点「导入」→ **确认弹窗**提示「即将跳转至授权页」
- *   ③ 确定 → 先建行（无凭证）→ 申请授权 → 开新标签页 → 原地轮询
+ *   ③ 确定 → （建行）→ 申请授权 → 开新标签页 → 原地轮询
  *   ④ `done` → 凭证已落盘；`error` → 停下并说明原因
  *
  * 三家授权机制各不相同（WorkBuddy 业务码 / MiniMax PKCE 设备码 / Qoder PKCE + 404 判等待），
@@ -47,18 +51,37 @@ const POLL_MAX_MS = 5 * 60 * 1000;
 
 type Phase = 'pick' | 'confirm' | 'waiting' | 'done';
 
-export function ImportClientModal({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {
+/** 可选的「重新导入」目标：已存在的提供商行。 */
+export interface ReimportTarget {
+  id: string;
+  name: string;
+  protocol: 'openai' | 'anthropic' | 'qoder';
+}
+
+export function ImportClientModal({
+  provider,
+  onClose,
+  onImported,
+}: {
+  /** 给定 = 对该行重新导入授权（不建行）；缺省 = 选客户端建新行。 */
+  provider?: ReimportTarget;
+  onClose: () => void;
+  onImported: () => void;
+}) {
   const toast = useToast();
-  const [phase, setPhase] = useState<Phase>('pick');
-  const [protocol, setProtocol] = useState<'openai' | 'anthropic' | 'qoder'>('anthropic');
-  const [name, setName] = useState('');
+  /* 重新导入时跳过「选客户端」——协议与名称都沿用该行。 */
+  const [phase, setPhase] = useState<Phase>(provider ? 'confirm' : 'pick');
+  const [protocol, setProtocol] = useState<'openai' | 'anthropic' | 'qoder'>(provider?.protocol ?? 'anthropic');
+  const [name, setName] = useState(provider?.name ?? '');
   const [authUrl, setAuthUrl] = useState('');
   const [userCode, setUserCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<ApiError | null>(null);
 
-  /** 已建好的提供商 id（确认后先建行再授权，故要记住以便关闭时清理）。 */
-  const providerId = useRef<string | null>(null);
+  /** 目标提供商 id：重新导入时就是传入的那行；建新行时是建出来的 id。 */
+  const providerId = useRef<string | null>(provider?.id ?? null);
+  /** 本次是否新建了行（关闭时若未授权成功，需要清掉这个空壳行）。 */
+  const createdNew = useRef(false);
   const stopped = useRef(false);
   const choice = CLIENT_CHOICES.find((c) => c.protocol === protocol)!;
 
@@ -71,21 +94,27 @@ export function ImportClientModal({ onClose, onImported }: { onClose: () => void
     };
   }, []);
 
-  /** ② 确认后：建行 → 申请授权 → 开新页 → 轮询。 */
+  /** ② 确认后：（建行）→ 申请授权 → 开新页 → 轮询。 */
   const confirmAndStart = useCallback(async () => {
     setBusy(true);
     setErr(null);
     try {
-      /* 先建行（无凭证）—— 授权成功后才有 id 可落凭证。 */
-      const created = await api.createProvider({
-        name: name.trim() || choice.label,
-        baseUrl: DEFAULT_BASE_URL[protocol] ?? DEFAULT_BASE_URL.openai!,
-        credential: '',
-        protocol,
-      });
-      providerId.current = created.item.id;
+      /* 建新行时先建一个无凭证的行（授权成功才有 id 落凭证）；
+         重新导入则直接用既有 id。 */
+      let targetId = providerId.current;
+      if (!targetId) {
+        const created = await api.createProvider({
+          name: name.trim() || choice.label,
+          baseUrl: DEFAULT_BASE_URL[protocol] ?? DEFAULT_BASE_URL.openai!,
+          credential: '',
+          protocol,
+        });
+        targetId = created.item.id;
+        providerId.current = targetId;
+        createdNew.current = true;
+      }
 
-      const r = await api.providerImportDeviceStart(created.item.id);
+      const r = await api.providerImportDeviceStart(targetId);
       if (!r.ok || !r.authUrl) {
         setErr(new ApiError(r.message ?? '申请授权失败', 0, 0));
         setPhase('confirm');
@@ -103,11 +132,11 @@ export function ImportClientModal({ onClose, onImported }: { onClose: () => void
       while (!stopped.current && Date.now() < deadline) {
         await new Promise((res) => setTimeout(res, POLL_INTERVAL_MS));
         if (stopped.current) return;
-        const p = await api.providerImportDevicePoll(created.item.id);
+        const p = await api.providerImportDevicePoll(targetId);
         if (stopped.current) return;
         if (p.status === 'done') {
           setPhase('done');
-          toast.push({ tone: 'success', message: `${created.item.name} 凭证已导入。` });
+          toast.push({ tone: 'success', message: `${name.trim() || choice.label} 授权已导入。` });
           onImported();
           return;
         }
@@ -132,16 +161,18 @@ export function ImportClientModal({ onClose, onImported }: { onClose: () => void
   if (phase === 'done') {
     return (
       <Modal
-        title="凭证已导入"
+        title="授权已导入"
         onClose={onClose}
         footer={<button type="button" className="btn btn-primary btn-sm" onClick={onClose}>完成</button>}
       >
         <Banner tone="success">
-          <span>{name.trim() || choice.label} 的凭证已通过官方授权导入。</span>
+          <span>{name.trim() || choice.label} 的授权已通过官方通道导入。</span>
         </Banner>
-        <p className="ov-sub" style={{ marginTop: 12 }}>
-          回到列表点<b>试通</b>确认可用，再按需启用（启用后它才参与出站路由）。
-        </p>
+        {!provider ? (
+          <p className="ov-sub" style={{ marginTop: 12 }}>
+            回到列表点<b>试通</b>确认可用，再按需启用（启用后它才参与出站路由）。
+          </p>
+        ) : null}
       </Modal>
     );
   }
@@ -172,9 +203,10 @@ export function ImportClientModal({ onClose, onImported }: { onClose: () => void
   }
 
   const isConfirm = phase === 'confirm';
+  const isReimport = Boolean(provider);
   return (
     <Modal
-      title="导入客户端"
+      title={isReimport ? `重新导入授权 · ${provider!.name}` : '导入客户端'}
       onClose={onClose}
       footer={
         <>
@@ -197,7 +229,7 @@ export function ImportClientModal({ onClose, onImported }: { onClose: () => void
       {!isConfirm ? (
         <>
           <p className="ov-sub">
-            选一个客户端，用它的**官方授权**拿到凭证（凭证在客户端登录态里，用户拿不到、无需手填）。
+            选一个客户端，用它的<b>官方授权</b>拿到凭证（凭证在客户端登录态里，用户拿不到、无需手填）。
           </p>
           <div className="ov-field">
             <label>客户端类型</label>

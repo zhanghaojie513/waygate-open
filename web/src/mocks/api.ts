@@ -389,12 +389,16 @@ export const mockApi = {
 
   createProvider(input: { name: string; baseUrl: string; credential: string; protocol?: 'openai' | 'anthropic' | 'qoder'; activate?: boolean }): Promise<{ item: ProviderItem; activated: boolean }> {
     return sleep(320).then(() => {
+      /* [v1.6.11] ck_ 退役：openai（WorkBuddy）不再接受手填密钥 —— 与真机同语义。 */
+      if (input.protocol === 'openai' && input.credential) {
+        throw new ApiError('WorkBuddy 已不再使用 ck_ 密钥 —— 请用「导入客户端」完成官方授权。', 40001, 400);
+      }
       const item: ProviderItem = {
         id: `p_${Math.random().toString(16).slice(2, 10)}`,
         name: input.name,
         baseUrl: input.baseUrl,
         credentialMask: maskProviderKey(input.credential),
-        /* [v1.6.10] 空凭证 = 待导入（anthropic / qoder 先建后导）—— 与真机同语义。 */
+        /* [v1.6.11] 空凭证 = 待导入（anthropic / qoder 先建后导）—— 与真机同语义。 */
         configured: Boolean(input.credential),
         active: false,
         protocol: input.protocol ?? 'openai',
@@ -428,7 +432,7 @@ export const mockApi = {
   },
 
   /**
-   * [v1.6.10] 自动导入凭证的 Mock —— 演示「同机部署 → 真·一键」的成功路径。
+   * [v1.6.11] 自动导入凭证的 Mock —— 演示「同机部署 → 真·一键」的成功路径。
    * 真机分离部署时服务端返回 unavailable 并给推送命令；要在 Mock 里看那条分支，
    * 把 outcome 改成 'unavailable' 即可。
    */
@@ -450,7 +454,7 @@ export const mockApi = {
   },
 
   /**
-   * [v1.6.11] 设备授权导入的 Mock —— 演示「申请 → 跳授权页 → 轮询 → 成功」全流程。
+   * [v1.6.12] 设备授权导入的 Mock —— 演示「申请 → 跳授权页 → 轮询 → 成功」全流程。
    * 首次 poll 返回 pending（模拟用户还没点完），第二次 done —— 让前端轮询逻辑能被真实演练。
    */
   providerImportDeviceStart(id: string): Promise<{ ok: boolean; authUrl?: string; userCode?: string; hint?: string; expiresInSec?: number; message?: string }> {
@@ -527,10 +531,6 @@ export const mockApi = {
     return sleep(600).then(() => {
       const t = providerStore.find((p) => p.id === id);
       if (!t) throw new ApiError(`提供商 ${id} 不存在`, 40401, 404);
-      if (id === 'p_demo01') {
-        return { ok: false, model: 'hunyuan-lite', elapsedMs: 412, upstreamCode: 11102, httpStatus: 400,
-          reason: '上游业务码 11102' };
-      }
       return { ok: true, model: 'hunyuan-lite', elapsedMs: 238, upstreamCode: null, httpStatus: 200, reason: null };
     });
   },
@@ -585,14 +585,13 @@ function switchMockCatalog(providerId: string): void {
   CATALOG.fetchedAt = new Date().toISOString();
 }
 
-/** [v1.6.11] 设备授权导入的轮询计数（providerId → 已轮询次数），演示 pending → done。 */
+/** [v1.6.12] 设备授权导入的轮询计数（providerId → 已轮询次数），演示 pending → done。 */
 const deviceImportPolls = new Map<string, number>();
 
 let providerStore: ProviderItem[] = [
   /* 与服务端种子同名（DEFAULT_PROVIDER_NAME = 'WorkBuddy'）—— 现库那条上游连接
      就是 WorkBuddy 的地址与密钥，名字说清楚比叫"默认"好。 */
-  { id: 'p_default00', name: 'WorkBuddy', baseUrl: 'https://copilot.tencent.com', credentialMask: 'ck_1••••f7ab', configured: true, active: true, protocol: 'openai', credKind: 'static', modelCount: 17, modelEnabled: 17, signin: { checkedOn: null, streak: null, lastPoints: null }, wbOAuth: { configured: true, uidMask: '98b9303e…', expiresAt: Date.now() + 20 * 86400_000 }, wbCredits: { remaining: 3741.03, granted: 7901, consumed: 4159.97, nextExpireAt: Date.now() + 26 * 86400_000, packages: [] }, qoderCredits: null, wbSignin: { checkedOn: new Date().toISOString().slice(0,10), streak: 10, lastPoints: 100 }, credits: null },
-  { id: 'p_demo01', name: 'OpenAI 兼容示例', baseUrl: 'https://api.openai-like.example.com', credentialMask: 'ck_9••••31de', configured: true, active: false, protocol: 'openai', credKind: 'static', modelCount: 17, modelEnabled: 17, signin: { checkedOn: null, streak: null, lastPoints: null }, wbOAuth: { configured: false, uidMask: null, expiresAt: null }, wbCredits: null, qoderCredits: null, wbSignin: { checkedOn: null, streak: null, lastPoints: null }, credits: null },
+  { id: 'p_default00', name: 'WorkBuddy', baseUrl: 'https://copilot.tencent.com', credentialMask: 'oauth(98b9303e…)', configured: true, active: true, protocol: 'openai', credKind: 'static', modelCount: 17, modelEnabled: 17, signin: { checkedOn: null, streak: null, lastPoints: null }, wbOAuth: { configured: true, uidMask: '98b9303e…', expiresAt: Date.now() + 20 * 86400_000 }, wbCredits: { remaining: 3741.03, granted: 7901, consumed: 4159.97, nextExpireAt: Date.now() + 26 * 86400_000, packages: [] }, qoderCredits: null, wbSignin: { checkedOn: new Date().toISOString().slice(0,10), streak: 10, lastPoints: 100 }, credits: null },
   /* [v0.5.13] MiniMax Code 提供商（anthropic 方言 + 真实积分账本）—— 数值取自
      生产实测（剩余 717.69 / 已用 82.31），演示「积分 ⓘ」tooltip 与签到状态。 */
   { id: 'p_qoder01', name: 'Qoder CN', baseUrl: 'https://gateway.qoder.com.cn', credentialMask: 'oauth(identity ••••c4)', configured: true, active: true, protocol: 'qoder', credKind: 'static', modelCount: 14, modelEnabled: 14, signin: { checkedOn: null, streak: null, lastPoints: null }, wbOAuth: { configured: false, uidMask: null, expiresAt: null }, wbCredits: null, qoderCredits: { available: true, granted: 500, remaining: 495, consumed: 5, nextExpireAt: null, lifetimeConsumed: 241.82, stale: false, fetchedAt: new Date(Date.now() - 30 * 60_000).toISOString(), message: '口径：资源包余额（495/500）；到期时刻上游不提供' }, wbSignin: { checkedOn: null, streak: null, lastPoints: null }, credits: null },

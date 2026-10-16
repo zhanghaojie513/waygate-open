@@ -31,6 +31,7 @@ import { ProxyService } from './proxy.service';
 import { ProxyController } from './proxy.controller';
 import type { RelayConfigService } from '../config/config.service';
 import type { KeyContext, RequestWithKeyContext } from '../auth/key.guard';
+import { fakeWbOauth } from './openai-upstream/wb-oauth.harness';
 
 const KEY_ID = 'k_scope';
 const CLIENT_KEY_HINT = 'sk-waygate-scop…e001';
@@ -97,7 +98,7 @@ function makeHarness(scope: KeyContext['scope']) {
     source: 'console',
   });
 
-  const controller = new ProxyController(new ProxyService(config, catalog, log, providers), catalog, providers);
+  const controller = new ProxyController(new ProxyService(config, catalog, log, providers, undefined, fakeWbOauth('ck_test_0123456789abcdef')), catalog, providers);
   const latest = (): Record<string, unknown> | undefined =>
     db.prepare('SELECT * FROM requests ORDER BY id DESC LIMIT 1').get() as
       | Record<string, unknown>

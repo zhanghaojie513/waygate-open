@@ -21,6 +21,7 @@ import { ModelCatalogRepository } from '../store/repositories/model-catalog.repo
 import { ProvidersRepository } from '../store/repositories/providers.repo';
 import { RequestsRepository } from '../store/repositories/requests.repo';
 import { AggregatesRepository } from '../store/repositories/aggregates.repo';
+import { fakeWbOauth } from './openai-upstream/wb-oauth.harness';
 
 const SCHEMA_PATH = join(__dirname, '..', 'store', 'schema.sql');
 
@@ -44,7 +45,7 @@ function makeService(): ProxyService {
   } as unknown as RelayConfigService;
   /* 路由测试不落库，但 ProxyLogger 构造时就要 prepare 语句 —— 借同一个有 schema 的库。 */
   const log = new ProxyLogger(new RequestsRepository(db, new AggregatesRepository(db)), catalog, providers);
-  return new ProxyService(config, catalog, log, providers);
+  return new ProxyService(config, catalog, log, providers, undefined, fakeWbOauth('ck_test_0123456789abcdef'));
 }
 
 /** 私有方法受控访问（见文件头注）。返回的是 {provider, id, displayName}。 */

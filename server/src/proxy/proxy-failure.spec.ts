@@ -16,6 +16,7 @@ import { ProxyController } from './proxy.controller';
 import type { RelayConfigService } from '../config/config.service';
 import { QuotaSourceService } from './quota/quota-source.service';
 import type { KeyContext, RequestWithKeyContext } from '../auth/key.guard';
+import { fakeWbOauth } from './openai-upstream/wb-oauth.harness';
 
 /**
  * 失败请求必须落库（spec-v4-failure-logging.md）。
@@ -105,7 +106,7 @@ function makeHarness() {
   });
 
   providers.create({ id: 'p_wire', name: 'TestUpstream', baseUrl: (config.get() as { upstream: { baseUrl: string } }).upstream.baseUrl, active: true });
-  const controller = new ProxyController(new ProxyService(config, catalog, log, providers), catalog, providers);
+  const controller = new ProxyController(new ProxyService(config, catalog, log, providers, undefined, fakeWbOauth('ck_test_0123456789abcdef')), catalog, providers);
   // 额度来源与本 spec（失败落库）无关：给「未接入」桩，避免真起轮询。
   // [v0.5.15] byClient 归属需要目录与提供商；本 spec 不 seed 目录 → 全走密钥回落，与旧口径一致。
   const overview = new OverviewService(db, {

@@ -18,6 +18,7 @@ import Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CatalogSyncService } from './catalog-sync';
 import { ModelProbeService } from './probe';
+import { fakeWbOauth, fakeWbOauthMissing } from '../proxy/openai-upstream/wb-oauth.harness';
 import { ModelCatalogRepository } from '../store/repositories/model-catalog.repo';
 import { RequestsRepository } from '../store/repositories/requests.repo';
 import { AggregatesRepository } from '../store/repositories/aggregates.repo';
@@ -50,7 +51,8 @@ function makeSync(cfg: RelayConfigService): CatalogSyncService {
     providers.create({ id: PID, name: 'TestUpstream', baseUrl: 'https://copilot.example.com', active: true });
   }
   // 间隔传 0：这些用例只关心落库语义，不关心契约要求的 200ms 节流
-  return new CatalogSyncService(cfg, catalog, probe, prefs, 0, providers);
+  /* [v1.6.11] 第 7 参 = WorkBuddy OAuth 替身（openai 凭证已改走 OAuth）。 */
+  return new CatalogSyncService(cfg, catalog, probe, prefs, 0, providers, fakeWbOauth('ck_current_current_current_key'));
 }
 
 /**
@@ -292,8 +294,12 @@ describe('CatalogSyncService.refresh（v1.5.0 替换式）', () => {
     await expect(sync.refresh()).rejects.toMatchObject({ httpStatus: 429 });
   });
 
-  it('⑤b 未配置凭证 → 400 upstream_credential_missing', async () => {
-    const sync = makeSync(makeConfig(''));
+  it('⑤b 未导入授权 → 400 upstream_credential_missing', async () => {
+    /* [v1.6.11] openai 凭证来自 OAuth 槽：用「未授权」替身复现该分支。 */
+    const cfg = makeConfig('');
+    const probe = new ModelProbeService(cfg);
+    const providers = new ProvidersRepository(db);
+    const sync = new CatalogSyncService(cfg, catalog, probe, prefs, 0, providers, fakeWbOauthMissing());
     await expect(sync.refresh()).rejects.toBeInstanceOf(RelayHttpError);
   });
 });

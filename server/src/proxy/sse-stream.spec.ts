@@ -32,6 +32,7 @@ import { ProvidersRepository } from '../store/repositories/providers.repo';
 import { ClientKeysRepository } from '../store/repositories/client-keys.repo';
 import type { RelayConfigService } from '../config/config.service';
 import type { KeyContext, RequestWithKeyContext } from '../auth/key.guard';
+import { fakeWbOauth } from './openai-upstream/wb-oauth.harness';
 
 const SCHEMA_PATH = join(__dirname, '..', 'store', 'schema.sql');
 const enc = new TextEncoder();
@@ -204,7 +205,7 @@ describe('集成：客户端流中途断开（走 controller 的 close 回调）
       }),
       upstreamKey: 'ck_test_0123456789abcdef',
     } as unknown as RelayConfigService;
-    const proxy = new ProxyService(config, catalog, log, providers);
+    const proxy = new ProxyService(config, catalog, log, providers, undefined, fakeWbOauth('ck_test_0123456789abcdef'));
     const controller = new ProxyController(proxy, catalog, providers);
     return { proxy, controller };
   }
