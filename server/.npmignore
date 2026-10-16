@@ -1,0 +1,26 @@
+# 发布用忽略规则（覆盖同级 .gitignore）。
+#
+# 为什么必须存在这个文件：npm 按**目录**决定忽略规则 —— 同级若有 .gitignore，
+# 没有 .npmignore 就套用 .gitignore。`server/.gitignore` 里有 `dist/`（源码仓不该
+# 提交产物，正确），于是 **server/dist 被一并排除出 npm 包**，用户装到的包跑不起来
+# （实测：包里 23 个文件、0 个 dist）。这里用 .npmignore 显式接管，只排源码。
+src/
+scripts/
+node_modules/
+data/
+coverage/
+.tmp-int/
+*.spec.ts
+*.log
+*.db
+*.db-wal
+*.db-shm
+*.secret
+.env
+.env.*
+!.env.example
+tsconfig*.json
+vitest.config.ts
+eslint.config.mjs
+deploy/
+dist-qa43/

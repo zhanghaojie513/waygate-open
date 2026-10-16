@@ -1,0 +1,59 @@
+{
+  "name": "waygate-open",
+  "version": "1.6.14",
+  "description": "途关 Waygate · 本地启动 —— 把 WorkBuddy / MiniMax Code / Qoder CN 的客户端订阅转成 OpenAI / Anthropic 兼容 base_url（自带控制台，一条命令起服务并自动打开浏览器）",
+  "license": "MIT",
+  "bin": {
+    "waygate-open": "bin/waygate-open.mjs"
+  },
+  "files": [
+    "bin",
+    "server/dist",
+    "server/package.json",
+    "server/migrations",
+    "web/dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22.9.0"
+  },
+  "keywords": [
+    "waygate",
+    "relay",
+    "proxy",
+    "openai",
+    "anthropic",
+    "workbuddy",
+    "minimax",
+    "qoder",
+    "base-url"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zhanghaojie513/waygate-open.git"
+  },
+  "homepage": "https://github.com/zhanghaojie513/waygate-open#readme",
+  "bugs": {
+    "url": "https://github.com/zhanghaojie513/waygate-open/issues"
+  },
+  "scripts": {
+    "build": "npm --prefix server run build && npm --prefix web run build",
+    "prepack": "npm run build",
+    "start": "node bin/waygate-open.mjs"
+  },
+  "dependencies": {
+    "@fastify/static": "^10.1.2",
+    "@nestjs/common": "^12.1.2",
+    "@nestjs/core": "^12.1.2",
+    "@nestjs/platform-fastify": "^12.1.2",
+    "better-sqlite3": "^13.0.3",
+    "fastify": "^5.12.5",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "undici": "^7.16.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

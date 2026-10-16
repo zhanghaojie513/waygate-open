@@ -5,7 +5,12 @@
  *   1. 环境变量 `RELAY_ADMIN_PASSWORD_HASH`（运维**显式**写下的意图，最高）
  *   2. 数据库 `admin_credential` 表（控制台改密后落在这里）
  *   3. 数据目录下的 `admin.hash` 文件（**回落**，兼容旧部署）
- *   4. 都没有 → 生成随机 16 字符口令，**打印到 stdout 一次**，写入数据库
+ *   4. 都没有 → 首次启动：用 `RELAY_ADMIN_PASSWORD`（若给了，本机启动形态的默认口令）
+ *      或随机 16 字符，**打印到 stdout 一次**，写入数据库
+ *
+ * ⚠️ 第 4 级才看 `RELAY_ADMIN_PASSWORD`（**明文**，与第 1 级的**哈希**不同）。
+ *    它只是「首次启动的初始口令」，**不覆盖**已有的库/文件口令 ——
+ *    否则用户改过密码后重启会被打回默认值。
  *
  * ### 为什么保留第 3 级「文件回落」
  * 从文件方案迁移过来时，用户手上有效的口令只存在于文件里。
@@ -139,12 +144,28 @@ export class AdminCredentialService implements OnModuleInit {
       return '';
     }
 
-    // ④ 首次启动：生成随机口令
+    // ④ 首次启动：生成随机口令（或采用显式给的初始口令，见 bootstrap）
     return this.bootstrap();
   }
 
+  /**
+   * 首次启动时的初始口令。
+   *
+   * ## 两条来源
+   *   · `RELAY_ADMIN_PASSWORD`（**明文**，仅本机启动形态用）—— 取它当初始口令。
+   *     存在的理由：「本地启动、开箱可用」不该卡在"去日志里复制那串随机字符"这一步。
+   *     由 CLI 在**回环绑定**时默认注入一个已知口令（见 bin/waygate-open.mjs），
+   *     用户第一次就能直接登进去。**对外监听时绝不注入**（CLI 侧负责）。
+   *   · 否则生成随机 16 字符 —— 服务器 / 生产形态的缺省，行为与原来一致。
+   *
+   * ## 为什么只在「首次启动」生效
+   * 本方法只从 `load()` 的第 ④ 级走到 —— 即**环境变量哈希 / 数据库 / 文件都没有**时。
+   * 所以用户一旦在控制台改过口令（已落库），重启**不会**被这个默认值打回去。
+   * 这条很重要：否则"我改了密码、重启后又变回默认的"就是一起安全事故。
+   */
   private bootstrap(): string {
-    const plain = generatePassword(16);
+    const preset = (process.env.RELAY_ADMIN_PASSWORD ?? '').trim();
+    const plain = preset || generatePassword(16);
     const stored = hashPassword(plain);
     const persisted = this.persist(stored, 'generated');
     this.generatedThisBoot = true;
@@ -155,15 +176,19 @@ export class AdminCredentialService implements OnModuleInit {
       [
         '',
         '════════════════════════════════════════════════════════════════',
-        '  Waygate · 首次启动，已生成管理口令（此口令只显示这一次）',
+        preset
+          ? '  Waygate · 首次启动，使用内置默认口令'
+          : '  Waygate · 首次启动，已生成管理口令（此口令只显示这一次）',
         '',
         `      口令：${plain}`,
         '',
         persisted
           ? '  已把哈希写入数据库 admin_credential 表，明文未落盘。'
           : '  ⚠️ 数据库不可写，口令仅本次运行有效，重启会重新生成。',
-        '  请立即复制保存。忘记口令时：进入控制台「设置 → 管理口令」重置。',
-        '  生产环境建议改用环境变量 RELAY_ADMIN_PASSWORD_HASH。',
+        preset
+          ? '  ⚠️ 默认口令人人可知 —— 建议进控制台「设置 → 管理口令」改掉它。'
+          : '  请立即复制保存。忘记口令时：进入控制台「设置 → 管理口令」重置。',
+        '  生产环境建议改用环境变量 RELAY_ADMIN_PASSWORD_HASH（存哈希，不存明文）。',
         '════════════════════════════════════════════════════════════════',
         '',
       ].join('\n'),

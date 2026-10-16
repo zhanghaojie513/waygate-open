@@ -1,0 +1,15 @@
+# 发布用忽略规则（覆盖同级 .gitignore）。
+#
+# 同 server/.npmignore 的理由：本目录 .gitignore 里有 `dist/`，
+# 没有 .npmignore 时 npm 会套用 .gitignore，把 **web/dist 排除出包**。
+# 前端产物必须进包（后端同源托管它）。
+src/
+public/
+node_modules/
+scripts/
+*.log
+.env.mock
+vite.config.ts
+tsconfig*.json
+eslint.config.js
+dist-mock/

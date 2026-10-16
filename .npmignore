@@ -1,0 +1,55 @@
+# 发布到 npm 时**不要**忽略的东西（覆盖 .gitignore）。
+#
+# 背景：npm 打包时 `.gitignore` 也会生效（除非有 .npmignore）。本仓 .gitignore 里
+# 有 `server/dist/` 与 `web/dist/`（源码仓不该提交构建产物，正确），
+# 但它们**必须**进 npm 包 —— 用户装的是可运行的产物，不是源码。
+# `.npmignore` 一旦存在就**完全接管**忽略规则（.gitignore 不再参与），
+# 下面用白名单式地把源码/测试/密钥排除，其余全部包含。
+#
+# 判据（发布前用 `tar -tzf` 核对）：包里必须有 server/dist/main.js 与 web/dist/index.html。
+
+# 源码（发布物只需要编译产物）
+server/src
+web/src
+web/public
+web/index.html
+web/scripts
+web/vite.config.ts
+web/tsconfig*.json
+tools
+docs
+promo
+.github
+
+# 依赖与测试
+**/node_modules
+**/*.spec.ts
+**/*.spec.js
+server/vitest.config.ts
+server/eslint.config.mjs
+web/eslint.config.js
+
+# 开发用配置（不要发出去）
+server/tsconfig*.json
+server/.env.example
+server/scripts
+server/dist-qa43
+web/.env.mock
+
+# 运行数据与凭证（绝不入包）
+**/*.db
+**/*.db-shm
+**/*.db-wal
+**/*.crt
+**/*.key
+**/*.pem
+**/.env
+**/.env.*
+!.env.example
+
+# 杂项
+**/*.log
+**/.DS_Store
+**/*.tgz
+**/dist-mock
+deploy-out

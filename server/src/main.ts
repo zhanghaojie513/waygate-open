@@ -2,10 +2,12 @@ import 'reflect-metadata';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
+import fastifyStatic from '@fastify/static';
 import { AppModule } from './app.module';
 import { ApiExceptionFilter } from './api/api.filter';
 import { RelayConfigService } from './config/config.service';
 import { resolveListen } from './config/listen';
+import { resolveWebDist } from './common/assets';
 
 /**
  * 进程入口。
@@ -90,10 +92,49 @@ async function bootstrap(): Promise<void> {
     );
   }
 
+  /* 控制台同源托管（v1.6.14）。
+     ## 为什么放进后端进程
+     此前控制台要另起 `vite dev`（开发）或交给 Nginx（部署），意味着「跑起来」是两件事。
+     作为 npm 包分发时这不可接受 —— 用户装完应当 `npx waygate-open` 一条命令就能用。
+     同源还有个额外好处：控制台与 `/api/*` 天然同源，**不需要 CORS**
+     （main.ts 顶部那条"显式不开 CORS"的纪律因此继续成立）。
+
+     ## 挂载顺序与不侵入性
+     - 用 @fastify/static 注册在前缀 `/`，但 `wildcard: false` + 显式处理 `/*`：
+       只对**未命中已注册路由**的请求回前端文件；
+     - `/v1/*`、`/api/*`、`/healthz` 由各自控制器先注册，**优先级高于**这个通配；
+     - SPA 回退：`/console`、`/console#/x` 这类前端路由，磁盘上没有同名文件，
+       回 index.html（否则刷新页面就 404）。
+     - 前端产物缺失时不挂载（只提供 API），并打 warning —— 不因缺前端而拒绝启动。 */
+  const webDist = resolveWebDist();
+  if (webDist) {
+    await app.register(fastifyStatic, { root: webDist, wildcard: false, index: ['index.html'] });
+    const server = app.getHttpAdapter().getInstance();
+    server.get('/*', (req, reply) => {
+      const url = (req.raw.url ?? '/').split('?')[0];
+      /* 只回退到 index.html；带扩展名却没找到的资源（如 /assets/x.js）必须 404，
+         否则浏览器会把 index.html 当 JS 解析，报一堆看不懂的语法错。 */
+      if (/\.[a-zA-Z0-9]+$/.test(url)) {
+        void reply.code(404).send({ message: 'Not Found' });
+        return;
+      }
+      void reply.sendFile('index.html');
+    });
+    logger.log(`控制台已同源托管：${webDist}`);
+  }
+
   await app.listen(port, host);
 
   logger.log(`Waygate 已在 http://${host}:${port} 就绪（默认仅回环，不对公网直接暴露）`);
   logger.log(`健康检查：http://${host}:${port}/healthz`);
+  if (webDist) {
+    logger.log(`控制台：http://${host}:${port}/console`);
+  } else {
+    logger.warn(
+      '未找到前端产物（web-dist/）—— 本进程只提供 API（/v1、/api、/healthz），控制台不可用。' +
+        'npm 安装的正式包应自带它；源码仓请先跑 web 的构建。',
+    );
+  }
 
   // 上游密钥缺失**不阻止启动**：让进程起来、`/healthz` 可答，
   // 这样部署后能立刻区分「服务没起来」和「密钥没配」两种故障。

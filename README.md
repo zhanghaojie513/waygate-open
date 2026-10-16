@@ -8,7 +8,7 @@
 [![NestJS](https://img.shields.io/badge/NestJS-12-E0234E?style=flat-square)](https://nestjs.com)
 [![SQLite](https://img.shields.io/badge/SQLite-better--sqlite3-003B57?style=flat-square)](https://github.com/WiseLibs/better-sqlite3)
 [![Node](https://img.shields.io/badge/Node-%E2%89%A522.9-3C873A?style=flat-square)](https://nodejs.org)
-[![version](https://img.shields.io/badge/version-1.6.13-4A38C0?style=flat-square)](https://github.com/zhanghaojie513/waygate-open/releases)
+[![version](https://img.shields.io/badge/version-1.6.14-4A38C0?style=flat-square)](https://github.com/zhanghaojie513/waygate-open/releases)
 [![tests](https://img.shields.io/badge/tests-732%20passed-0A7247?style=flat-square)](./server)
 
 ![途关 · Waygate](docs/img/intro.png)
@@ -53,12 +53,38 @@
 
 ## 快速开始
 
+### 方式一：npm 包（推荐，一条命令）
+
+```bash
+npx waygate-open
+```
+
+起本地服务并**自动打开浏览器**到控制台（默认 <http://127.0.0.1:8787/console>）。
+首次启动的管理口令默认是 **`waygate`** —— 仅当只监听回环（`127.0.0.1`）时套用这个
+默认值；对外监听时改为随机生成并打印在启动日志里。登录后建议去「设置 → 管理口令」改掉。
+
+数据默认落在 `~/.waygate/open/`（库与密钥都在那里）。
+
+常用参数（都有等价环境变量）：
+
+```bash
+npx waygate-open --port 9000          # 换端口（RELAY_PORT）
+npx waygate-open --password 我的口令   # 换初始口令（RELAY_ADMIN_PASSWORD）
+npx waygate-open --data-dir ./data    # 换数据目录（RELAY_DATA_DIR）
+npx waygate-open --no-open            # 不开浏览器（服务器 / CI）
+npx waygate-open --help               # 全部选项
+```
+
+> ⚠️ 默认只监听 `127.0.0.1`。要对外提供（别的机器也能连）需显式 `--host 0.0.0.0`，
+> 并自担公网暴露后果 —— 本进程持有你的订阅凭证与控制台口令。
+
+### 方式二：从源码跑（改代码 / 开发用）
+
 环境：Node ≥ 22.9（server）/ ≥ 20.19（web）。
 
 ```bash
-# 后端（默认 127.0.0.1:8787，数据落在 ./data）
+# 后端（默认 127.0.0.1:8787）
 cd server && npm i
-cp .env.example .env      # 出站凭证来自各客户端官方授权（控制台导入），无需手填 key
 npm run dev
 
 # 控制台（另开终端）
@@ -66,6 +92,10 @@ cd web && npm i
 npm run dev               # 真实联调，代理到 127.0.0.1:8787
 npm run dev:mock          # 或：纯前端开发，内置 Mock 数据（口令 relay-dev）
 ```
+
+> 源码形态下**后端也会同源托管 `web/dist`**：先 `cd web && npm run build`，
+> 之后只跑后端、直接访问 `http://127.0.0.1:8787/console` 即可（不必再开 vite）。
+> 没构建过前端时后端只提供 API，并在日志里提醒。
 
 关键环境变量（完整说明见 `server/.env.example`）：
 
@@ -361,4 +391,4 @@ tools/                     仓库级工具（lint 门禁、token 合并、截图
 
 ---
 
-版本约定：`1.0.0` 起 API 契约稳定（当前 `1.6.13`，见 `server/src/version.ts`；历史版本见 [Releases](https://github.com/zhanghaojie513/waygate-open/releases)）。
+版本约定：`1.0.0` 起 API 契约稳定（当前 `1.6.14`，见 `server/src/version.ts`；历史版本见 [Releases](https://github.com/zhanghaojie513/waygate-open/releases)）。
