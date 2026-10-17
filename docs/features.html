@@ -5,79 +5,114 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>途关 Waygate · 功能架构</title>
 <style>
+  /* ── Theme tokens ──────────────────────────────────────────────── */
   :root {
-    --bg: #F7F6FC; --surface: #FFFFFF; --fg: #171334; --muted: #655E88; --faint: #9B94BC;
-    --line: #E4E1F2; --accent: #4A38C0; --accent-soft: #EDEBFB;
-    --shadow: 0 1px 2px rgba(23,19,52,.05), 0 6px 18px rgba(23,19,52,.06);
-    --d1: #4A38C0; --d2: #0A6A87; --d3: #0A7247; --d4: #8A590A; --d5: #7A3E9D;
+    --bg: #fafafa;
+    --surface: #ffffff;
+    --fg: #1a1d21;
+    --muted: #6b7280;
+    --faint: #9aa3af;
+    --line: #e2e5ea;
+    --accent: #2563eb;
+    --accent-soft: rgba(37, 99, 235, .10);
+    --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 4px 12px rgba(16, 24, 40, .05);
+    /* 分类色：仅用于区分五个域，且每处都配文字标签，不单独承载信息 */
+    --c1: #2563eb;
+    --c2: #0a6a87;
+    --c3: #0a7247;
+    --c4: #8a590a;
+    --c5: #7a3e9d;
   }
   [data-theme="dark"] {
-    --bg: #0F0D1E; --surface: #1A1630; --fg: #EDEAF8; --muted: #A29BC4; --faint: #6E6790;
-    --line: #2E2851; --accent: #9C8FFF; --accent-soft: #241F3D;
-    --shadow: 0 1px 2px rgba(0,0,0,.5), 0 6px 20px rgba(0,0,0,.4);
-    --d1: #9C8FFF; --d2: #3FB6DE; --d3: #4FC08D; --d4: #E0A93E; --d5: #C08FE8;
+    --bg: #101317;
+    --surface: #181c22;
+    --fg: #e8ebef;
+    --muted: #98a1ad;
+    --faint: #5f6a77;
+    --line: #2a3038;
+    --accent: #60a5fa;
+    --accent-soft: rgba(96, 165, 250, .12);
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 4px 14px rgba(0, 0, 0, .35);
+    --c1: #60a5fa;
+    --c2: #3fb6de;
+    --c3: #4fc08d;
+    --c4: #e0a93e;
+    --c5: #c08fe8;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --bg: #0F0D1E; --surface: #1A1630; --fg: #EDEAF8; --muted: #A29BC4; --faint: #6E6790;
-      --line: #2E2851; --accent: #9C8FFF; --accent-soft: #241F3D;
-      --shadow: 0 1px 2px rgba(0,0,0,.5), 0 6px 20px rgba(0,0,0,.4);
-      --d1: #9C8FFF; --d2: #3FB6DE; --d3: #4FC08D; --d4: #E0A93E; --d5: #C08FE8;
+      --bg: #101317; --surface: #181c22; --fg: #e8ebef; --muted: #98a1ad; --faint: #5f6a77;
+      --line: #2a3038; --accent: #60a5fa; --accent-soft: rgba(96,165,250,.12);
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 4px 14px rgba(0,0,0,.35);
+      --c1: #60a5fa; --c2: #3fb6de; --c3: #4fc08d; --c4: #e0a93e; --c5: #c08fe8;
     }
   }
+
   * { box-sizing: border-box; }
   body {
     margin: 0; background: var(--bg); color: var(--fg);
     font: 400 15px/1.55 system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
     -webkit-font-smoothing: antialiased;
   }
-  .page { max-width: 1120px; margin: 0 auto; padding: 44px 24px 80px; }
+  .page { max-width: 1120px; margin: 0 auto; padding: 40px 24px 72px; }
 
-  header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 10px; }
-  h1 { font-size: 27px; font-weight: 650; margin: 0; letter-spacing: -.015em; }
-  .chip { font: 500 12px/1 ui-monospace, Consolas, monospace; color: var(--accent); background: var(--accent-soft); padding: 5px 9px; border-radius: 6px; }
-  .sub { color: var(--muted); margin: 0 0 34px; font-size: 14.5px; }
+  header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 8px; }
+  h1 { font-size: 26px; font-weight: 650; margin: 0; letter-spacing: -.01em; }
+  .chip {
+    font: 500 12px/1 ui-monospace, Consolas, monospace;
+    color: var(--accent); background: var(--accent-soft);
+    padding: 4px 8px; border-radius: 6px;
+  }
+  .sub { color: var(--muted); margin: 0 0 28px; font-size: 14px; }
   .theme-toggle {
     margin-left: auto; border: 1px solid var(--line); background: var(--surface);
-    color: var(--muted); border-radius: 8px; padding: 5px 11px; font-size: 12px; cursor: pointer;
-    transition: color .15s ease;
+    color: var(--muted); border-radius: 8px; padding: 5px 10px; font-size: 12px; cursor: pointer;
   }
   .theme-toggle:hover { color: var(--fg); }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
   .card {
     background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
     padding: 18px 20px 16px; box-shadow: var(--shadow);
-    transition: border-color .18s ease, transform .18s ease;
+    transition: box-shadow .2s ease, transform .2s ease, border-color .2s ease;
   }
-  .card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .card:hover { transform: translateY(-2px); }
   .card h2 {
-    font-size: 15px; font-weight: 650; margin: 0 0 3px; display: flex; align-items: center; gap: 9px;
+    font-size: 15px; font-weight: 650; margin: 0 0 3px;
+    display: flex; align-items: center; gap: 9px;
   }
-  .card h2 i { width: 10px; height: 10px; border-radius: 3px; flex: none; }
-  .c1 h2 i { background: var(--d1); } .c2 h2 i { background: var(--d2); }
-  .c3 h2 i { background: var(--d3); } .c4 h2 i { background: var(--d4); }
-  .c5 h2 i { background: var(--d5); }
-  .card .tag { color: var(--faint); font-size: 11.5px; font-weight: 500; margin: 0 0 14px; }
+  .card h2 i { width: 9px; height: 9px; border-radius: 3px; flex: none; }
+  .c1 h2 i { background: var(--c1); } .c2 h2 i { background: var(--c2); }
+  .c3 h2 i { background: var(--c3); } .c4 h2 i { background: var(--c4); }
+  .c5 h2 i { background: var(--c5); }
+  .card .tag { color: var(--faint); font-size: 11.5px; margin: 0 0 13px; }
   .card ul { list-style: none; margin: 0; padding: 0; }
   .card li {
-    position: relative; padding: 5px 0 5px 15px; font-size: 13px; color: var(--muted); line-height: 1.5;
-    border-top: 1px solid var(--line);
+    position: relative; padding: 6px 0 6px 14px; font-size: 13px; color: var(--muted);
+    line-height: 1.5; border-top: 1px solid var(--line);
   }
   .card li:first-child { border-top: none; }
   .card li b { color: var(--fg); font-weight: 600; }
   .card li::before {
-    content: ""; position: absolute; left: 0; top: 12px; width: 5px; height: 5px;
+    content: ""; position: absolute; left: 0; top: 13px; width: 4px; height: 4px;
     border-radius: 50%; background: var(--faint);
   }
+  code {
+    font: 500 11.5px/1 ui-monospace, Consolas, monospace;
+    background: var(--accent-soft); color: var(--accent);
+    padding: 2px 5px; border-radius: 4px;
+  }
   .card.feat { grid-column: span 2; }
-  .card.feat li { border-top-color: var(--line); }
-  .foot { color: var(--faint); font-size: 12px; margin-top: 26px; line-height: 1.6; }
+  .foot { color: var(--faint); font-size: 12px; margin-top: 28px; line-height: 1.6; }
 
   @media (max-width: 760px) {
     .grid { grid-template-columns: 1fr; }
     .card.feat { grid-column: span 1; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .card { transition: none; }
+    .card:hover { transform: none; }
   }
 </style>
 </head>
@@ -85,24 +120,23 @@
 <div class="page">
   <header>
     <h1>途关 Waygate · 功能架构</h1>
-    <span class="chip">v1.4.0</span>
+    <span class="chip">v1.6.28</span>
     <button class="theme-toggle" id="themeToggle" type="button">切换主题</button>
   </header>
-  <p class="sub">五域能力地图：控制台 · 接入 · 多提供商 · 数据口径 · 运行保障。条目均对应已实现的功能。</p>
+  <p class="sub">五域能力地图：控制台 · 接入 · 多提供商 · 积分与领取 · 运行保障。每一条都对应已实现的代码路径。</p>
 
   <div class="grid">
 
     <section class="card feat c1">
       <h2><i></i>控制台</h2>
-      <p class="tag">React 19 单页 · 7 页 · 明暗双主题（跟随系统）</p>
+      <p class="tag">React 19 单页 · 6 页 · 明暗双主题（跟随系统 / 手动切换）</p>
       <ul>
-        <li><b>概览</b> —— 按客户端归属的用量摘要、积分实扣、渠道告警</li>
-        <li><b>积分与用量</b> —— 趋势图（Token / 请求数双口径，等距时间轴补空桶）、按模型 / 客户端拆分、缓存命中率与缓存 token 计量</li>
-        <li><b>提供商管理</b> —— 提供商行（额度、健康、签到）+ 密钥绑定与路由优先级</li>
-        <li><b>API Keys</b> —— 权限范围（全部/按族/按模型/按标签）、IP 上限与白名单、token 配额</li>
-        <li><b>请求日志</b> —— 逐条留痕（含 SSE）、游标分页、按密钥筛选、一键取证 30 分钟、留存清理</li>
-        <li><b>设置</b> —— 8 组 30+ 项，含提供商凭据、限额、日志、签到与危险操作</li>
-        <li><b>外观</b> —— 明暗双主题，跟随系统 / 手动切换（侧栏底部）</li>
+        <li><b>概览</b> —— 按提供商归属的用量摘要、积分实扣、渠道告警</li>
+        <li><b>积分与用量</b> —— 趋势图（Token / 请求数双口径，等距时间轴补空桶）、按模型 / 提供商拆分、缓存命中率与缓存 token 计量</li>
+        <li><b>提供商管理</b> —— 提供商行（额度、健康、签到、官方授权导入）+ 密钥绑定与路由优先级</li>
+        <li><b>API 密钥</b> —— 权限范围（全部 / 按族 / 按模型 / 按标签）、IP 上限与白名单、token 配额</li>
+        <li><b>请求日志</b> —— 逐条留痕（含 SSE）、首字 / 耗时 / 输出速度、游标分页、按密钥筛选、一键取证 30 分钟、留存清理</li>
+        <li><b>设置</b> —— 8 组 26 项，含提供商策略、限额、日志、签到与危险操作</li>
       </ul>
     </section>
 
@@ -111,19 +145,21 @@
       <p class="tag">双方言出口 · 一把密钥走所有客户端</p>
       <ul>
         <li><b>OpenAI 兼容</b> —— <code>/v1/chat/completions</code>，流式 / 非流式</li>
-        <li><b>Anthropic 兼容</b> —— <code>/v1/messages</code>，Claude Code 等走 x-api-key</li>
+        <li><b>Anthropic 兼容</b> —— <code>/v1/messages</code>，Claude Code 等走 <code>x-api-key</code></li>
         <li><b>密钥形态</b> —— <code>sk-waygate-*</code>（控制台创建，明文仅显示一次）</li>
         <li><b>协议翻译</b> —— OpenAI ↔ Anthropic 与三种上游方言互译</li>
+        <li><b>流式保活</b> —— 写头后以 SSE 注释 <code>: ping</code> 心跳，长思考不被网关判空闲</li>
       </ul>
     </section>
 
     <section class="card c3">
       <h2><i></i>多提供商</h2>
-      <p class="tag">三家可同时生效 · 按模型 id 路由</p>
+      <p class="tag">三家可同时生效 · 按模型 id 路由 · 凭证统一「官方授权导入」</p>
       <ul>
-        <li><b>WorkBuddy</b> —— openai 方言 · ck_ 静态密钥</li>
+        <li><b>WorkBuddy</b> —— openai 方言 · 官方 OAuth 授权（v1.6.13 起 <code>ck_</code> 已退役）</li>
         <li><b>MiniMax Code</b> —— anthropic 方言 · OAuth 自动续期</li>
         <li><b>Qoder CN</b> —— COSY 协议 · 客户端登录态身份</li>
+        <li><b>凭证导入</b> —— 选客户端 → 跳官方授权页 → 回来自动落盘；「未授权」信号三家各不相同（业务码 / <code>authorization_pending</code> / 404）；私有状态只存服务端</li>
         <li><b>路由规则</b> —— 精确匹配（大小写敏感）→ 提供商内模糊回落；声明行优先于 observed</li>
       </ul>
     </section>
@@ -133,10 +169,10 @@
       <p class="tag">不做标定 · 上游说多少就是多少</p>
       <ul>
         <li><b>实扣口径</b> —— 积分 = 上游回报 <code>usage.credit</code>；未回报即 <code>null</code>（界面 <code>—</code>），绝不估算</li>
-        <li><b>积分账本</b> —— MiniMax <code>credit/details</code> 真实余额（精确到 0.01）</li>
-        <li><b>签到与领取</b> —— WorkBuddy 签到代领、成长任务、连登兑换（v1.4.0 OAuth 领取域）</li>
-        <li><b>额度真值</b> —— 三家额度分别取其权威来源；取不到就明说</li>
-        <li><b>不变式</b> —— ΣbyModel = ΣbyClient = creditsUsed，服务端断言后才返回</li>
+        <li><b>积分账本</b> —— MiniMax <code>credit/details</code> 真实余额（精确到 0.01）；Qoder <code>v2/me/usage</code> 真实余额</li>
+        <li><b>签到与领取</b> —— 三家代签（MiniMax 08:05 / Qoder 10:05 / WorkBuddy）；WorkBuddy 另有成长任务与连登兑换</li>
+        <li><b>额度真值</b> —— 三家额度各取其权威来源；取不到就明说</li>
+        <li><b>不变式</b> —— ΣbyModel = ΣbyProvider = creditsUsed，服务端断言后才返回</li>
       </ul>
     </section>
 
@@ -147,6 +183,7 @@
         <li><b>并发闸</b> —— 槽位占用实时可观测（不泄漏、不单调上涨）</li>
         <li><b>断流重试</b> —— Qoder 零内容断流自动重试一次（客户端无感）</li>
         <li><b>渠道降级</b> —— 上游 11128 渠道校验自动降级重试</li>
+        <li><b>渠道熔断</b> —— 连续 3 次「降级也 11128」即开闸：阵发期未打上游、不占槽、不烧计费，毫秒级 502 + <code>retry-after</code>；只计渠道级信号，避免误伤</li>
         <li><b>留存与备份</b> —— 日志按天清理；SQLite <code>VACUUM INTO</code> 备份、冷热双份可回滚</li>
       </ul>
     </section>
@@ -154,7 +191,7 @@
   </div>
 
   <p class="foot">
-    图中每一条都对应已实现的代码路径，无规划项。版本 v1.4.0 ·
+    图中每一条都对应已实现的代码路径，无规划项。版本 v1.6.28 ·
     与 <code>server/src/version.ts</code> 同源。
   </p>
 </div>
