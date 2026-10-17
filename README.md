@@ -9,7 +9,7 @@
 [![SQLite](https://img.shields.io/badge/SQLite-better--sqlite3-003B57?style=flat-square)](https://github.com/WiseLibs/better-sqlite3)
 [![Node](https://img.shields.io/badge/Node-%E2%89%A522.9-3C873A?style=flat-square)](https://nodejs.org)
 [![version](https://img.shields.io/badge/version-1.6.15-4A38C0?style=flat-square)](https://github.com/zhanghaojie513/waygate-open/releases)
-[![tests](https://img.shields.io/badge/tests-732%20passed-0A7247?style=flat-square)](./server)
+[![tests](https://img.shields.io/badge/tests-741%20passed-0A7247?style=flat-square)](./server)
 
 ![途关 · Waygate](docs/img/intro.png)
 
