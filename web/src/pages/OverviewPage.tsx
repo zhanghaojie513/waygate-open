@@ -17,7 +17,7 @@ import { Tooltip } from '../components/ui/Tooltip';
 import { Banner } from '../components/ui/Banner';
 import { ClientModelTip } from '../components/usage/ClientModelTip';
 import { ClientMetricTip } from '../components/usage/ClientMetricTip';
-import { formatInt, formatCredits, formatDateTime, formatPercent, formatRelative, formatTokens } from '../lib/format';
+import { formatInt, formatCredits, formatPercent, formatRelative, formatTokens } from '../lib/format';
 import { WINDOW_OPTIONS, WINDOW_LABEL } from '../lib/console';
 
 /**
@@ -168,56 +168,11 @@ export function OverviewPage({ navigate }: { navigate: (r: Route) => void }) {
               />
             </div>
 
-            {/* [v0.5.7] 积分账本（真实口径）—— MiniMax credit/details（精确到 0.01）。
-                [v1.4.1] WorkBuddy 资源包聚合（get-user-resource 的 Accounts）同表并列：
-                剩余/总量/已用都是包级真实数（Σ CapacityRemain/Size/Used）。 */}
-            {/* aside 口径说明（2026-10-17 用户对账困惑后定稿）：账本记的是上游**账户**
-                的全部历史消耗 —— 含用户在官方客户端等非本服务渠道花掉的积分，因此
-                与上方「已消耗积分」卡片（本服务 24h 窗口实扣）天然不相等，不是 bug。 */}
-            {d.creditLedgers.length > 0 ? (
-              <Panel title="积分账本" aside={<Pill>上游账户账本（全部历史，含非本服务消耗）</Pill>}>
-                <div className="tbl-scroll">
-                  <table className="tbl">
-                    <thead>
-                      <tr>
-                        <th scope="col">提供商</th>
-                        <th scope="col" className="r">剩余积分</th>
-                        <th scope="col" className="r">已消耗</th>
-                        <th scope="col" className="r">累计发放</th>
-                        <th scope="col">最近过期</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {d.creditLedgers.map((c) => (
-                        <tr key={c.providerId}>
-                          <td className="td-strong">
-                            {c.providerName}
-                            {c.stale ? <Pill tone="ghost">数据偏旧</Pill> : null}
-                          </td>
-                          {/* 口径按家不同：上游没给的字段显示 —（不是 0）。 */}
-                          <td className="r td-mono">{c.remaining !== null ? formatCredits(c.remaining) : '—'}</td>
-                          <td className="r td-mono">{c.consumed !== null ? formatCredits(c.consumed) : '—'}</td>
-                          <td className="r td-mono">{c.granted !== null ? formatCredits(c.granted) : '—'}</td>
-                          <td className="td-sub td-mono">
-                            {c.nextExpireAt ? formatDateTime(c.nextExpireAt) : '—'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                {/* [2026-10-17 评审] 110 字口径脚注常驻每屏底部 —— 「读一次就该消失」
-                    的内容做成了永久占据。收进 details 折叠（默认收起、点开即读，
-                    语义不丢、屏占归零）。 */}
-                <details className="footer-note ledger-caveat">
-                  <summary>各家账本口径不同（含官方直连消耗，比逐条统计更全）</summary>
-                  <b>MiniMax</b> 来自 credit/details（余额/已用/发放齐全，精确到 0.01）；
-                  <b>WorkBuddy</b> 来自资源包聚合（get-user-resource，剩余/发放为包级真实数）；
-                  <b>Qoder</b> 来自 me/usage（套餐内 + 资源包合计，签到赠送进资源包）。
-                  到期时刻上游不提供，该列显示「—」。
-                </details>
-              </Panel>
-            ) : null}
+            {/* [2026-10-17] 积分账本面板已从概览**移除**（用户裁决）：账户级账本
+                （全部历史、含非本服务消耗）与概览的使命（本服务窗口实扣）天然打架，
+                aside 口径补丁治标不治本 —— 三轮对账困惑后定案删除。数据没有丢：
+                同一份 creditLedgers 仍在「设置 → 提供商健康卡」（语境正确，带口径
+                悬停解释）与「客户端管理 → 模型数 tooltip」（剩余/已用）展示。 */}
 
             {/* [v0.5.2] 提供商用量摘要 —— 回答「谁在用」：哪把密钥消耗了多少。
                 与下方模型摘要（"花在哪"）构成两个正交视角，数据同源同窗口。 */}

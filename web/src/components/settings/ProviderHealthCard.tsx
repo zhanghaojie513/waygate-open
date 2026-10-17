@@ -86,8 +86,22 @@ export function ProviderHealthCard() {
                   <td className="r td-mono">{formatInt(p.modelCount ?? 0)}</td>
                   <td className="td-sub td-mono">
                     {p.credits?.available ? (
+                      /* [2026-10-17] 三家统一给「剩余 / 已消耗 / 累计发放」（用户要求：账本
+                         从概览移除后，这里是账本的常驻归宿）。已消耗/累计=账户级全部历史
+                         （含官方客户端直连、含已过期包），与剩余不同口径 —— 弱化 + 悬停解释。 */
                       <>
                         剩余 {formatCredits(p.credits.remaining ?? 0)}
+                        {p.credits.consumed !== null ? (
+                          <>
+                            {' '}
+                            <Tooltip content={'已消耗 / 累计发放 —— 账户级全部历史（含官方客户端直连的用量）。\n不是本服务转发的那部分，与剩余不是同一种量。'}>
+                              <span className="credit-aside">
+                                已消耗 {formatCredits(p.credits.consumed)}
+                                {p.credits.granted !== null ? ` / 发放 ${formatCredits(p.credits.granted)}` : ''}
+                              </span>
+                            </Tooltip>
+                          </>
+                        ) : null}
                         {p.credits.stale ? '（偏旧）' : ''}
                       </>
                     ) : p.qoderCredits ? (
@@ -109,7 +123,7 @@ export function ProviderHealthCard() {
                                 '数值等于每日消耗热力图近 371 天之和。'
                               }
                             >
-                              <span className="credit-aside">累计消耗 {formatCredits(p.qoderCredits.lifetimeConsumed)}</span>
+                              <span className="credit-aside">累计消耗 {formatCredits(p.qoderCredits.lifetimeConsumed)}{p.qoderCredits.granted !== null ? ` / 发放 ${formatCredits(p.qoderCredits.granted)}` : ''}</span>
                             </Tooltip>
                           </>
                         ) : null}
@@ -117,9 +131,22 @@ export function ProviderHealthCard() {
                         {p.signin?.streak ? `（连续活跃 ${formatInt(p.signin.streak)} 天）` : ''}
                       </>
                     ) : p.wbCredits ? (
-                      /* [v1.4.1] WorkBuddy 账本（资源包聚合）：剩余积分为主，连签天数作附注。 */
+                      /* [v1.4.1] WorkBuddy 账本（资源包聚合）。[2026-10-17] 补已消耗/累计发放
+                         —— consumed/granted 已含过期包（quota-parse 口径修正），与剩余分流：
+                         剩余只算未过期包（不可用余额不作数），已消耗/发放是历史事实。 */
                       <>
                         剩余 {formatCredits(p.wbCredits.remaining ?? 0)}
+                        {p.wbCredits.consumed !== null ? (
+                          <>
+                            {' '}
+                            <Tooltip content={'已消耗 / 累计发放 —— 账户全部资源包的历史合计（含已过期包、\n含官方客户端直连的用量）。剩余只统计未过期包，两者口径不同。'}>
+                              <span className="credit-aside">
+                                已消耗 {formatCredits(p.wbCredits.consumed)}
+                                {p.wbCredits.granted !== null ? ` / 发放 ${formatCredits(p.wbCredits.granted)}` : ''}
+                              </span>
+                            </Tooltip>
+                          </>
+                        ) : null}
                         {p.wbSignin?.streak ? `（连签 ${formatInt(p.wbSignin.streak)} 天）` : ''}
                       </>
                     ) : p.signin?.checkedOn ? (

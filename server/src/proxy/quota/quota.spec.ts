@@ -74,24 +74,24 @@ describe('parseQuotaPayload — 只认真实出现的字段', () => {
     expect(p?.total).toBe(100);
   });
 
-  it('[v1.3.0] 真实形状：Accounts 聚合（Precise 优先、过期包剔除、resetAt 恒 null）', () => {
+  it('[2026-10-17 口径修正] Accounts 聚合：remain 剔除过期包，total/used 含过期包（历史事实）', () => {
     const p = parseQuotaPayload(REAL_BODY, Date.UTC(2026, 9, 13));
-    expect(p?.remain).toBeCloseTo(2140.03, 2); // 140.03 + 2000，过期包 1500 不计
-    expect(p?.total).toBe(2200);
-    expect(p?.used).toBeNull();
+    expect(p?.remain).toBeCloseTo(2140.03, 2); // 140.03 + 2000，过期包 1500 不计（余额不可用）
+    expect(p?.total).toBe(3700); // 200 + 2000 + 过期包 1500 —— 发放是历史事实，含过期包
+    expect(p?.used).toBeNull(); // 三包都无 Used 字段 → null（不推算）
     expect(p?.resetAt).toBeNull();
     expect(hasAmount(p!)).toBe(true);
   });
 
-  it('[v1.3.0] Accounts 全部过期 → remain/total 为 null（不编造）', () => {
+  it('[2026-10-17] Accounts 全部过期 → remain=0（余额确定归零，非未知），total 仍计（历史发放）', () => {
     const body = {
       code: 0,
-      data: { Response: { Data: { Accounts: [{ CapacityRemain: 5, ExpiredTime: '2020-01-01 00:00:00' }] } } },
+      data: { Response: { Data: { Accounts: [{ CapacityRemain: 5, CapacitySize: 5, ExpiredTime: '2020-01-01 00:00:00' }] } } },
     };
     const p = parseQuotaPayload(body, Date.UTC(2026, 9, 13));
-    expect(p?.remain).toBeNull();
-    expect(p?.total).toBeNull();
-    expect(hasAmount(p!)).toBe(false);
+    expect(p?.remain).toBe(0); // 全过期：可用余额确定为零（null 留给「未知」，两者不等价）
+    expect(p?.total).toBe(5); // 发放不随过期消失
+    expect(hasAmount(p!)).toBe(true); // total 非 null → 有数（remain=0 是真值不是缺失）
   });
 
   it('业务码非 0 → null（上游侧失败）', () => {

@@ -86,17 +86,22 @@ function aggregateAccounts(accounts: unknown[], nowMs: number): { remain: number
     if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
     const acc = item as Record<string, unknown>;
     const expireMs = parseCnTime(acc['ExpiredTime']);
-    if (expireMs !== null && expireMs <= nowMs) continue; // 已过期：作废不计入
+    /* [2026-10-17 口径修正] 过期包**不再整包跳过**，只按字段分流：
+       · remain（剩余）只累计**未过期**包 —— 过期包的余额确实不可用；
+       · total（累计发放）/ used（已消耗）**含过期包** —— 发放和消耗是历史事实，
+         包过期不该让它们从账上消失（实测：WB 的 6300 已消耗藏在 7 个过期包里，
+         整包跳过导致「已消耗 96.95」小得反常）。 */
+    const expired = expireMs !== null && expireMs <= nowMs;
     const r = pickAccountNumber(acc, 'CapacityRemainPrecise', 'CapacityRemain');
     const s = pickAccountNumber(acc, 'CapacitySizePrecise', 'CapacitySize');
     if (r === null && s === null) continue; // 两数都没有：跳过该包，不猜
-    remain += r ?? 0;
+    if (!expired) remain += r ?? 0;
     total += s ?? 0;
     const used = pickAccountNumber(acc, 'CapacityUsedPrecise', 'CapacityUsed');
     usedSum = usedSum === null ? (used !== null ? used : null) : used !== null ? usedSum + used : usedSum || null;
     packages.push({
       name: typeof acc['PackageName'] === 'string' ? acc['PackageName'] : '',
-      remain: r ?? 0,
+      remain: expired ? 0 : r ?? 0,
       size: s ?? 0,
       used,
       expireAt: expireMs,

@@ -133,15 +133,27 @@ export function ProviderTable({
                                 <b>{formatInt(p.modelEnabled ?? 0)}</b>
                               </div>
                             </div>
-                            {p.credits?.available ? (
-                              <div className="client-metric-tip-total">
-                                <span>剩余积分</span>
-                                <b>
-                                  {formatCredits(p.credits.remaining ?? 0)} <em>已用 {formatCredits(p.credits.consumed ?? 0)}</em>
-                                </b>
-                              </div>
-                            ) : null}
-                            {p.credits?.stale ? (
+                            {/* [2026-10-17 修正] 账本字段按协议分流（此前只读 credits —— 那是
+                                MiniMax 专属，WB/Qoder 的账本在 wbCredits/qoderCredits 里，
+                                导致这两家的行上「剩余积分+已用」永远不显示）。 */}
+                            {(() => {
+                              const led = p.credits?.available
+                                ? { remaining: p.credits.remaining, consumed: p.credits.consumed }
+                                : p.wbCredits
+                                  ? { remaining: p.wbCredits.remaining, consumed: p.wbCredits.consumed }
+                                  : p.qoderCredits
+                                    ? { remaining: p.qoderCredits.remaining, consumed: p.qoderCredits.consumed }
+                                    : null;
+                              return led && (led.remaining !== null || led.consumed !== null) ? (
+                                <div className="client-metric-tip-total">
+                                  <span>剩余积分</span>
+                                  <b>
+                                    {formatCredits(led.remaining ?? 0)} <em>已用 {formatCredits(led.consumed ?? 0)}</em>
+                                  </b>
+                                </div>
+                              ) : null;
+                            })()}
+                            {(p.credits?.stale || p.qoderCredits?.stale) ? (
                               <div className="client-model-tip-note">⚠ 积分数据偏旧（账本快照超时）</div>
                             ) : null}
                           </div>
@@ -170,7 +182,7 @@ export function ProviderTable({
                     {/* 「API Keys」不在这一行（2026-10-10 用户要求去掉）：
                         侧栏本来就有「API Keys」入口，这行再放一个是重复导航。
                         「请求日志」也不在这一行（2026-10-09 同理由去掉）。
-                        [v1.6.12] 「重新导入授权」也移出这一行（用户口径）：它属于
+                        [v1.6.15] 「重新导入授权」也移出这一行（用户口径）：它属于
                         凭证操作，放进「配置」抽屉里即可 —— 行内只留高频的
                         配置 / 模型列表 / 签到 / 启停 / 删除。 */}
                     <Tooltip content="改名称与上游地址；凭证可在抽屉内「重新导入授权」">
