@@ -45,27 +45,40 @@
 - **请求日志**：提供商列按「模型 id → 目录归属」解析（`requests` 无 provider_id，绑定名只代表路由偏好）；SSE 流也留痕；**游标（keyset）分页**——翻页期间的新写入不产生重复行；按 `logs.retainDays` 每日自动清理过期日志（启动即补跑停机期间欠的账）
 - **积分与用量**：趋势图（Token / 请求数双口径，**等距时间轴**，空桶补零）、按模型 / 按提供商拆分、缓存命中率、缓存 token 计量（Anthropic 口径：prompt = input + cache_creation + cache_read）
 - **积分账本**：MiniMax `credit/details` 真实余额（精确到 0.01）；凭证 refresh token 自动续期 + 每日签到（专用账号后即可代签）；WorkBuddy 资源包聚合余额（`get-user-resource` POST 实测口径）
-- **Qoder 签到与积分**（v1.6.0，积分口径 v1.6.1 更正）：`campaigns` 签到代领（每日 100 Credits，进**资源包**）+ 积分账本并入概览。走 `openapi.qoder.com.cn`，Bearer 令牌鉴权（**无需 COSY 签名**——那套只用于聊天路径），不顶掉桌面登录。**余额口径**：`v2/me/usage` 给真实余额（`userQuota` 套餐内 + `addOnQuota` 资源包），账本「发放/剩余/已消耗」为真实值；该端点**不提供到期时刻**，故「最近过期」列显示 `—`。另注意 `credits-summary.totalCredits` 是**历史累计消耗**（等于逐日用量之和），与余额不是一回事，单列展示不混算
+- **Qoder 签到与积分**（v1.6.0，积分口径 v1.6.1 更正）：`campaigns` 签到代领（每日 100 Credits，进**资源包**）。走 `openapi.qoder.com.cn`，Bearer 令牌鉴权（**无需 COSY 签名**——那套只用于聊天路径），不顶掉桌面登录。**余额口径**：`v2/me/usage` 给真实余额（`userQuota` 套餐内 + `addOnQuota` 资源包），展示为「发放/剩余/已消耗」；该端点**不提供到期时刻**，故「最近过期」显示 `—`。另注意 `credits-summary.totalCredits` 是**历史累计消耗**（等于逐日用量之和），与余额不是一回事，单列展示不混算
 - **WorkBuddy 领取域**（v1.4.0；v1.6.11 起与转发统一）：签到代领 + 成长任务 + 连登兑换走**用户会话域**（OAuth，`providers/<id>.oauth`，多会话共存不互踢）——正是这条链路让 `ck_` 得以整体退役。诚实边界：任务多为「体验 XX」型，前置条件不满足就如实记 `skipped`，**绝不伪造行为去凑任务**；补登卡/抽奖等资源消耗型操作不自动化
-- **容错**：Qoder 零内容断流**自动重试一次**（对客户端无感）；上游 11128 渠道校验自动降级重试
+- **容错**：Qoder 零内容断流**自动重试一次**（对客户端无感）；上游 11128 渠道校验自动降级重试；**11128 渠道熔断**（连续 3 次「降级重试也 11128」即开闸，冷却期内未打上游、未占并发槽、未计费，毫秒级 502 + `retry-after`，阵发过去自动半开放行探测）——上游阵发期每个失败要烧 ~65s，并发槽是全局单计数，不加熔断会烧满槽饿死其他提供商；**只计渠道级信号**（内容级 11128 降级能过的不计入），避免一个客户端的请求特征变成全提供商的闸门
+- **审计不丢行**：流式请求在途期间密钥被删时，落库撞 `key_id` 外键会丢整行 —— 现自动降级 `key_id = NULL` 重试保住整行（tokens / 积分 / 状态 / 耗时照常），`client_id` / `key_hint` 快照仍在，note 标记 `key_deleted_inflight`
 - **控制台**：React 19 单页，明暗双主题（跟随系统/手动，侧栏底部切换；官网与控制台同套主题——棱镜场景浅色下以 `multiply` 显形、深色下以 `screen`），CSS 伪元素 tooltip 体系，同形状骨架屏；页间数据先旧后新（SWR：重进页面即刻渲染上次数据、后台刷新无缝替换，自己的写操作写穿缓存不闪旧态）；「提供商健康」只读总览
 - **性能**：路由级代码分割：官网与控制台互不加载对方代码，首屏 gzip <100K；vendor 独立 chunk 享 30d `immutable` 长缓存（发版只重下业务 chunk）；概览 5s TTL 缓存（写操作即清）、SQL 语句按文本缓存复用、凭证文件 stat 失效缓存、last_seen 节流落库——同进程转发 SSE，省下的每次查询/写库都是还给流的事件循环时间；Nginx gzip（level 5）压缩传输
 
 ## 快速开始
 
-### 方式一：npm 包（推荐，一条命令）
+### 方式一：npm 包（推荐）
+
+**试用 / 一次性运行** —— `npx` 首次会自动下载到缓存并执行，不必先全局安装：
 
 ```bash
 npx waygate-open
 ```
 
-起本地服务并**自动打开浏览器**到控制台（默认 <http://127.0.0.1:8787/console>）。
+**长期使用** —— 装成全局命令，之后直接敲 `waygate-open`（不再经 npx，启动更快、版本可控）：
+
+```bash
+npm install -g waygate-open
+waygate-open
+```
+
+想看固定版本而不是跟着 `latest` 走：`npx waygate-open@1.6.20`。
+
+两种方式行为一致：起本地服务并**自动打开浏览器**到控制台（默认 <http://127.0.0.1:8787/console>）。
 首次启动的管理口令默认是 **`waygate`** —— 仅当只监听回环（`127.0.0.1`）时套用这个
 默认值；对外监听时改为随机生成并打印在启动日志里。登录后建议去「设置 → 管理口令」改掉。
 
-数据默认落在 `~/.waygate/open/`（库与密钥都在那里）。
+数据默认落在 `~/.waygate/open/`（库与密钥都在那里）—— 与工作目录无关，
+所以全局安装后在任意目录启动都读同一份数据。
 
-常用参数（都有等价环境变量）：
+常用参数（都有等价环境变量；全局安装后把 `npx waygate-open` 换成 `waygate-open` 即可）：
 
 ```bash
 npx waygate-open --port 9000          # 换端口（RELAY_PORT）
@@ -104,9 +117,27 @@ npm run dev:mock          # 或：纯前端开发，内置 Mock 数据（口令 
 | `RELAY_UPSTREAM_KEY` | 可选：无 OAuth 时代的全局出站凭证（**v1.6.11 起 WorkBuddy 走 OAuth，不再需要**） |
 | `RELAY_SECRET` | HMAC：密钥哈希 + 会话令牌签名，丢失等于全部密钥作废 |
 | `RELAY_ADMIN_PASSWORD_HASH` | 管理口令 scrypt 哈希（不设则四级回落，首启打印一次性口令） |
-| `RELAY_DATA_DIR` / `RELAY_PORT` | 数据目录（默认 `./data`）与端口（默认 8787） |
+| `RELAY_DATA_DIR` / `RELAY_PORT` | 数据目录与端口（默认 8787）。**数据目录默认值随形态不同**：源码模式 = `./data`（相对启动目录）；npm 包（`npx` / 全局）由 bin 传 `~/.waygate/open`，与工作目录无关 |
 
-**Qoder CN 凭证**（若要用第三家）：从本机 Qoder 客户端登录态一键导入，无需手抄令牌：
+### 第一步：导入客户端凭证
+
+三家凭证都来自各客户端的**官方授权**（用户拿不到、也无法手填），入口只有一个：
+控制台「提供商管理 → 导入客户端」（或某一行上的「重新导入授权」用于换账号 / 刷新令牌）。
+
+| 客户端 | 授权方式 | 你需要做什么 |
+| --- | --- | --- |
+| **WorkBuddy** | 官方 OAuth 设备授权 | 弹窗里点「打开授权页」→ 在浏览器确认 → 回来自动落盘 |
+| **MiniMax Code** | PKCE 设备码 | 同上（授权页显示设备码时确认即可） |
+| **Qoder CN** | PKCE 设备授权 | 同上（未授权时上游回 404，属正常等待态） |
+
+> [!NOTE]
+> 私有状态（`device_code` / `code_verifier`）**只存服务端**，绝不回传浏览器。
+> 授权窗口最多等 2 分钟；超时后可用命令续上（`--help` 看对应命令名）。
+
+**同一个客户端出现在两台机器**（例如 relay 跑在服务器、客户端在你本机）时，
+服务端读不到本机登录态 —— 这是正常的，按弹窗提示用「本机推送命令」从你的机器推上去即可。
+
+**Qoder CN 凭证**（若要用第三家）：也可从本机 Qoder 客户端登录态一键导入，无需手抄令牌：
 
 ```bash
 cd server && node tools/qoder-import-credential.mjs <provider_id>
@@ -170,7 +201,7 @@ curl http://127.0.0.1:8787/v1/chat/completions \
 | 提供商 | 协议 | 凭证形态 | 目录来源 | 积分口径 |
 | --- | --- | --- | --- | --- |
 | **WorkBuddy** | `openai`（`/v2/chat/completions`） | **官方 OAuth 设备授权**（转发与领取域同一凭证，v1.6.11 起；原 `ck_` 密钥已退役） | 上游拉取 + 逐项实测 | 按次回报 `usage.credit`（实扣）+ 资源包聚合余额 |
-| **MiniMax Code** | `anthropic`（`/mavis/api/v1/llm/v1/messages`） | OAuth refresh token（`mmort_`，自动换新） | 内置种子（网关无清单端点） | **独立账本** `credit/details`（精确到 0.01）；单次不回报 → 记 `null` 不编造 |
+| **MiniMax Code** | `anthropic`（`/mavis/api/v1/llm/v1/messages`） | OAuth refresh token（`mmort_`，自动换新） | **上游真拉取** `/mavis/api/v1/models`（失败回落内置种子） | **独立账本** `credit/details`（精确到 0.01）；单次不回报 → 记 `null` 不编造 |
 | **Qoder CN** | `qoder`（COSY 协议，`/algo/…/agent_chat_generation`） | 客户端登录态身份 JSON（`dt-`/`drt-`） | 网关 `/model/list` 真拉取（13 模型） | SSE `usage.credits` × `billable`（免费档实扣 0）；余额走 `openapi` 的 `v2/me/usage`（套餐内 + 资源包，Bearer 无 COSY 签名）；到期时刻上游不提供 |
 
 **路由规则**：模型 id 先跨全部生效提供商**精确匹配（大小写敏感）**，再按提供商内模糊回落。声明行（seed/upstream/manual）优先于 observed 行——observed 泄漏曾导致幽灵目录行抢走别家请求（已修）。
@@ -297,7 +328,7 @@ mindmap
 
 ```bash
 cd server
-npm test            # 727 项单测（vitest）：路由优先级、口径不变式、三种方言翻译、失败落库、趋势桶补齐…
+npm test            # 754 项单测（vitest）：路由优先级、口径不变式、三种方言翻译、失败落库、趋势桶补齐…
 npm run typecheck   # tsc --noEmit
 npm run smoke:boot  # 真起 dist：healthz / 登录 / 目录 / 设置四关
 ```
@@ -353,10 +384,11 @@ npm run dev                 # 联调：代理到 127.0.0.1:8787（推荐）
 ```
 server/                    NestJS + Fastify + better-sqlite3（单文件 SQLite）
   src/proxy/               转发核心：路由解析、三种方言出口（openai/anthropic/qoder）、失败落库
+    channel-breaker.ts     11128 渠道熔断状态机（按提供商独立、内存态、时钟可注入）
     anthropic-upstream/    MiniMax Code 出站（oauth 令牌、账本、SSE 解码、签到）
     qoder-upstream/        Qoder CN 出站（COSY 会话/签名/自定义 base64、SSE 解码、签到与积分账本）
   src/api/                 控制台 API：概览聚合、密钥、目录、提供商、设置（含设置元数据目录）
-  src/catalog/             目录同步（上游拉取 / observed 并入 / 幽灵行防护 / Qoder 拉取）
+  src/catalog/             目录同步（上游拉取 / observed 并入 / 幽灵行防护 / Qoder 与 MiniMax 拉取）
   src/store/               迁移、仓储与日志留存清理（schema.sql 即迁移事实源）
   src/common/              跨模块小件（凭证文件的 stat 失效进程内缓存等）
   tools/                   运维与验收脚本（smoke:boot、凭证导入、迁移…）
