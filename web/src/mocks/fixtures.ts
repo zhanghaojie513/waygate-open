@@ -105,6 +105,23 @@ function clientName(clientId: string): string {
   );
 }
 
+/* [2026-10-17 命名裁决] byClient 走**提供商**维度（生产 v0.5.15 起按「模型→目录
+   →provider」归属，桶名=提供商名；面板标题已改「提供商用量摘要」）。
+   4 桶 = 3 家提供商 + 1 个未归属桶（生产真实存在：模型不在任何生效目录时归 null 桶）。
+   clientId 键与 CLIENTS 结构**不动** —— 自洽断言、AC-C06 改名演练仍按密钥跑。 */
+const PROVIDER_OF_CLIENT: Record<string, string | null> = {
+  k_9d02: 'Qoder CN',      // Cursor 的量全走 qfmodel
+  k_8f21: 'WorkBuddy',     // Claude Code 订阅
+  k_1b83: 'MiniMax Code',  // Cherry Studio 的 anthropic 方言
+  k_c3a5: null,            // 目录已删的模型 → 未归属桶
+};
+
+/** byClient 桶的显示名：提供商名；null 桶如实显示「未归属」（不冒充任何一家）。 */
+function providerBucketName(clientId: string): string {
+  const p = PROVIDER_OF_CLIENT[clientId];
+  return p ?? '未归属';
+}
+
 /**
  * **仅 Mock / 测试**：改掉某个客户端的显示名，`clientId` 一动不动。
  *
@@ -578,7 +595,7 @@ export function makeOverview(win: MockWindow = 'today', nowMs: number = Date.now
     model: null,
     displayName: null,
     clientId: m.clientId,
-    client: clientName(m.clientId),
+    client: providerBucketName(m.clientId),
     requests: clientReqs[i],
     tokens: clientTokens[i],
     credits: cents(clientReqs[i] * m.rate) / 100,
@@ -695,6 +712,7 @@ export function makeOverview(win: MockWindow = 'today', nowMs: number = Date.now
     alerts: {
       // Mock 口径：最近 1 小时 0 次 11128 → 概览横幅不亮（与后端 CHANNEL_REJECT_ALERT_THRESHOLD=3 对齐）。
       channelReject: { count: 0, threshold: 3 },
+      credentialInvalid: { count: 0, threshold: 1 },
     },
     creditLedgers: [
       {
@@ -883,7 +901,7 @@ export function assertOverviewConsistent(d: OverviewData): void {
       const lo = clientRates[i];
       if (hi.rate <= lo.rate) {
         bad.push(
-          `客户端单次均耗未随模型倍率递减：${clientName(hi.clientId)}（模型倍率 ${hi.mixMult} → 单次 ${hi.rate.toFixed(2)}）` +
+          `客户端单次均耗未随模型倍率递减：${providerBucketName(hi.clientId)}（模型倍率 ${hi.mixMult} → 单次 ${hi.rate.toFixed(2)}）` +
             `未高于 ${clientName(lo.clientId)}（模型倍率 ${lo.mixMult} → 单次 ${lo.rate.toFixed(2)}）`,
         );
       }

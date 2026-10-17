@@ -195,6 +195,8 @@ export interface OverviewData {
   alerts: {
     /** 上游渠道校验（11128）拒绝次数与横幅阈值；count ≥ threshold 时概览页展示告警横幅。 */
     channelReject: { count: number; threshold: number };
+    /** [2026-10-17] 上游访问密钥失效（note=upstream_credential_invalid）：停摆级，阈值 1。 */
+    credentialInvalid: { count: number; threshold: number };
   };
   quota: QuotaState;
   /** [v0.5.7] 各提供商的**真实**积分账本（MiniMax 有；WorkBuddy 上游未提供）。 */

@@ -160,11 +160,15 @@
     --cam-rz 1100ms var(--ease-out),
     --scene-dim 1100ms var(--ease-out);
 }
-.app[data-view="overview"] { --scene-dim: 0.86; --cam-x: 0px; --cam-y: 0px; --cam-z: 0px; --cam-rx: 0deg; --cam-ry: 0deg; --cam-rz: 0deg; }
-.app[data-view="usage"]    { --scene-dim: 0.74; --cam-x: -34px; --cam-y: -14px; --cam-z: -70px; --cam-rx: 2deg; --cam-ry: 3.5deg; --cam-rz: -0.6deg; }
-.app[data-view="requests"] { --scene-dim: 0.62; --cam-x: 28px; --cam-y: -22px; --cam-z: -110px; --cam-rx: -3deg; --cam-ry: -4deg; --cam-rz: 0.8deg; }
-.app[data-view="clients"]  { --scene-dim: 0.72; --cam-x: 20px; --cam-y: 12px; --cam-z: -80px; --cam-rx: 2deg; --cam-ry: -3deg; --cam-rz: -0.6deg; }
-.app[data-view="settings"] { --scene-dim: 0.66; --cam-x: 6px; --cam-y: -8px; --cam-z: -30px; --cam-rx: 1deg; --cam-ry: 1.5deg; --cam-rz: -0.4deg; }
+.app[data-view="overview"] { --scene-dim: 0.86; --cam-x: 0px; --cam-y: 0px; --cam-z: 0px; --cam-rx: 0deg; --cam-ry: 0deg; --cam-rz: 0deg; --bloom-hue: 0deg; }
+.app[data-view="usage"]    { --scene-dim: 0.74; --cam-x: -34px; --cam-y: -14px; --cam-z: -70px; --cam-rx: 2deg; --cam-ry: 3.5deg; --cam-rz: -0.6deg; --bloom-hue: 15deg; }
+.app[data-view="requests"] { --scene-dim: 0.62; --cam-x: 28px; --cam-y: -22px; --cam-z: -110px; --cam-rx: -3deg; --cam-ry: -4deg; --cam-rz: 0.8deg; --bloom-hue: -12deg; }
+.app[data-view="clients"]  { --scene-dim: 0.72; --cam-x: 20px; --cam-y: 12px; --cam-z: -80px; --cam-rx: 2deg; --cam-ry: -3deg; --cam-rz: -0.6deg; --bloom-hue: -18deg; }
+.app[data-view="settings"] { --scene-dim: 0.66; --cam-x: 6px; --cam-y: -8px; --cam-z: -30px; --cam-rx: 1deg; --cam-ry: 1.5deg; --cam-rz: -0.4deg; --bloom-hue: 8deg; }
+/* [2026-10-17 微调] bloom 色相随路由偏移（±18deg 以内——过大会变彩虹灯）：
+   切页时场景光微变色，给「换了个房间」的感觉。挂在 .lights 上而不是
+   .bloom 上，避免和 bloom 自身的 filter:blur 冲突。 */
+.lights { filter: hue-rotate(var(--bloom-hue, 0deg)); }
 
 /* 无障碍：reduced-motion 下不做过渡，相机直接落在当前机位 ——
    背景仍是一张完整可看的静态构图（不是黑屏）。 */

@@ -104,8 +104,12 @@
   --text-secondary: #3B3560;   /* 白卡 11.3 : 1 */
   --text-tertiary:  #4E4874;   /* 白卡  8.4 : 1 */
   --text-muted:     #5A5478;   /* 白卡  7.1 : 1 */
-  --text-faint:     #635C82;   /* 白卡  6.2 : 1 */
-  --text-ghost:     #655E88;   /* 白卡  6.0 : 1 · 数据带 4.6 : 1 */
+  /* [2026-10-17 尾部重排] 原值 faint #635C82 / ghost #655E88 的相邻档比只有 1.037
+     （OKLCH L 差 0.008），两档在浅色下挤压成一段、层级靠前三级硬撑。
+     重排原则：faint 深一档（承担「可读的注脚」）、ghost 浅一档（承担「装饰性/已禁用」），
+     尾部三档相邻比全部 ≥1.12；色相校回 ~285 与全族一致（原 ghost 漂到 291）。 */
+  --text-faint:     #5C5578;   /* 白卡 6.9 : 1 · 数据带 5.5 : 1（原 6.2，加深拉开 muted 距离） */
+  --text-ghost:     #6E6890;   /* 白卡 5.4 : 1 · 数据带 4.7 : 1（原 6.0，与 faint 拉开 1.13 档距） */
 
   /* ==========================================================================
      5 · 品牌与语义色
@@ -261,11 +265,75 @@
   --scene-bg: linear-gradient(168deg, #F4F2FB 0%, #EAE7F6 46%, #EFEDF8 100%);
 }
 
-/* 玻璃片：screen → multiply（浅底上"面显形"的正确算法）。
-   [注意] 只改叶子节点的 blend，不动 .rig/.tilt/.stage（那三层禁 blend，见 scene.css）。 */
+/* ---------- [2026-10-17 浅色主题二轮] 发光体整层退役 ----------
+   .core/.nucleus/.beam/.fog/.dust 全部 screen 混合 + 白色发光 —— 深底上"往白里加光"，
+   浅底上"往白里加白"，物理不可见且动画空转耗性能（scene.js 的运镜绑定照跑）。
+   处理原则与 noise/dimmer 同：无效层关掉，不调到勉强可见。首屏右侧的构图支点
+   由 A2 的棱镜片体浅色浓度接管（玻璃片染色 + 投影撑体积，而非光）。 */
+:root[data-theme='light'] .landing .core,
+:root[data-theme='light'] .landing .core::after,
+:root[data-theme='light'] .landing .nucleus,
+:root[data-theme='light'] .landing .beam,
+:root[data-theme='light'] .landing .fog,
+:root[data-theme='light'] .landing .dust { display: none; }
+
+/* ---------- [2026-10-17 A2] 棱镜片体浅色专属浓度 ----------
+   片体渐变原本引用 --bg-surface-3/--bg-code/--bg-page（浅色下全是近白），
+   multiply(近白,近白)≈0 —— 玻璃片只剩 18% 描边，首屏右侧趋空白。
+   浅色版直接给"玻璃白 + 品牌染色"渐变，multiply 去掉（乘法在近白上无效，
+   改正常叠加 + 染色，可控可调）；tint 变量仍由 SceneLayer 逐片注入，
+   渐变里用 color-mix 把各片的 tint 染进白底。外发光（浅底上读作晕斑）
+   换淡投影撑体积。 */
 :root[data-theme='light'] .landing .pl {
-  mix-blend-mode: multiply;
+  mix-blend-mode: normal;
+  /* 各片 tint 强度不一（SceneLayer 40-50 行），染色统一 7% —— 够读出"彩色玻璃"，
+     不至于变成色块；白底 93% 保证片体仍是"玻璃"而非"板"。 */
+  background:
+    linear-gradient(var(--a, 145deg),
+      color-mix(in srgb, var(--tint, #8B7CFF) 7%, #FFFFFF) 0%,
+      #FFFFFF 46%,
+      color-mix(in srgb, var(--tint, #8B7CFF) 11%, #FFFFFF) 100%);
+  /* 深色版的 inset 白高光（浅底不可见）+ tint 48% 外发光（浅底读作晕斑）→
+     顶边可见白高光 + iris 淡投影（体积感的浅色来源是影，不是光）。 */
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .65),
+    inset 0 0 0 1px color-mix(in srgb, var(--tint, #8B7CFF) 14%, transparent),
+    0 8px 24px -12px color-mix(in srgb, var(--iris) 22%, transparent);
 }
+/* 厚度层（.pl::before）：白 13% → 45%，浅色下棱面厚度才读得出来 */
+:root[data-theme='light'] .landing .pl::before {
+  background: linear-gradient(to bottom,
+    rgba(255, 255, 255, .45),
+    color-mix(in srgb, var(--tint, #8B7CFF) 16%, transparent));
+}
+
+/* ---------- [2026-10-17 A3] 区块帘 / CTA / vignette / band / 倒影 ---------- */
+/* 保护帘：深色下用 bg-band 灰纱压暗发光场景保 AA；浅色下无此需求，灰纱反而
+   让 Ways/Quickstart/Clients 整体发灰、与 bg-page 出现色温断层。换同族紫帘
+   （渐变同向，只保区块节奏）。 */
+:root[data-theme='light'] .landing .section::before,
+:root[data-theme='light'] .landing .strip::before {
+  background: linear-gradient(to bottom, transparent, var(--bg-page) 82%, var(--bg-page) 92%);
+}
+/* CTA 径向灰斑 → 品牌淡紫光晕（灰×浅紫读作污渍；品牌色是"落点"的正确语言） */
+:root[data-theme='light'] .landing .cta::before {
+  background: radial-gradient(640px 320px at 50% 38%,
+    color-mix(in srgb, var(--iris) 5%, transparent), transparent 70%);
+}
+/* vignette：浅色下从"盖灰纱"改为"边缘收紫"，且降强度 */
+:root[data-theme='light'] .landing .vignette {
+  opacity: .35;
+  background:
+    radial-gradient(120% 90% at 50% 8%, transparent 60%, color-mix(in srgb, var(--bg-section-a) 55%, transparent)),
+    linear-gradient(to right, color-mix(in srgb, var(--bg-section-a) 40%, transparent), transparent 24%);
+}
+/* Status 的 .band：浅压浅（bg-page 62%）无隔离 → 换 section-b 制造同族明度差 */
+:root[data-theme='light'] .landing .band {
+  background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--bg-section-b) 62%, transparent) 42%, color-mix(in srgb, var(--bg-section-b) 62%, transparent));
+}
+/* Hero 倒影：浅底上双影更易读作灰污，降一半 */
+/* 倒影（.hero-flip）：浅底上双影更易读作灰污（.26 等效 ~.11 已是深底调的极限），浅色再降一半 */
+:root[data-theme='light'] .landing .hero-flip { opacity: .13; }
 
 /* 掠射高光：白光带在浅底上不可见，压到 12%（仍用 screen —— 它是"更亮的一道"，
    浅色下同样要往亮里叠，只是幅度收小）。 */
@@ -278,8 +346,58 @@
     transparent 60%);
 }
 
+/* ---------- [2026-10-17 A4] 玻璃边光与按钮 hover ---------- */
+/* --edge-light 深色是白 10%（浅底白压白不可见）→ 浅色换 iris 12% 边光 */
+:root[data-theme='light'] {
+  --edge-light: linear-gradient(to bottom, color-mix(in srgb, var(--iris) 12%, transparent), transparent);
+  /* --brand-hover 浅色值：比浅色 primary（#5A48D6）深一档 —— hover 方向与深色一致（变沉）。
+     tokens.css 有此令牌但缺浅色值，landing 的 hover 一直硬编码亮紫（浅色下越 hover 越亮）。 */
+  --brand-hover: #4A38C0;
+}
+
 /* 噪点：深色抗色带用；浅色下关掉（浅底本身无色带，留着只是脏） */
 :root[data-theme='light'] .landing .noise { opacity: 0; }
 
 /* 调暗层：浅色下不要（它把场景往黑里压，浅色需要的是"往亮里提"） */
 :root[data-theme='light'] .landing .dimmer { opacity: 0; }
+
+/* ---------- [2026-10-17 P3-4] 官网浅色主题：补设计锚点 ----------
+   A2 已给棱镜片体浅色浓度（白底+染色+投影），但评审指出「浅色版失去设计
+   锚点，像未完成的深色设计」—— 核心问题是光芯/光柱/雾被整层砍掉后，
+   右侧只剩淡色玻璃片，没有视觉重心。
+   解法：不恢复 screen 发光体（浅底物理无效），而是给浅色版加一个
+   **品牌色淡光晕**作为替代锚点 —— 用 iris/cyan 的极低透明度径向渐变，
+   放在棱镜中心位置，读作「浅色下柔和的环境光」而非「发光」。
+   同时把 .fog 恢复为浅色淡雾（非 screen，改 normal 叠加极淡的灰）。 */
+
+/* 品牌光晕：替代深色光芯的浅色锚点 */
+:root[data-theme='light'] .landing .core {
+  display: block;
+  /* 覆盖深色的 screen + 白色渐变 */
+  mix-blend-mode: normal;
+  background: radial-gradient(closest-side,
+    color-mix(in srgb, var(--iris) 10%, transparent) 0%,
+    color-mix(in srgb, var(--brand-500) 5%, transparent) 40%,
+    transparent 100%);
+  filter: none;
+  opacity: .8;
+}
+/* 光芯的 720px 光晕：浅色版改极淡的品牌扩散 */
+:root[data-theme='light'] .landing .core::after {
+  display: block;
+  mix-blend-mode: normal;
+  background: radial-gradient(closest-side,
+    color-mix(in srgb, var(--accent-cyan) 6%, transparent) 0%,
+    transparent 70%);
+  filter: none;
+}
+/* 雾：浅色版恢复为极淡灰（非 screen，改 normal） */
+:root[data-theme='light'] .landing .fog {
+  display: block;
+  mix-blend-mode: normal;
+  background: linear-gradient(to top,
+    color-mix(in srgb, var(--bg-section-a) 30%, transparent),
+    transparent 60%);
+  filter: none;
+  opacity: .5;
+}

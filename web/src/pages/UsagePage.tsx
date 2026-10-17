@@ -3,6 +3,7 @@ import { api } from '../services/api';
 import { useResource } from '../hooks/useResource';
 import { useFx } from '../hooks/useFx';
 import type { TimeWindow } from '../types/api';
+import { readSharedWindow, writeSharedWindow } from '../lib/sharedWindow';
 import { Topbar } from '../components/ui/Topbar';
 import { Pill } from '../components/ui/Pill';
 import { Select } from '../components/ui/Select';
@@ -38,7 +39,7 @@ const WINDOW_DAYS_OF: Record<TimeWindow, number | null> = { today: null, '1h': n
  * 两个字段，不是两次请求。
  */
 export function UsagePage() {
-  const [win, setWin] = useState<TimeWindow>(DEFAULT_WINDOW);
+  const [win, setWin] = useState<TimeWindow>(() => readSharedWindow() ?? DEFAULT_WINDOW);
   const res = useResource(() => api.overview(win), [win], { cacheKey: `overview:${win}` });
   useFx(`usage-${win}-${res.data ? 'ready' : 'pending'}`);
   /* [v0.5.11] 趋势主量纲从积分换成 token —— 积分对 MiniMax 是未知/免费
@@ -100,7 +101,7 @@ export function UsagePage() {
           d ? <Pill tone="live" dot>{WINDOW_LABEL[d.window]} · {formatRelative(d.generatedAt)}</Pill> : null
         }
         actions={
-          <Select value={win} options={WINDOW_OPTIONS} onChange={setWin} width={148} />
+          <Select value={win} options={WINDOW_OPTIONS} onChange={(v) => { writeSharedWindow(v); setWin(v); }} width={148} />
         }
       />
 

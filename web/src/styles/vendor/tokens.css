@@ -236,7 +236,10 @@
   --text-tertiary:  #C1CBE2;   /* 卡面  8.05 */
   --text-muted:     #B1BCD4;   /* 卡面  6.87 · 说明文字 */
   --text-faint:     #A2ACC5;   /* 卡面  5.76 · 辅助信息 */
-  --text-ghost:     #8E99B1;   /* 卡面  4.58 · 标签 / 表头 / 页脚 */
+  /* [2026-10-17] 8E99B1(4.58) 贴 AA 线 —— 表头 th/侧栏分组/.td-sub 这些 11-11.5px
+     小字全在用它，surface-2 卡面上实测 4.47 已破线。提亮半档恢复余量，
+     仍保「全站最弱一级」的角色（与 faint 拉开 ≥1.15）。 */
+  --text-ghost:     #949FB8;   /* 卡面 4.79 · 标签 / 表头 / 页脚 */
 
   /* ==========================================================================
      5 · 品牌与语义色（沿用 v2.1，未改）
@@ -573,10 +576,11 @@ a { color: inherit; text-decoration: none; }
    非 `<td>` 的数值用 app.css 的 `.cell-mono`、行内代码芯片用 `.code-chip`。
    不要在这里重新引入同名工具类。 */
 
+/* [2026-10-17 检测器修] 渐变文字（background-clip:text）改品牌青纯色：
+   impeccable gradient-text 告警（装饰性渐变文字是 AI tell）。
+   类名保留 —— Hero 的 base_url 强调仍用这个名字，promo 等下游也引用它。 */
 .grad-text {
-  background: var(--gradient-brand);
-  -webkit-background-clip: text; background-clip: text;
-  -webkit-text-fill-color: transparent; color: transparent;
+  color: var(--accent-cyan);
 }
 
 /* ==========================================================================

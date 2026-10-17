@@ -7,7 +7,7 @@ import { consoleHref } from '../../lib/consoleRoute';
  * 页脚。三列（品牌 + 开始 + 控制台）+ 一条底线。
  *
  * [注意] 底线中间那句**免责声明是必须的**（Spec §6）：
- *    「个人自用工具，与 WorkBuddy / 腾讯无隶属关系」
+ *    「个人自用工具，与 WorkBuddy / MiniMax / Qoder / 腾讯无隶属关系」
  * 它是一个本地反代工具，明确这不是官方产品，避免被当成官方服务。
  *
  * 状态胶囊跟随 /healthz：离线时转琥珀，与首屏、接入卡保持同一套语义色。
@@ -42,7 +42,7 @@ export function Footer({ status }: { status: LandingStatus }) {
               <span style={BRAND_EN}></span>
             </div>
             <p>
-              自用反代：把 WorkBuddy 订阅积分<br />
+              自用反代：把你的 AI 订阅积分<br />
               变成任何客户端都能用的 OpenAI 接口。
             </p>
             <span className={pill}>

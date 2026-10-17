@@ -17,7 +17,7 @@ import { Tooltip } from '../components/ui/Tooltip';
 import { Banner } from '../components/ui/Banner';
 import { RequestTable } from '../components/requests/RequestTable';
 import { RequestDetailView } from '../components/requests/RequestDetailView';
-import { formatInt, formatPercent, hasNote, NOTE_CREDENTIAL_INVALID } from '../lib/format';
+import { formatInt, formatPercent, NOTE_CREDENTIAL_INVALID } from '../lib/format';
 import { ApiError } from '../services/http';
 
 const STATUS_OPTIONS = [
@@ -317,7 +317,7 @@ export function RequestsPage() {
                     background: 'transparent',
                     border: 'none',
                     outline: 'none',
-                    color: 'var(--text-primary)',
+                    color: 'var(--text-secondary)',
                     font: 'inherit',
                     fontSize: 12.5,
                   }}
@@ -334,7 +334,7 @@ export function RequestsPage() {
                   background: 'transparent',
                   border: 'none',
                   outline: 'none',
-                  color: 'var(--text-primary)',
+                  color: 'var(--text-secondary)',
                   font: 'inherit',
                   fontSize: 12.5,
                 }}
@@ -343,22 +343,17 @@ export function RequestsPage() {
           </label>
         </div>
 
-{/* [v7.0-d] 卡片：标签行（标签 + 右上角口径）+ 大数字。
-           ⚠️ 口径与标签同行右端 —— 卡片宽约 300px，标签越长右侧留给口径的空间越少。
-               所以第四格（标签 8 个字）的口径只写「注 token」；
-               完整的 token 名在下方「读取口径」卡里给 —— 那里有整行空间，
-               而把 26 个字符塞进 60px 只会变成一串省略号，反而丢信息。 */}
+{/* [2026-10-17 评审收尾] 统计条 4→3 格：
+           ① 删「上游访问密钥失效」格 —— 停摆级状态已升格为概览顶部横幅
+             （alerts.credentialInvalid，单次即报），这格只统计当前页 20 行、
+             与其严重性不匹配；「注 token」密码式缩写一并消失（人设红旗）。
+           ② 「本页条数」保留 —— 它是「筛选命中 vs 实际可见」的即时对照，
+             分页器只显示页码范围，不回应这个对照。 */}
         <StatBar
           items={[
             { label: '当前筛选命中', value: formatInt(total), detail: '当前筛选全部命中' },
             { label: '本页条数', value: formatInt(rows.length), tone: 'live', detail: `每页 ${limit} 条` },
             { label: '当前页异常', value: formatInt(rows.filter((r) => r.status >= 400).length), detail: 'status ≥ 400' },
-            {
-              label: '上游访问密钥失效',
-              value: formatInt(rows.filter((r) => hasNote(r.note)).length),
-              tone: 'amber',
-              detail: '注 token',
-            },
           ]}
         />
 
@@ -373,7 +368,12 @@ export function RequestsPage() {
           aside={<Pill>{formatPercent(total ? rows.filter((r) => r.status < 400).length / Math.max(1, rows.length) : null, 1)} 本页成功率</Pill>}
           padded={false}
         >
-          <div style={{ padding: '0 20px' }}>
+          <div style={{
+                padding: '0 20px',
+                opacity: list.loading && !list.initial ? 0.55 : 1,
+                transition: 'opacity 200ms var(--ease-out)',
+                pointerEvents: list.loading && !list.initial ? 'none' : undefined,
+              }}>
             {list.error ? (
               <StateBlock kind="error" title="日志没取到" detail={errorDetail(list.error)} onRetry={list.reload} />
             ) : rows.length === 0 ? (
@@ -422,7 +422,7 @@ export function RequestsPage() {
           <div className="footer-note">
             上游访问密钥失效是这套方案唯一会让服务停摆的状态 —— 所有提供商共用同一把上游访问密钥，它一失效即整体不可用。
             {/* [2026-10-09] 指路更正：那页早已改名「提供商管理」，且提供商在其表格里（原写「客户端与密钥」，是旧页名）。 */}
-            这类失败在日志里<b>不是</b> 401：状态码是 502，标记为「上游访问密钥失效」。出现时去「提供商管理 → 提供商」的「修改」里换新。
+            这类失败在日志里<b>不是</b> 401：状态码是 502，标记为「上游访问密钥失效」。出现时去「提供商管理 → 提供商」的「配置」里换新。
             {/* [v7.0-d] 上面那张卡右上角只写了「注 token」—— 卡片右侧空间放不下 26 个字符的
                 token 名（会被截成省略号）。完整 token 在这里给，那里有一整行。 */}
             筛选框选「上游访问密钥失效」即按 note 里的 <code>upstream_credential_invalid</code> 匹配。

@@ -71,6 +71,18 @@ html.relay-landing { overflow-x: hidden; }
 .landing .note { display: block; padding: 0; background: none; border: 0; }
 /* 控制台 motion.css 给主按钮加了 hover 上浮 1px；官网原型没有位移，只有变色。 */
 .landing .btn:hover { transform: none; }
+/* [2026-10-17 评审修] 主按钮悬停反馈弱于次级元素——不加位移（保留原型纪律），
+   改用阴影加深 + 描边提亮 + 内顶光。 */
+.btn-primary:hover {
+  box-shadow: 0 6px 20px -4px color-mix(in srgb, var(--brand-500) 55%, transparent),
+              inset 0 1px 0 rgba(255, 255, 255, .18);
+  border-color: color-mix(in srgb, var(--brand-400) 60%, transparent);
+}
+/* 复制按钮（btn-quiet）也加阴影反馈 */
+.btn-quiet:hover {
+  border-color: var(--border-strong);
+  box-shadow: 0 3px 12px -4px rgba(0, 0, 0, .3);
+}
 
 /* ---------- 5 · UA 默认边距 ----------
    原型没有全局 `* { margin: 0; padding: 0 }`（只有 box-sizing），

@@ -63,7 +63,7 @@ export function ClientMetricTip({
             <div className="client-metric-tip-row" key={row.clientId ?? row.client ?? index}>
               <div className="client-metric-tip-row-top">
                 <span className="client-metric-tip-rank">{String(index + 1).padStart(2, '0')}</span>
-                <span className="client-metric-tip-name">{row.client ?? '未识别'}</span>
+                <span className="client-metric-tip-name">{row.client ?? '未归属'}</span>
                 <b>{formatValue(value, metric)} <em>{formatUnit(metric)}</em></b>
               </div>
               <div className="client-metric-tip-row-bottom">

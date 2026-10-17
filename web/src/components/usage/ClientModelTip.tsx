@@ -5,7 +5,7 @@ export function ClientModelTip({ row }: { row: BreakdownItem }) {
   const models = row.models ?? [];
   const rest = Math.max(0, (row.modelCount ?? models.length) - models.length);
   const totalTokens = Math.max(0, row.tokens ?? 0);
-  const clientName = row.client ?? '未识别';
+  const clientName = row.client ?? '未归属';
 
   return (
     <div className="client-model-tip">

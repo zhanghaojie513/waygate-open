@@ -6,11 +6,11 @@
  */
 const SECTIONS: Array<{ href: string; label: string }> = [
   { href: '#top', label: '概览' },
-  { href: '#ways', label: '运行' },
-  { href: '#quickstart', label: '上手' },
-  { href: '#clients', label: '客户端' },
-  { href: '#status', label: '状态' },
-  { href: '#cta', label: '开始' },
+  { href: '#ways', label: '运行方式' },
+  { href: '#quickstart', label: '快速开始' },
+  { href: '#clients', label: '客户端配置' },
+  { href: '#status', label: '运行状态' },
+  { href: '#cta', label: '开始使用' },
 ];
 
 export function Rail() {

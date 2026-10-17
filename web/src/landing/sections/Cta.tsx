@@ -11,13 +11,13 @@ import { CopyButton } from '../CopyButton';
  * React 不会因此产生 diff：虚拟 DOM 里始终是同一个字符串，重渲染不会去改这段 textContent。
  */
 const CAM = '{"x":0,"y":-96,"z":-130,"rx":-3,"ry":0,"rz":0,"fog":0.30,"dim":0.92}';
-const CMD = 'sudo systemctl start relay';
+const CMD = 'git clone <仓库地址> && cd relay-station && npm ci && npm run build';
 
 export function Cta() {
   return (
     <section className="cta" id="cta" data-cam={CAM}>
       <div className="wrap">
-        <h2 className="display-2 reveal">一条命令，起在你自己机器上</h2>
+        <h2 className="display-2 reveal">几步，起在你自己机器上</h2>
 
         <div className="cmdbox reveal" style={cssVars({ '--i': 1 })}>
           <span className="pr">$</span>

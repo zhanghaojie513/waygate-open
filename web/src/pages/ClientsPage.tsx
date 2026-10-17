@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { TimeWindow } from '../types/api';
+import { readSharedWindow, writeSharedWindow } from '../lib/sharedWindow';
 import { Topbar } from '../components/ui/Topbar';
 import { Select } from '../components/ui/Select';
 import { ProvidersPanel } from '../components/clients/ProvidersPanel';
@@ -16,13 +17,13 @@ import { WINDOW_OPTIONS } from '../lib/console';
  * 顶栏的窗口选择器仍在 —— 它决定客户端行报的用量窗口（`api.clients(window)`）。
  */
 export function ClientsPage() {
-  const [win, setWin] = useState<TimeWindow>('today');
+  const [win, setWin] = useState<TimeWindow>(() => readSharedWindow() ?? 'today');
 
   return (
     <div className="view on">
       <Topbar
         title="提供商管理"
-        actions={<Select value={win} options={WINDOW_OPTIONS} onChange={setWin} width={148} />}
+        actions={<Select value={win} options={WINDOW_OPTIONS} onChange={(v) => { writeSharedWindow(v); setWin(v); }} width={148} />}
       />
       <div className="view-body stack">
         <ProvidersPanel window={win} />

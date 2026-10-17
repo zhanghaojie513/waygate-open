@@ -13,10 +13,13 @@ const CAM = '{"x":0,"y":0,"z":0,"rx":0,"ry":0,"rz":0,"fog":0.16,"dim":0.90}';
  * 命令都是真实可跑的 `systemctl`，不再出现 docker 镜像 / ports —— 那是一段并不存在的部署方式。
  */
 const DEPLOY = [
-  '# Ubuntu + systemd（TLS 由 nginx 终止）',
+  '# 克隆并构建',
+  'git clone <仓库地址> && cd relay-station',
+  'npm ci --prefix server && npm run build --prefix server',
+  'npm ci --prefix web && npm run build --prefix web',
+  '',
+  '# 启动 systemd 服务（TLS 由 nginx 终止）',
   'sudo systemctl start relay',
-  'sudo systemctl status relay',
-  'sudo systemctl restart relay',
 ].join('\n');
 
 /** 首屏。左栏正文 + 右栏接入卡 + 全页唯一一块厚玻璃（产品面板）。 */
@@ -70,7 +73,7 @@ export function Hero({ status }: { status: LandingStatus }) {
             </div>
 
             <p className="hero-sub reveal" style={cssVars({ '--i': 3 })}>
-              部署在你自己机器上，把 WorkBuddy 订阅积分暴露成 OpenAI 兼容接口。
+              部署在你自己机器上，把你的 AI 订阅积分（WorkBuddy / MiniMax / Qoder）暴露成 OpenAI 兼容接口。
               IDE、聊天客户端、手机、脚本共用同一个 Key，积分消耗实时可见。
             </p>
 
@@ -154,8 +157,10 @@ export function Hero({ status }: { status: LandingStatus }) {
             <div className="pr-head">
               <h4>连接状态</h4>
               {/* [2026-10-07] 官网其它数字都有「示例数据」标注纪律（Spec §5），这块连接列表示意
-                  数据同样标「示例」，不冒充真实在线状态。 */}
-              <span className="pr-count">示例 · 3 个客户端</span>
+                  数据同样标「示例」，不冒充真实在线状态。
+                  [2026-10-17 评审修] 离线时标注「服务离线」替代「示例」——
+                  同一页面不能同时宣称「离线」与「3 个在线」。 */}
+              <span className="pr-count">{online ? '示例 · 3 个客户端' : '服务离线'}</span>
             </div>
             <div className="conn">
               <i className="dot dot-live" style={{ color: DOT_COLOR.live }} />

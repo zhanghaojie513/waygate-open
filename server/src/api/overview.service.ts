@@ -65,6 +65,8 @@ export interface OverviewPayload {
   alerts: {
     /** 上游渠道校验（11128）拒绝次数与横幅阈值；count ≥ threshold 时前端概览页展示告警横幅。 */
     channelReject: { count: number; threshold: number };
+    /** [2026-10-17] 上游访问密钥失效（note=upstream_credential_invalid）：停摆级，阈值 1。 */
+    credentialInvalid: { count: number; threshold: number };
   };
   quota: QuotaBlock;
   /** [v0.5.7] 各提供商的**真实**积分账本（MiniMax 有；WorkBuddy 的上游未提供）。 */
@@ -732,6 +734,19 @@ export class OverviewService {
     // 渠道校验（11128）告警计数：固定最近 1 小时（见常量注释），与 window 无关。
     // 按 upstream_code 而不是 note 计数：失败行的 note 是错误码（如 upstream_11128），
     // upstream_code 是结构化列，聚合更稳。
+    /* [2026-10-17 评审裁决] 上游访问密钥失效告警：请求页脚注自己写着「这是唯一会让
+       服务停摆的状态」，此前却只是筛选下拉里的一项 + 统计条一格当前页小数字。
+       升格为概览横幅（与 11128 告警同机制）。按 note 计数（upstream_credential_invalid
+       是 note 标记而非独立业务码列）；阈值 1 —— 单次即报，停摆级不等累积。
+       窗口与 channelReject 一致：固定最近 1 小时，与 window 参数无关。 */
+    const credentialInvalidCount = (
+      this.stmt(
+          `SELECT COUNT(*) AS n FROM requests
+            WHERE ts >= ? AND ts < ? AND note LIKE '%' || ? || '%' AND status >= 400`,
+        )
+        .get(now - CHANNEL_REJECT_WINDOW_MS, now, 'upstream_credential_invalid') as { n: number }
+    ).n;
+
     const channelRejectCount = (
       this.stmt(
           `SELECT COUNT(*) AS n FROM requests
@@ -745,6 +760,7 @@ export class OverviewService {
       generatedAt: toIso(now),
       alerts: {
         channelReject: { count: channelRejectCount, threshold: CHANNEL_REJECT_ALERT_THRESHOLD },
+        credentialInvalid: { count: credentialInvalidCount, threshold: 1 },
       },
       quota: quotaBlock,
       /* [v1.4.1] 积分账本 = MiniMax credit/details + WorkBuddy 资源包聚合（quota 快照的 ledger 行，

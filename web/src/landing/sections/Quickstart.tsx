@@ -34,8 +34,11 @@ export function Quickstart({ version }: { version: string }) {
             <div className="st-n">01</div>
             <h3>部署服务</h3>
             {/* [task#68] 「（自签 CA）」只在 IP 直连通道为真（域名通道是公共 CA，见 bits.tlsLabel），
-                故这里只陈述恒成立的事实：TLS 由外层 nginx 终止。 */}
-            <p>在 Ubuntu 上装成 systemd 服务，nginx 在外层终止 TLS。首次启动即打印管理口令。</p>
+                故这里只陈述恒成立的事实：TLS 由外层 nginx 终止。
+                [2026-10-17 评审修] 步骤一此前没有任何可执行的动作（「装成 systemd 服务」
+                是描述不是命令）—— 补 clone + build 的安装链，与 Hero/CTA 的承诺对齐。 */}
+            <p>克隆仓库，构建前后端，装成 systemd 服务（nginx 在外层终止 TLS）。首次启动即打印管理口令。</p>
+            <div className="cmd" style={{ marginTop: 8 }}>git clone … → npm ci → npm run build → systemctl start</div>
           </li>
           <li className="reveal" style={cssVars({ '--i': 1 })}>
             <div className="st-n">02</div>

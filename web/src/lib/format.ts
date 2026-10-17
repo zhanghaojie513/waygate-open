@@ -117,13 +117,22 @@ export function formatDateTime(iso: string | null | undefined): string {
   return `${d.toLocaleDateString('zh-CN')} ${d.toLocaleTimeString('zh-CN', { hour12: false })}`;
 }
 
-/** 相对时间：刚刚 / 3 分钟前 / 2 天前 */
+/** 相对时间：刚刚 / 3 分钟前 / 2 天前；未来时间 → 马上 / N 分钟后 / N 小时后 */
 export function formatRelative(iso: string | null | undefined): string {
   if (!iso) return '--';
   const t = new Date(iso).getTime();
   if (Number.isNaN(t)) return '--';
   const diff = Date.now() - t;
-  if (diff < 0) return '刚刚';
+  /* [2026-10-17 评审修] 未来时间此前一律返回「刚刚」—— AppShell 拼成
+     「会话有效 · 刚刚到期」，每页侧栏一条永久性自相矛盾的话（对「数不说谎」
+     是信任级缺陷）。未来时间改给「N 分钟/小时后」，在「…到期」的组合里才读得通。 */
+  if (diff < 0) {
+    const ahead = -diff;
+    if (ahead < 60_000) return '马上';
+    if (ahead < 3_600_000) return `${Math.floor(ahead / 60_000)} 分钟后`;
+    if (ahead < 86_400_000) return `${Math.floor(ahead / 3_600_000)} 小时后`;
+    return `${Math.floor(ahead / 86_400_000)} 天后`;
+  }
   const min = Math.floor(diff / 60_000);
   if (min < 1) return '刚刚';
   if (min < 60) return `${min} 分钟前`;
@@ -223,7 +232,7 @@ const NOTE_MAP: Record<string, string> = {
   'minimax tokens unavailable': 'MiniMax token 不可用',
   'token refresh failed': '上游 token 刷新失败',
   'missing credential': '缺少上游访问凭证',
-  /* [v1.6.11] WorkBuddy 转发改走 OAuth 后的三种失败留痕。 */
+  /* [v1.6.13] WorkBuddy 转发改走 OAuth 后的三种失败留痕。 */
   'wb oauth unavailable': 'WorkBuddy 授权服务不可用',
   'missing wb oauth credential': 'WorkBuddy 未导入授权',
   'wb token refresh failed': 'WorkBuddy 授权刷新失败',

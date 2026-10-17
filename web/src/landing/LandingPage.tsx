@@ -35,7 +35,7 @@ import { Footer } from './sections/Footer';
  *      它的 effect 是子组件的，先于本组件执行 —— 所以场景仍然先于页面行为就位。
  */
 const TITLE = 'Waygate — 把自己的订阅积分变成一个 base_url';
-const DESC = 'Waygate — 在本地把 WorkBuddy 订阅积分暴露成 OpenAI 兼容接口，一个 Key 走所有客户端。';
+const DESC = 'Waygate — 在本地把你的 AI 订阅积分（WorkBuddy / MiniMax / Qoder）暴露成 OpenAI 兼容接口，一个 Key 走所有客户端。';
 
 function syncMeta(desc: string): () => void {
   const prevTitle = document.title;

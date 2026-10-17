@@ -60,7 +60,7 @@ export function Clients() {
           <p className="lead">所有客户端都只需要一个地址加一个密钥。下面是最常见的四种接法。</p>
         </div>
 
-        <div className="grid-3">
+        <div className="grid-2">
           <div className="glass glass-soft cfg reveal">
             <h3>编程工具 / IDE</h3>
             <div className="sub">Continue · Cline · 任意 OpenAI 兼容插件</div>

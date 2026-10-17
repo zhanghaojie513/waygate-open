@@ -213,7 +213,7 @@
   flex: 0 0 auto; height: 26px; padding: 0 10px;
   font-family: var(--font-mono); font-size: 11px;
   color: var(--text-muted); cursor: pointer;
-  background: rgba(255, 255, 255, .04);
+  background: var(--wash-4);
   border: 1px solid var(--border-default); border-radius: var(--radius-xs);
   transition: color var(--d-hover) var(--ease-out), border-color var(--d-hover) var(--ease-out);
 }.landing .access-url .copy:hover
@@ -261,7 +261,7 @@
   padding: 2px 6px; border-radius: var(--radius-xs);
   font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .1em;
   color: var(--text-ghost);
-  background: rgba(255, 255, 255, .04);
+  background: var(--wash-4);
   border: 1px solid var(--border-subtle);
 }.landing .winbar .wsp
 { flex: 1; }.landing .winbar .wbtn
@@ -269,7 +269,7 @@
   height: 24px; padding: 0 10px; cursor: pointer;
   font-family: var(--font-mono); font-size: 10.5px;
   color: var(--text-muted);
-  background: rgba(255, 255, 255, .035);
+  background: var(--wash-4);
   border: 1px solid var(--border-subtle); border-radius: var(--radius-xs);
   transition: color var(--d-hover) var(--ease-out), border-color var(--d-hover) var(--ease-out);
 }.landing .winbar .wbtn:hover
@@ -288,7 +288,7 @@
 }.landing .cl > i
 {
   font-style: normal; text-align: right; padding-right: 16px;
-  color: var(--text-ghost); opacity: .42;
+  color: var(--text-faint);
   user-select: none;
 }.landing .cl > span
 { white-space: pre; overflow-x: auto; color: var(--text-tertiary); }
@@ -501,7 +501,7 @@
    而滚动条在深色标题卡里几乎看不见，结果就是**最后几个字符被静默裁掉**。
    配置片段折行不好看，但"看不全"是硬伤，折行只是不好看。 */.landing .cfg .code
 {
-  flex: 1; font-size: 10.5px; line-height: 1.8;
+  flex: 1; font-size: 12px; line-height: 1.8;
   white-space: pre-wrap; overflow-wrap: anywhere;
 }.landing .specbar
 {

@@ -121,6 +121,9 @@ export function SettingsPage() {
           ? `已应用 ${out.applied} 项，配置版本 → v${out.version}。其中含需重启才生效的项。`
           : `已应用 ${out.applied} 项，配置版本 → v${out.version}。`,
       );
+      /* [2026-10-17 评审修] 成功横幅此前常驻到换页——成功是「已确认」不需要持续在场，
+         4s 后自动消退（dangerMsg/pwMsg 同理）。 */
+      setTimeout(() => setSavedMsg(null), 4000);
       res.reload();
     } catch (err) {
       setSaveErr(err instanceof ApiError ? err : new ApiError(String(err), 0, 0));
@@ -132,6 +135,7 @@ export function SettingsPage() {
   const onDangerDone = (res2: { affected: { logs?: number; keys?: number | null } }) => {
     const n = res2.affected.logs ?? res2.affected.keys ?? 0;
     setDangerMsg(`操作已完成，影响 ${n} 条记录。`);
+    setTimeout(() => setDangerMsg(null), 4000);
     setDangerSpec(null);
     res.reload();
   };
@@ -322,6 +326,7 @@ export function SettingsPage() {
           onClose={() => setPwOpen(false)}
           onDone={() => {
             setPwMsg('管理口令已更新并立即生效。下次登录请使用新口令。');
+            setTimeout(() => setPwMsg(null), 4000);
             res.reload();
           }}
         />

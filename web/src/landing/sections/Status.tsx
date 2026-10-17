@@ -1,5 +1,6 @@
 import type { LandingStatus } from '../data';
 import { numProps } from '../bits';
+import { consoleHref } from '../../lib/consoleRoute';
 import { formatTokens } from '../../lib/format';
 
 /**
@@ -23,6 +24,37 @@ export function Status({ status }: { status: LandingStatus }) {
      且 54px 的大字号下 7 位原始数字（1,930,000）自然宽 >260px，会撑破 1fr 单元格。
      它是格式化后的字符串、不参与数字滚动，所以直接落文本（其余三格仍走 numProps）。 */
   const tokensText = numbers.totalTokens == null ? '—' : formatTokens(numbers.totalTokens);
+
+  /* [2026-10-17 评审修] 未登录时 Status 区改为引导卡而非示例大数字——
+     tokens 在 Hero 徽标、产品面板、Status 已是第三次重复，对未登录访客
+     它是「向自己人展示」而非「说服访客」。改为「登录后这里就是实时数据」
+     的引导 + 控制台直达。 */
+  if (!real) {
+    return (
+      <section className="section band" id="status" data-cam={CAM}>
+        <div className="wrap">
+          <div
+            className="reveal"
+            style={{ display: 'flex', justifyContent: 'center', position: 'relative' }}
+          >
+            <div className="eyebrow">
+              <span className="idx">05</span>当前运行状态
+            </div>
+          </div>
+          <div style={{ height: 44 }} />
+          <div className="reveal" style={{ textAlign: 'center', padding: '48px 20px' }}>
+            <p style={{ fontSize: 16, color: 'var(--text-secondary)', lineHeight: 1.8, maxWidth: 420, margin: '0 auto 24px' }}>
+              登录控制台后，这里就是你的实时数据：<br />
+              窗口 tokens、缓存命中率、请求数、成功率。
+            </p>
+            <a href={consoleHref('overview')} className="btn btn-primary" style={{ padding: '10px 28px', fontSize: 14 }}>
+              打开控制台
+            </a>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="section band" id="status" data-cam={CAM}>

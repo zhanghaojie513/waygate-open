@@ -1,9 +1,10 @@
 import { useState, type ReactNode } from 'react';
-import { Activity, AlertTriangle, CircleCheck, Coins, Gauge, Plus, Timer, TrendingUp } from 'lucide-react';
+import { AlertTriangle, Coins, Gauge, Plus, TrendingUp } from 'lucide-react';
 import { api } from '../services/api';
 import { useResource } from '../hooks/useResource';
 import { useFx } from '../hooks/useFx';
 import type { TimeWindow } from '../types/api';
+import { readSharedWindow, writeSharedWindow } from '../lib/sharedWindow';
 import type { Route } from '../hooks/useHashRoute';
 import { Topbar } from '../components/ui/Topbar';
 import { Pill } from '../components/ui/Pill';
@@ -16,7 +17,7 @@ import { Tooltip } from '../components/ui/Tooltip';
 import { Banner } from '../components/ui/Banner';
 import { ClientModelTip } from '../components/usage/ClientModelTip';
 import { ClientMetricTip } from '../components/usage/ClientMetricTip';
-import { formatInt, formatCredits, formatDateTime, formatPercent, formatDuration, formatRelative, formatTokens } from '../lib/format';
+import { formatInt, formatCredits, formatDateTime, formatPercent, formatRelative, formatTokens } from '../lib/format';
 import { WINDOW_OPTIONS, WINDOW_LABEL } from '../lib/console';
 
 /**
@@ -30,7 +31,7 @@ import { WINDOW_OPTIONS, WINDOW_LABEL } from '../lib/console';
  * 上游取不到的订阅剩余积分已从界面移除（task#62）。
  */
 export function OverviewPage({ navigate }: { navigate: (r: Route) => void }) {
-  const [win, setWin] = useState<TimeWindow>('today');
+  const [win, setWin] = useState<TimeWindow>(() => readSharedWindow() ?? 'today');
   const res = useResource(() => api.overview(win), [win], { cacheKey: `overview:${win}` });
   useFx(`overview-${win}-${res.data ? 'ready' : 'pending'}`);
 
@@ -54,7 +55,7 @@ export function OverviewPage({ navigate }: { navigate: (r: Route) => void }) {
 
   /* [v0.5.16 用户要求] 「请求数」「已消耗积分」指标卡悬停给按提供商拆分 ——
      与用量页指标卡同一格式；byClient 的归属口径是「模型→目录 provider」（v0.5.15）。 */
-  const clientTip = (kind: 'requests' | 'credits'): ReactNode => {
+  const clientTip = (kind: 'requests' | 'credits' | 'tokens'): ReactNode => {
     if (!d || d.byClient.length === 0) return undefined;
     const rows = [...d.byClient].sort((a, b) => (b[kind] ?? 0) - (a[kind] ?? 0));
     return (
@@ -81,7 +82,7 @@ export function OverviewPage({ navigate }: { navigate: (r: Route) => void }) {
         }
         actions={
           <>
-            <Select value={win} options={WINDOW_OPTIONS} onChange={setWin} width={148} />
+            <Select value={win} options={WINDOW_OPTIONS} onChange={(v) => { writeSharedWindow(v); setWin(v); }} width={148} />
             <button type="button" className="btn btn-primary btn-sm" onClick={() => navigate('keys')}>
               <Plus size={14} />
               新建密钥
@@ -112,35 +113,25 @@ export function OverviewPage({ navigate }: { navigate: (r: Route) => void }) {
               </Banner>
             ) : null}
 
+            {/* [2026-10-17 评审裁决] 密钥失效升格横幅：它是「唯一会让服务停摆的状态」
+                （请求页脚注自己写的），此前却只是筛选项+统计格。单次即报（阈值 1），
+                tone=error 而非 warn —— 没有 11128 那样的自动降级兜底，出现即全局 502。 */}
+            {d.alerts.credentialInvalid?.count != null &&
+            d.alerts.credentialInvalid.count >= d.alerts.credentialInvalid.threshold ? (
+              <Banner tone="error" actions={<a href="#/clients" className="btn btn-quiet btn-sm">去提供商管理</a>}>
+                <AlertTriangle size={14} aria-hidden />
+                最近 1 小时出现 <b>{d.alerts.credentialInvalid.count} 次</b>上游访问密钥失效：
+                所有请求将以 502 失败，直到换新为止。
+              </Banner>
+            ) : null}
+
             <CreditBanner metrics={d.metrics} />
 
-            {/* [v0.4.28 用户要求] 6 枚 KPI：去掉与横幅重复的 tokens/缓存命中率，
-                换成平均 RPM / TPM（窗口内每分钟的请求量和 token 量——比静态总量更有 actionable 价值）。
-                下方「最近请求」换成「模型用量摘要」（byModel 数据已在 API 里，比原始流有用得多）。 */}
+            {/* [2026-10-17 评审裁决] KPI 只留三张：已消耗积分 / 平均 RPM / 平均 TPM。
+                砍掉的：请求数（RPM 已含其量纲）、请求成功率（健康时是常数，
+                异常时由横幅与请求页承担）、平均耗时（诊断数据不是决策数据）。
+                三卡也解决了「6 卡 6 色一行铺彩虹」的扫读过载。 */}
             <div className="metric-row">
-              <MetricCard
-                label="请求数"
-                value={formatInt(d.metrics.requests)}
-                detail={`窗口：${WINDOW_LABEL[d.window]}`}
-                tone="cyan"
-                icon={<Activity size={14} />}
-                tip={clientTip('requests')}
-                tipPos="down"
-              />
-              <MetricCard
-                label="平均 RPM"
-                value={avgRpm !== null ? formatInt(Math.round(avgRpm)) : '—'}
-                detail={`每分钟请求 · ${WINDOW_LABEL[d.window]}`}
-                tone="violet"
-                icon={<Gauge size={14} />}
-              />
-              <MetricCard
-                label="平均 TPM"
-                value={avgTpm !== null ? formatTokens(Math.round(avgTpm)) : '—'}
-                detail={`每分钟 tokens · ${WINDOW_LABEL[d.window]}`}
-                tone="green"
-                icon={<TrendingUp size={14} />}
-              />
               <MetricCard
                 label="已消耗积分"
                 value={formatCredits(d.metrics.creditsUsed)}
@@ -158,26 +149,33 @@ export function OverviewPage({ navigate }: { navigate: (r: Route) => void }) {
                 tipPos="down"
               />
               <MetricCard
-                label="请求成功率"
-                value={formatPercent(d.metrics.successRate)}
-                detail="重试后成功按 200 计入"
-                tone={d.metrics.successRate < 0.95 ? 'warn' : 'blue'}
-                icon={<CircleCheck size={14} />}
+                label="平均 RPM"
+                value={avgRpm !== null ? formatInt(Math.round(avgRpm)) : '—'}
+                detail={`每分钟请求 · ${WINDOW_LABEL[d.window]}`}
+                tone="violet"
+                icon={<Gauge size={14} />}
+                tip={clientTip('requests')}
+                tipPos="down"
               />
               <MetricCard
-                label="平均耗时"
-                value={formatDuration(d.metrics.avgLatencyMs)}
-                detail={`${formatInt(d.metrics.activeClients)} 个密钥活跃`}
-                tone="rose"
-                icon={<Timer size={14} />}
+                label="平均 TPM"
+                value={avgTpm !== null ? formatTokens(Math.round(avgTpm)) : '—'}
+                detail={`每分钟 tokens · ${WINDOW_LABEL[d.window]}`}
+                tone="green"
+                icon={<TrendingUp size={14} />}
+                tip={clientTip('tokens')}
+                tipPos="down"
               />
             </div>
 
             {/* [v0.5.7] 积分账本（真实口径）—— MiniMax credit/details（精确到 0.01）。
                 [v1.4.1] WorkBuddy 资源包聚合（get-user-resource 的 Accounts）同表并列：
                 剩余/总量/已用都是包级真实数（Σ CapacityRemain/Size/Used）。 */}
+            {/* aside 口径说明（2026-10-17 用户对账困惑后定稿）：账本记的是上游**账户**
+                的全部历史消耗 —— 含用户在官方客户端等非本服务渠道花掉的积分，因此
+                与上方「已消耗积分」卡片（本服务 24h 窗口实扣）天然不相等，不是 bug。 */}
             {d.creditLedgers.length > 0 ? (
-              <Panel title="积分账本" aside={<Pill>上游账本 · 精确到 0.01</Pill>}>
+              <Panel title="积分账本" aside={<Pill>上游账户账本（全部历史，含非本服务消耗）</Pill>}>
                 <div className="tbl-scroll">
                   <table className="tbl">
                     <thead>
@@ -208,12 +206,16 @@ export function OverviewPage({ navigate }: { navigate: (r: Route) => void }) {
                     </tbody>
                   </table>
                 </div>
-                <div className="footer-note">
-                  各家口径不同：<b>MiniMax</b> 来自 credit/details（余额/已用/发放齐全，精确到 0.01）；
+                {/* [2026-10-17 评审] 110 字口径脚注常驻每屏底部 —— 「读一次就该消失」
+                    的内容做成了永久占据。收进 details 折叠（默认收起、点开即读，
+                    语义不丢、屏占归零）。 */}
+                <details className="footer-note ledger-caveat">
+                  <summary>各家账本口径不同（含官方直连消耗，比逐条统计更全）</summary>
+                  <b>MiniMax</b> 来自 credit/details（余额/已用/发放齐全，精确到 0.01）；
                   <b>WorkBuddy</b> 来自资源包聚合（get-user-resource，剩余/发放为包级真实数）；
-                  <b>Qoder</b> 来自 me/usage（套餐内 + 资源包合计，签到赠送进资源包）——
-                  到期时刻上游不提供，该列显示「—」。三家都含官方客户端直连的消耗，比「已消耗积分」卡的逐条统计更全。
-                </div>
+                  <b>Qoder</b> 来自 me/usage（套餐内 + 资源包合计，签到赠送进资源包）。
+                  到期时刻上游不提供，该列显示「—」。
+                </details>
               </Panel>
             ) : null}
 
@@ -242,7 +244,7 @@ export function OverviewPage({ navigate }: { navigate: (r: Route) => void }) {
                           <td className="td-strong">
                             {/* 悬停提供商名 → 该提供商的按模型消耗；Portal Tooltip 会脱离表格滚动容器定位。 */}
                             <Tooltip content={<ClientModelTip row={c} />}>
-                              <span>{c.client ?? '未识别'}</span>
+                              <span>{c.client ?? '未归属'}</span>
                             </Tooltip>
                           </td>
                           <td className="r td-mono">{formatInt(c.requests)}</td>

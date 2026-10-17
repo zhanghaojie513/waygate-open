@@ -5,21 +5,7 @@
    加载顺序：tokens.css → tokens-v2.css → motion.css → console-fx.css → app.css
    ========================================================================== */
 
-/* ---------- 原生按钮语义 ---------- */
-.login-eye {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--text-faint);
-  cursor: pointer;
-}
-.login-eye:hover { color: var(--text-primary); }
-.login-eye:focus-visible { outline: none; color: var(--brand-400); box-shadow: 0 0 0 3px var(--brand-tint); border-radius: var(--radius-xs); }
+/* [2026-10-17] .login-eye 双重定义已统一——保留登录块内的单一定义 */
 
 /* ---------- 页面级堆叠（对应原型 .stack / .row2） ----------
    [2026-10-07] `.row2` / `.fixed383` / `.row2 > .grow` **已删除**（连同 ≤1023 里的降级规则）。
@@ -52,6 +38,13 @@
    若将来有人把表改成 `table-layout: fixed`（那时列**可以**被压扁），
    再补 `min-width` 也不迟 —— 现在不写，避免一条"看着有用其实没用"的规则。 */
 .tbl-scroll { overflow-x: auto; }
+  /* [2026-10-17 评审修] 请求日志已增至 10 列（新增 UA、输出速度等），自然宽超桌面视口
+     ⇒ 末列（积分——本产品最核心的数字）被裁 ~121px 且无滚动提示。
+     给滚动容器加渐隐边缘（affordance），用户能看到「右边还有内容」。 */
+.tbl-scroll::-webkit-scrollbar { height: 6px; }
+.tbl-scroll::-webkit-scrollbar-track { background: transparent; }
+.tbl-scroll::-webkit-scrollbar-thumb { background: var(--wash-7); border-radius: 3px; }
+.tbl-scroll::-webkit-scrollbar-thumb:hover { background: var(--wash-10); }
 
 /* ---------- 趋势图：30 天紧凑柱（对应原型 .bars30） ----------
    高度只有**一个出处**：`--chart-h` 定在 .avgline 上，柱区与日均线都读它。
@@ -153,7 +146,7 @@
 .bar-tip .bt-head { display: flex; align-items: center; gap: 8px; margin-bottom: 3px; }
 .bar-tip .bt-head b { font-family: var(--font-mono); font-weight: 600; font-size: 12px; color: var(--text-primary); letter-spacing: .02em; }
 .bar-tip .bt-tag {
-  font-size: 10px; line-height: 1; padding: 3px 6px; border-radius: var(--radius-xs);
+  font-size: var(--fs-2xs); line-height: 1; padding: 3px 6px; border-radius: var(--radius-xs);
   color: var(--signal-live-lt);
   border: 1px solid color-mix(in srgb, var(--signal-live) 45%, transparent);
 }
@@ -165,7 +158,7 @@
 /* 较前值：消耗涨跌不是好坏（用中性色，不上红绿），持平只写文字 */
 .bar-tip .bt-delta {
   margin-top: 5px; padding-top: 4px; border-top: 1px dashed var(--border-subtle);
-  font-family: var(--font-mono); font-size: 10.5px; color: var(--text-faint); white-space: nowrap;
+  font-family: var(--font-mono); font-size: var(--fs-2xs); color: var(--text-faint); white-space: nowrap;
 }
 .bar-tip .bt-delta.up { color: var(--accent-cyan); }
 .bar-tip .bt-delta.down { color: var(--text-muted); }
@@ -177,8 +170,8 @@
    占比用 em 弱化 —— 主数值是 token 数，占比只是辅助。 */
 .bar-tip .bt-models { margin: 5px 0 2px; padding-top: 4px; border-top: 1px dashed var(--border-subtle); display: grid; gap: 2px; }
 .bar-tip .bt-model { display: flex; justify-content: space-between; gap: 16px; align-items: baseline; white-space: nowrap; }
-.bar-tip .bt-model-name { overflow: hidden; text-overflow: ellipsis; max-width: 168px; font-size: 10.5px; color: var(--text-tertiary); }
-.bar-tip .bt-model i { font-style: normal; font-family: var(--font-mono); font-size: 10.5px; color: var(--text-secondary); }
+.bar-tip .bt-model-name { overflow: hidden; text-overflow: ellipsis; max-width: 168px; font-size: var(--fs-2xs); color: var(--text-tertiary); }
+.bar-tip .bt-model i { font-style: normal; font-family: var(--font-mono); font-size: var(--fs-2xs); color: var(--text-secondary); }
 .bar-tip .bt-model i em { font-style: normal; color: var(--text-faint); }
 /* [v0.4.28] 边缘钳制：首尾柱的 tooltip 贴边（避免 translateX(-50%) 溢出容器） */
 .bar-tip.tip-left { left: 0; transform: none; }
@@ -222,7 +215,7 @@
   /* chip 底是必需的：日均线常落在柱子中部（本例 62.76 就在 1/3 高度处），
      标签无论放左放右都会压在某根柱上 —— 暗灰字压在亮青柱上直接读不出来。
      有了底 + 描边，它明确是"标注"而不是数据，也不再受背后是什么影响。 */
-  font-family: var(--font-mono); font-size: 10.5px; color: var(--text-muted); white-space: nowrap;
+  font-family: var(--font-mono); font-size: var(--fs-2xs); color: var(--text-muted); white-space: nowrap;
   padding: 2px 6px; border-radius: var(--radius-xs);
   background: var(--bg-elevated); border: 1px solid var(--border-subtle);
 }
@@ -382,7 +375,7 @@
   border-radius: var(--radius-pill);
   background: color-mix(in srgb, var(--warn-amber) 16%, transparent);
   color: var(--warn-amber);
-  font-family: var(--font-mono); font-size: 9.5px; text-align: center; line-height: 15px;
+  font-family: var(--font-mono); font-size: var(--fs-2xs); text-align: center; line-height: 15px;
 }
 .settings-content { display: grid; gap: 14px; min-width: 0; }
 .settings-nav-i:focus-visible { outline: 2px solid var(--brand-400); outline-offset: 2px; }
@@ -426,7 +419,7 @@
 }
 .dormant > summary::-webkit-details-marker { display: none; }
 /* 自绘三角：用 ::before 而不是 marker —— marker 在深色下颜色不可控 */
-.dormant > summary::before { content: '▸'; flex: 0 0 auto; color: var(--text-ghost); font-size: 10px; }
+.dormant > summary::before { content: '▸'; flex: 0 0 auto; color: var(--text-ghost); font-size: var(--fs-2xs); }
 .dormant[open] > summary::before { content: '▾'; }
 .dormant > summary:hover { color: var(--text-secondary); }
 .dormant > summary > span { font-size: 11px; color: var(--text-ghost); }
@@ -442,7 +435,7 @@
   outline: none; transition: border-color var(--d-hover) var(--ease-out); }
 .field-input:hover { border-color: var(--border-strong); }
 .field-input:focus-visible { border-color: var(--brand-400); box-shadow: 0 0 0 3px var(--brand-tint); }
-.field-input:disabled { color: var(--text-faint); cursor: not-allowed; }
+.field-input:disabled { color: var(--text-muted); cursor: not-allowed; }
 .field-input.num { width: 96px; text-align: right; }
 .field-input.text { width: 240px; max-width: 100%; font-family: var(--font-body); }
 
@@ -467,58 +460,63 @@ button.switch:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--brand-t
 
 /* ---------- 登录页 ----------
    [v0.4.22] 背景从纯色 → 「光」语言（与控制台同源，见 console-fx.css §②）。
-   卡片本身仍是实心玻璃面；背景只负责氛围与视觉聚焦。 */
+   [2026-10-17 棱镜门厅] 背景升级为官网同款折面棱镜装置（ScenePrism）。
+   根元素挂 `.login-wrap .landing` 两个类——`.landing` 让 scene.css 的
+   38 条棱镜规则和 theme.css 的浅色覆写自动生效（零 CSS 复制，一处维护）。
+   卡片保持玻璃面 + 光标聚光 + 周期掠光。 */
 .login-wrap { position: relative; min-height: 100vh; display: flex; align-items: center; justify-content: center;
   padding: 40px 20px; background: var(--bg-page); overflow: hidden; }
 
-/* 背景层：三层叠加（柔光 → 网格 → 暗角）。纯 CSS，无 JS、无场景装置 DOM。
-   [注意] 全部 absolute + pointer-events:none —— 不能挡住卡片的交互。 */
-.login-bg { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
-.lb-bloom { position: absolute; border-radius: 50%; filter: blur(90px); }
-/* 主光：紫罗兰，压在左上外（只看得到从角上漫进来的一片，看不到「一个圆」） */
-.lb-1 { left: -14%; top: -22%; width: 780px; height: 780px;
-  background: radial-gradient(closest-side,
-    color-mix(in srgb, var(--iris) 42%, transparent) 0%,
-    color-mix(in srgb, var(--brand-500) 20%, transparent) 44%,
-    transparent 100%); }
-/* 副光：电光青，压在右下外，与主光错开色相（两束同色只会变成一束更亮的） */
-.lb-2 { right: -16%; bottom: -26%; width: 720px; height: 720px;
-  background: radial-gradient(closest-side,
-    color-mix(in srgb, var(--accent-cyan) 30%, transparent) 0%,
-    color-mix(in srgb, var(--accent-cyan) 12%, transparent) 46%,
-    transparent 100%); }
-/* 冷白高光：全画面唯一的「过曝点」，落在卡片右上 —— 有它才读得出"谁被照亮了" */
-.lb-3 { right: 8%; top: -10%; width: 400px; height: 400px;
-  background: radial-gradient(closest-side,
-    color-mix(in srgb, var(--glow-mist) 46%, transparent) 0%,
-    color-mix(in srgb, var(--glow-frost) 16%, transparent) 42%,
-    transparent 100%); filter: blur(60px); }
-/* 细网格：给纯渐变一层「材质」，压得极淡（.03）—— 只在光区边缘隐约可见 */
-.lb-grid { position: absolute; inset: 0; opacity: .35;
-  background-image:
-    linear-gradient(to right, color-mix(in srgb, var(--iris) 8%, transparent) 1px, transparent 1px),
-    linear-gradient(to bottom, color-mix(in srgb, var(--iris) 8%, transparent) 1px, transparent 1px);
-  background-size: 44px 44px;
-  mask-image: radial-gradient(ellipse 70% 60% at 50% 42%, transparent 30%, #000 100%); }
-/* 径向暗角：把视线压向中心的卡片（边缘沉下去，中间托起来） */
-.lb-vignette { position: absolute; inset: 0;
-  background: radial-gradient(ellipse 68% 62% at 50% 46%,
-    transparent 0%, transparent 42%, color-mix(in srgb, var(--bg-page) 70%, transparent) 100%); }
+/* ---------- 卡片材质 ----------
+   透光玻璃面：--glass-bg（tokens.css:174）+ backdrop blur + saturate。
+   卡片后面隐约能看到棱镜的光在漫——「放在光里的一块玻璃」。 */
+.login-card { position: relative; z-index: 1; width: 420px; max-width: 100%; padding: 34px 32px;
+  background: var(--glass-bg); border: 1px solid var(--glass-border);
+  border-radius: var(--radius-2xl); box-shadow: var(--shadow-card);
+  backdrop-filter: blur(16px) saturate(150%); }
 
-/* 浅色主题下柔光大幅收敛（浅底上光晕过强会糊成一片），暗角近无 */
-:root[data-theme='light']:not(.relay-landing) .lb-bloom { opacity: .34; }
-:root[data-theme='light']:not(.relay-landing) .lb-grid { opacity: .5; }
-:root[data-theme='light']:not(.relay-landing) .lb-vignette { opacity: .35; }
-
-.login-card { position: relative; width: 420px; max-width: 100%; padding: 34px 32px;
-  background: var(--bg-surface-2-grad); border: 1px solid var(--border-strong);
-  border-radius: var(--radius-2xl); box-shadow: var(--shadow-card); }
-/* 卡片顶边高光：与控制台卡片同一记号（console-fx.css §③ 的 ::before）——
-   让登录卡片读起来也是「被光照到的一块玻璃」，而不是贴上去的矩形。 */
+/* 卡片顶边高光：与控制台卡片同一记号（console-fx.css §③ 的 ::before）。 */
 .login-card::before { content: ""; position: absolute; left: 18px; right: 18px; top: 0; height: 1px;
   pointer-events: none; opacity: .7;
   background: linear-gradient(90deg, transparent,
     color-mix(in srgb, var(--brand-400) 45%, transparent), transparent); }
+
+/* 周期性掠光（::after）：7.5s 光带扫过卡面，制造「被照亮的仪器」感。 */
+.login-card::after { content: ""; position: absolute; top: 0; bottom: 0; left: -220px; width: 200px;
+  pointer-events: none; border-radius: inherit; opacity: 0;
+  background: linear-gradient(90deg, transparent, var(--sheen), transparent);
+  animation: login-sheen 7.5s ease-in-out infinite; }
+@keyframes login-sheen {
+  0% { left: -220px; opacity: 0; }
+  15% { opacity: .8; }
+  50% { left: calc(100% + 20px); opacity: .8; }
+  65% { opacity: 0; }
+  100% { left: calc(100% + 20px); opacity: 0; }
+}
+
+/* 光标聚光（独立 DOM 元素 .login-glow）：320px radial 品牌光跟随鼠标。
+   ::after 已被掠光占用，所以聚光是 DOM 子元素。hover 设备门控。 */
+.login-glow { position: absolute; inset: 0; pointer-events: none; border-radius: inherit; opacity: 0;
+  background: radial-gradient(320px circle at var(--mx, 50%) var(--my, 50%),
+    color-mix(in srgb, var(--brand-500) 17%, transparent), transparent 62%);
+  transition: opacity 200ms var(--ease-out); }
+@media (hover: hover) and (pointer: fine) {
+  .login-card:hover .login-glow { opacity: 1; }
+}
+/* 浅色：聚光降到 8%、掠光用 iris 染色 */
+:root[data-theme='light'] .login-glow {
+  background: radial-gradient(320px circle at var(--mx, 50%) var(--my, 50%),
+    color-mix(in srgb, var(--brand-500) 8%, transparent), transparent 62%); }
+:root[data-theme='light'] .login-card::after {
+  background: linear-gradient(90deg, transparent,
+    color-mix(in srgb, var(--iris) 20%, transparent), transparent); }
+
+/* reduced-motion：掠光静止、聚光不显示（棱镜的 reduced-motion 在 scene.css/motion.css） */
+@media (prefers-reduced-motion: reduce) {
+  .login-card::after { animation: none; opacity: 0; }
+  .login-glow { opacity: 0 !important; }
+}
+
 .login-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 26px; }
 .login-brand .b-name { font-family: var(--font-display); font-weight: 700; font-size: 19px; }
 .login-brand .b-en { font-family: var(--font-display); font-weight: 700; font-size: 11px;
@@ -535,14 +533,13 @@ button.switch:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--brand-t
 .login-input input { flex: 1; min-width: 0; background: transparent; border: none; outline: none;
   color: var(--text-primary); font-size: 14px; font-family: var(--font-mono); }
 .login-input input::placeholder { color: var(--text-ghost); }
-.login-eye { display: inline-flex; color: var(--text-faint); cursor: pointer; }
+.login-eye { display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; padding: 0; border: 0; background: transparent;
+  color: var(--text-faint); cursor: pointer; }
 .login-eye:hover { color: var(--text-secondary); }
-.login-error { display: flex; align-items: flex-start; gap: 9px; padding: 11px 13px; border-radius: var(--radius-md);
-  font-size: 12.5px; line-height: 1.65; color: var(--text-secondary);
-  background: color-mix(in srgb, var(--danger-red) 8%, transparent); border: 1px solid color-mix(in srgb, var(--danger-red) 26%, transparent); }
-.login-error svg { flex: 0 0 auto; color: var(--danger-red); margin-top: 1px; }
+.login-eye:focus-visible { outline: none; color: var(--brand-400); box-shadow: 0 0 0 3px var(--brand-tint); border-radius: var(--radius-xs); }
 .login-submit { width: 100%; height: 46px; margin-top: 4px; font-size: 14px; }
-.login-hint { margin-top: 18px; font-size: 11.5px; line-height: 1.7; color: var(--text-ghost); }
+.login-hint { margin-top: 18px; font-size: 12px; line-height: 1.7; color: var(--text-ghost); }
 
 /* ---------- 密钥创建弹层：明文一次性展示 ---------- */
 .key-plain { display: flex; align-items: center; gap: 10px; padding: 12px 14px;
@@ -620,7 +617,7 @@ button.switch:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--brand-t
 .up-val { display: flex; align-items: center; gap: 9px; min-width: 0; flex-wrap: wrap; }
 .up-val .code-chip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 状态徽标：与掩码并排，不抢视线 */
-.up-badge { font-size: 10.5px; padding: 2px 8px; border-radius: var(--radius-xs);
+.up-badge { font-size: var(--fs-2xs); padding: 2px 8px; border-radius: var(--radius-xs);
   background: var(--brand-tint); color: var(--brand-400); border: 1px solid var(--border-default); }
 
 .up-actions { display: flex; gap: 9px; flex-wrap: wrap; margin-top: 2px; }
@@ -671,17 +668,17 @@ button.switch:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--brand-t
 .up-model.off .um-info { opacity: .45; }
 .um-info { min-width: 0; }
 .um-info b { display: block; font-size: 12.5px; font-weight: 500; color: var(--text-secondary); }
-.um-info i { display: block; font-style: normal; font-size: 10.5px; color: var(--text-ghost); margin-top: 3px;
+.um-info i { display: block; font-style: normal; font-size: var(--fs-2xs); color: var(--text-ghost); margin-top: 3px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .um-meta { display: flex; align-items: center; gap: 12px; flex: 0 0 auto; }
 .um-meta svg { flex: 0 0 auto; }
-.um-ok { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; color: var(--signal-live); }
-.um-bad { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; color: var(--warn-amber); }
+.um-ok { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-2xs); color: var(--signal-live); }
+.um-bad { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-2xs); color: var(--warn-amber); }
 .um-mult { font-family: var(--font-mono); font-size: 11px; color: var(--text-faint); }
 /* 来源小标签：中性底 —— 一屏里会有十几行，来源标签不参与「每屏 ≤2 处强调色」的预算，
    只在文字上区分（上游 / 种子 / 观测 / 手工）。 */
 .um-src { display: inline-block; margin-left: 7px; padding: 1px 6px; border-radius: var(--radius-xs);
-  font-size: 9.5px; font-weight: 400; letter-spacing: .5px; vertical-align: 1px;
+  font-size: var(--fs-2xs); font-weight: 400; letter-spacing: .5px; vertical-align: 1px;
   color: var(--text-ghost); border: 1px solid var(--border-subtle);
   background: color-mix(in srgb, var(--text-ghost) 10%, transparent); }
 /* 「模型名：/模型ID：」行首字段标签：弱色不加粗 —— 名字与 ID 是主角，标签只管让两行可分辨 */
@@ -691,7 +688,7 @@ button.switch:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--brand-t
    上一版只统一了 line-height，但 um-src 基础规则自带 9.5px 字号 + 6px 横向内边距，
    与 tag 的 10px/7px 仍有可见尺寸差；此版以 tag 几何为基准完全对齐。
    仅此上下文生效，不动表格/用量页里已验收的样式。 */
-.um-info b .um-src { font-size: 10px; letter-spacing: .3px; padding: 1px 7px;
+.um-info b .um-src { font-size: var(--fs-2xs); letter-spacing: .3px; padding: 1px 7px;
   line-height: 14px; margin-left: 7px; }
 .um-info b .mu-tag { vertical-align: 1px; line-height: 14px; margin-left: 7px; }
 
@@ -703,7 +700,7 @@ button.switch:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--brand-t
 .um-mult.unknown { font-family: var(--font-body); color: var(--warn-amber); }
 /* 用量页「按模型消耗明细」里同语义的小签（与清单里的 `.um-mult.unknown` 一家） */
 .mu-unknown { display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: var(--radius-xs);
-  font-size: 10px; font-weight: 400; letter-spacing: .3px;
+  font-size: var(--fs-2xs); font-weight: 400; letter-spacing: .3px;
   color: var(--warn-amber); border: 1px solid var(--warn-amber-line);
   background: color-mix(in srgb, var(--warn-amber) 10%, transparent); }
 
@@ -712,7 +709,7 @@ button.switch:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--brand-t
    一个是「数可信且优惠」，一个是「数不可信」。所以配色也相反 —— 用青（价值/机会），
    不用琥珀（警告）。两者并排出现在同一格，颜色必须能一眼分开。 */
 .mu-tag { display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: var(--radius-xs);
-  font-size: 10px; font-weight: 400; letter-spacing: .3px;
+  font-size: var(--fs-2xs); font-weight: 400; letter-spacing: .3px;
   color: var(--accent-cyan); border: 1px solid color-mix(in srgb, var(--accent-cyan) 32%, transparent);
   background: color-mix(in srgb, var(--accent-cyan) 10%, transparent); }
 
@@ -744,7 +741,7 @@ button.switch:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--brand-t
 /* UA 原文可能很长 —— 芯片要能收缩，否则把「N 次」挤出面板（表族踩过同一个坑）。 */
 .tool-unknown li .code-chip { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tool-unknown li i { flex: 0 0 auto; font-style: normal; font-family: var(--font-mono);
-  font-size: 10.5px; color: var(--text-faint); }
+  font-size: var(--fs-2xs); color: var(--text-faint); }
 .tool-unknown-hint { display: block; margin-top: 11px; font-size: 11.5px; line-height: 1.75; color: var(--text-muted); }
 
 .up-foot { font-size: 11px; line-height: 1.75; color: var(--text-faint); }
@@ -815,7 +812,7 @@ button.switch:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--brand-t
 .msg-list { display: flex; flex-direction: column; gap: 10px; }
 .msg { padding: 11px 13px; border-radius: var(--radius-md); background: var(--wash-1);
   border: 1px solid var(--border-subtle); }
-.msg .role { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .06em;
+.msg .role { font-family: var(--font-mono); font-size: var(--fs-2xs); letter-spacing: .06em;
   text-transform: uppercase; color: var(--text-ghost); margin-bottom: 7px; }
 .msg .content { font-size: 12.5px; line-height: 1.8; color: var(--text-tertiary);
   white-space: pre-wrap; word-break: break-word; }
@@ -856,7 +853,7 @@ button.switch:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--brand-t
 .src-col ul { display: flex; flex-direction: column; gap: 8px; margin: 11px 0 0; padding: 0; list-style: none; }
 .src-col li { font-size: 12px; line-height: 1.7; color: var(--text-tertiary); }
 .src-col li b { color: var(--text-secondary); font-weight: 500; }
-.src-col li i { font-style: normal; font-family: var(--font-mono); font-size: 10.5px;
+.src-col li i { font-style: normal; font-family: var(--font-mono); font-size: var(--fs-2xs);
   color: var(--text-faint); margin-left: 7px; }
 .src-state { display: flex; align-items: flex-start; gap: 7px; margin-top: 12px;
   font-size: 11.5px; line-height: 1.7; color: var(--text-muted); }
@@ -1237,7 +1234,7 @@ table.tbl .r, table.tbl th.r, table.tbl td.r { text-align: right; }
 .pick-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; cursor: pointer;
   font-size: 12.5px; color: var(--text-tertiary); transition: background var(--d-hover) var(--ease-out); }
 .pick-row + .pick-row { border-top: 1px solid var(--border-subtle); }
-.pick-row:hover { background: rgba(255, 255, 255, .04); }
+.pick-row:hover { background: var(--wash-4); }
 .pick-row.on { color: var(--text-primary); background: color-mix(in srgb, var(--iris) 7%, transparent); }
 .pick-row input { flex: 0 0 auto; accent-color: var(--brand-500); cursor: pointer; }
 .pick-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1255,14 +1252,14 @@ table.tbl .r, table.tbl th.r, table.tbl td.r { text-align: right; }
   width: 22px; height: 22px; border-radius: var(--radius-xs); cursor: pointer; font-size: 12px;
   border: 1px solid var(--border-subtle); background: transparent; color: var(--text-muted);
   transition: color var(--d-hover), border-color var(--d-hover), background var(--d-hover); }
-.pick-mv:hover:not(:disabled), .pick-rm:hover { color: var(--text-primary); border-color: var(--border-strong); background: rgba(255, 255, 255, .05); }
+.pick-mv:hover:not(:disabled), .pick-rm:hover { color: var(--text-primary); border-color: var(--border-strong); background: var(--wash-5); }
 .pick-mv:disabled { opacity: .3; cursor: not-allowed; }
 .pick-rm { color: var(--text-faint); font-size: 14px; }
 
 /* 表格内的 pill 缩小（v0.4.13 用户反馈）—— 默认 pill 的 5px/13px 内边距
    在表格行内占高过多、视觉太"蓬"，与旁边的表格文字比例失衡。 */
 /* [v0.4.28 用户反馈] pill 再收紧：padding 2/8→1/6，加 margin-left 贴住名称 */
-.tbl .pill { padding: 1px 6px; font-size: 10px; gap: 4px; letter-spacing: .08em; margin-left: 6px; vertical-align: 1px; }
+.tbl .pill { padding: 1px 6px; font-size: var(--fs-2xs); gap: 4px; letter-spacing: .08em; margin-left: 6px; vertical-align: 1px; }
 .tbl .pill .dot { width: 4px; height: 4px; }
 
 /* 表头图标：12px lucide 图标与文字同行 */
@@ -1271,7 +1268,7 @@ table.tbl .r, table.tbl th.r, table.tbl td.r { text-align: right; }
 
 /* 时间列：上年月日（更淡）、下时间（等宽） */
 /* [v0.4.28 用户反馈] 两行内容间距收紧：margin 3→1、2→0，两行读成一组 */
-.cell-date { font-size: 10.5px; color: var(--text-faint); margin-bottom: 0; white-space: nowrap; line-height: 1.4; }
+.cell-date { font-size: var(--fs-2xs); color: var(--text-faint); margin-bottom: 0; white-space: nowrap; line-height: 1.4; }
 
 /* 提供商药丸 + 计价标签同一行（模型列第二行）—— 药丸靠左、标签跟在右边 */
 .model-meta { display: flex; align-items: center; gap: 6px; margin-top: 1px; line-height: 1.4; }
@@ -1279,7 +1276,7 @@ table.tbl .r, table.tbl th.r, table.tbl td.r { text-align: right; }
 /* 提供商药丸（参考图的模型名称药丸）：紫底紫字小胶囊 */.prov-pill {
   display: inline-block; margin-top: 0;
   padding: 1px 7px; border-radius: var(--radius-pill);
-  font-size: 10px; font-weight: 500; line-height: 1.6;
+  font-size: var(--fs-2xs); font-weight: 500; line-height: 1.6;
   color: var(--brand-400);
   background: var(--brand-tint);
   border: 1px solid color-mix(in srgb, var(--brand-450) 32%, transparent);
@@ -1288,10 +1285,10 @@ table.tbl .r, table.tbl th.r, table.tbl td.r { text-align: right; }
 }
 
 /* tokens 列：下行缓存命中量（青色 = 价值/折扣） */
-.cell-cached { font-size: 10.5px; color: var(--accent-cyan); margin-top: 0; line-height: 1.4; }
+.cell-cached { font-size: var(--fs-2xs); color: var(--accent-cyan); margin-top: 0; line-height: 1.4; }
 
 /* [v1.6.8] 耗时列上行「首字」——比下行「耗时」弱一级（次要信息） */
-.cell-sub { font-size: 10.5px; color: var(--text-tertiary); line-height: 1.4; display: block; }
+.cell-sub { font-size: var(--fs-2xs); color: var(--text-tertiary); line-height: 1.4; display: block; }
 
 /* ---------- 请求日志：行首展开指示 + 状态彩点（v0.4.9，参考 Vercel 风格请求表） ----------
    行可点开详情抽屉，但此前没有任何可视暗示 —— › 箭头补上这个 affordance：
@@ -1310,7 +1307,7 @@ table.tbl .r, table.tbl th.r, table.tbl td.r { text-align: right; }
 .td-cred { display: flex; flex-direction: row; align-items: center; gap: 8px; }
 
 /* ---------- 概览：模型摘要的分布条（v0.4.28） ---------- */
-.ov-bar-track { width: 120px; height: 8px; border-radius: 4px; background: rgba(255, 255, 255, .07); overflow: hidden; }
+.ov-bar-track { width: 120px; height: 8px; border-radius: 4px; background: var(--wash-6); overflow: hidden; }
 .ov-bar-fill { height: 100%; border-radius: 4px; background: var(--gradient-brand); }
 
 /* UA 工具图标（v0.4.24）：按判定出的语言/运行时给色调 ——
@@ -1408,7 +1405,7 @@ svg.ua-ico.none { color: var(--text-ghost); }
 .client-metric-tip-head span,
 .client-model-tip-title span {
   color: var(--text-faint);
-  font-size: 10px;
+  font-size: var(--fs-2xs);
   line-height: 1.4;
 }
 .client-metric-tip-tag,
@@ -1419,7 +1416,7 @@ svg.ua-ico.none { color: var(--text-ghost); }
   border-radius: var(--radius-xs);
   color: var(--brand-400) !important;
   font-family: var(--font-mono);
-  font-size: 9px !important;
+  font-size: var(--fs-2xs) !important;
   line-height: 1 !important;
 }
 .client-metric-tip-total,
@@ -1433,7 +1430,7 @@ svg.ua-ico.none { color: var(--text-ghost); }
 .client-metric-tip-total span,
 .client-model-tip-summary span {
   color: var(--text-faint);
-  font-size: 10px;
+  font-size: var(--fs-2xs);
 }
 .client-metric-tip-total b,
 .client-model-tip-summary b {
@@ -1449,7 +1446,7 @@ svg.ua-ico.none { color: var(--text-ghost); }
 .client-model-tip-row-head b em {
   color: var(--text-faint);
   font-style: normal;
-  font-size: 9px;
+  font-size: var(--fs-2xs);
   font-weight: 400;
 }
 .client-metric-tip-list,
@@ -1474,7 +1471,7 @@ svg.ua-ico.none { color: var(--text-ghost); }
   flex: 0 0 auto;
   color: var(--brand-400);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: var(--fs-2xs);
 }
 .client-metric-tip-name,
 .client-model-tip-name {
@@ -1486,14 +1483,14 @@ svg.ua-ico.none { color: var(--text-ghost); }
 }
 .client-metric-tip-row-top .client-metric-tip-name {
   color: var(--text-secondary);
-  font-size: 10.5px;
+  font-size: var(--fs-2xs);
 }
 .client-metric-tip-row-top b,
 .client-model-tip-row-head > b {
   flex: 0 0 auto;
   color: var(--text-primary);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--fs-2xs);
   font-weight: 600;
   white-space: nowrap;
 }
@@ -1505,7 +1502,7 @@ svg.ua-ico.none { color: var(--text-ghost); }
   margin-top: 4px;
   color: var(--text-faint);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: var(--fs-2xs);
 }
 .client-metric-tip-track,
 .client-model-tip-track {
@@ -1536,7 +1533,7 @@ svg.ua-ico.none { color: var(--text-ghost); }
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--text-secondary);
-  font-size: 10.5px;
+  font-size: var(--fs-2xs);
   font-weight: 550;
   white-space: nowrap;
 }
@@ -1545,7 +1542,7 @@ svg.ua-ico.none { color: var(--text-ghost); }
   text-overflow: ellipsis;
   color: var(--text-ghost);
   font-family: var(--font-mono);
-  font-size: 8.5px;
+  font-size: var(--fs-2xs);
   white-space: nowrap;
 }
 .client-model-tip-row-meta span:not(.client-model-tip-track) { white-space: nowrap; }
@@ -1556,7 +1553,7 @@ svg.ua-ico.none { color: var(--text-ghost); }
   padding-top: 7px;
   border-top: 1px dashed var(--border-subtle);
   color: var(--text-faint);
-  font-size: 9.5px;
+  font-size: var(--fs-2xs);
   line-height: 1.5;
 }
 .tooltip-surface::after {
@@ -1593,7 +1590,7 @@ svg.ua-ico.none { color: var(--text-ghost); }
    选择器挂 .key-bindings（容器）—— v0.5.14 起徽标不再有 .key-binding 内层包裹。 */
 .key-bindings .kb-rank {
   display: inline-block; margin-left: 7px; padding: 1px 7px; border-radius: var(--radius-xs);
-  font-style: normal; font-size: 10px; font-weight: 400; letter-spacing: .3px;
+  font-style: normal; font-size: var(--fs-2xs); font-weight: 400; letter-spacing: .3px;
   color: var(--accent-cyan); border: 1px solid color-mix(in srgb, var(--accent-cyan) 32%, transparent);
   background: color-mix(in srgb, var(--accent-cyan) 10%, transparent);
 }
@@ -1847,7 +1844,7 @@ svg.ua-ico.none { color: var(--text-ghost); }
   flex: 0 1 auto;
   min-width: 0;
   margin-top: 0;
-  font-size: 10.5px;
+  font-size: var(--fs-2xs);
   line-height: 1.4;
   color: var(--text-ghost);
   text-align: right;
@@ -1966,3 +1963,16 @@ svg.ua-ico.none { color: var(--text-ghost); }
 .toast-info    .toast-ico { color: var(--accent-cyan); }
 .toast-info    .toast-progress { color: var(--accent-cyan); }
 .toast-error   .toast-progress { color: var(--danger-red); }
+
+/* [2026-10-17] 账本口径脚注折叠（110 字常驻 → details 默认收起） */
+.ledger-caveat { padding: 0; border: 0; }
+.ledger-caveat > summary {
+  cursor: pointer; list-style: none;
+  font-size: 11.5px; color: var(--text-ghost);
+  transition: color var(--d-hover) var(--ease-out);
+}
+.ledger-caveat > summary::-webkit-details-marker { display: none; }
+.ledger-caveat > summary::before { content: '▸ '; color: var(--text-faint); }
+.ledger-caveat[open] > summary::before { content: '▾ '; }
+.ledger-caveat > summary:hover { color: var(--text-muted); }
+.ledger-caveat[open] > summary { margin-bottom: 6px; }
