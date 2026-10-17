@@ -104,6 +104,11 @@ export function CreateKeyModal({
       return next;
     });
 
+  /* 已选列表显示名称而非绑定值本身（与 EditKeyModal 同一口径）：
+     [v1.6.26] value 改成提供商 id 后，直接渲染会把 `p_default00` 这类内部 id
+     摆到用户面前。value 仍是提交给后端的唯一键，只在显示时翻译。 */
+  const labelOf = (value: string) => providerOptions.find((o) => o.value === value)?.label ?? value;
+
   const canSubmit = Boolean(name.trim()) && !busy && !missingModels;
 
   const submit = async (e: FormEvent) => {
@@ -259,14 +264,14 @@ export function CreateKeyModal({
               </div>
               {clientPicks.length > 0 ? (
                 <div className="picked-list">
-                  {clientPicks.map((name, i) => (
-                    <div className="picked-item" key={name}>
+                  {clientPicks.map((value, i) => (
+                    <div className="picked-item" key={value}>
                       <span className="picked-rank">{i + 1}</span>
-                      <span className="picked-name">{name}</span>
+                      <span className="picked-name">{labelOf(value)}</span>
                       <span className="picked-actions">
                         <button type="button" className="pick-mv" disabled={i === 0} onClick={() => moveProvider(i, -1)} aria-label="上移">↑</button>
                         <button type="button" className="pick-mv" disabled={i === clientPicks.length - 1} onClick={() => moveProvider(i, 1)} aria-label="下移">↓</button>
-                        <button type="button" className="pick-rm" onClick={() => toggleProvider(name)} aria-label="移除">×</button>
+                        <button type="button" className="pick-rm" onClick={() => toggleProvider(value)} aria-label="移除">×</button>
                       </span>
                     </div>
                   ))}

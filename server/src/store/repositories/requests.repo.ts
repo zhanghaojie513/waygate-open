@@ -84,6 +84,16 @@ export interface RequestQuery {
 
 const SORT_WHITELIST = new Set(['ts', 'ms', 'credits', 'status', 'prompt_tokens', 'completion_tokens']);
 
+/** [v1.6.28] 落库时发现密钥已被删除（在途请求晚于删除）后追加的标记，见 writeLog。 */
+export const ORPHANED_KEY_NOTE = 'key_deleted_inflight';
+
+/** better-sqlite3 的 FK 违例：code 是 SQLITE_CONSTRAINT_FOREIGNKEY（787），message 含 FOREIGN KEY。 */
+function isForeignKeyFailure(err: unknown): boolean {
+  const e = err as { code?: unknown; message?: unknown } | null;
+  if (!e) return false;
+  return e.code === 'SQLITE_CONSTRAINT_FOREIGNKEY' || /FOREIGN KEY constraint failed/i.test(String(e.message ?? ''));
+}
+
 @Injectable()
 export class RequestsRepository {
   private readonly insertStmt;
@@ -91,7 +101,7 @@ export class RequestsRepository {
   private readonly deleteAllStmt;
   private readonly deleteBeforeStmt;
   private readonly deleteBeforeBatchStmt;
-  private readonly logTx: (row: RequestLogInput) => number;
+  private readonly logTx: (row: RequestLogInput) => { id: number; effectiveKeyId: string | null };
   /* 动态形状（WHERE 组合 / 排序白名单）的查询语句按 SQL 文本缓存 ——
      写不进构造器的有限模板走这里，热路径插入/点查仍走上面的构造器语句。 */
   private readonly stmt: ReturnType<typeof createStmtCache>;
@@ -128,20 +138,44 @@ export class RequestsRepository {
 
   /** 一次请求 = 一行。与 aggregates 的递增在同一事务内（api-contract §6）。 */
   log(row: RequestLogInput): number {
-    const id = this.logTx(row);
-    // 事务已提交才更新用量缓存（事务内更新的话，回滚会让缓存多计）
-    this.usage.onInsert(row.keyId, row.totalTokens, row.remoteIp);
+    const { id, effectiveKeyId } = this.logTx(row);
+    // 事务已提交才更新用量缓存（事务内更新的话，回滚会让缓存多计）。
+    // 密钥已在途删除时 effectiveKeyId 为 null：那份计数已无归属，不再喂给缓存。
+    this.usage.onInsert(effectiveKeyId, row.totalTokens, row.remoteIp);
     return id;
   }
 
   /** 事务体：插入请求行 + 5 个聚合桶递增（由构造期建好的 logTx 包在同一事务里执行）。 */
-  private writeLog(row: RequestLogInput): number {
-    const info = this.insertStmt.run({
-      ...row,
-      reasoningTokens: row.reasoningTokens ?? 0,
-      stream: row.stream ? 1 : 0,
-      createdAt: Date.now(),
-    });
+  private writeLog(row: RequestLogInput): { id: number; effectiveKeyId: string | null } {
+    let info;
+    let effectiveKeyId = row.keyId;
+    try {
+      info = this.insertStmt.run({
+        ...row,
+        reasoningTokens: row.reasoningTokens ?? 0,
+        stream: row.stream ? 1 : 0,
+        createdAt: Date.now(),
+      });
+    } catch (err) {
+      /* [v1.6.28] 密钥在请求**在途期间**被删：`key_id` 的外键是 ON DELETE SET NULL，
+         但那只在删除时清理**已有**子行；本请求晚于删除落库，INSERT 指向已消失的父行
+         ⇒ FOREIGN KEY constraint failed，整行审计（tokens/积分/状态/耗时）被丢掉。
+         （生产实证：2026-10-17 探针在流未结束时删临时密钥。）
+         处置：把 key_id 降级为 NULL 重试一次，保住整行。client_id / key_hint 是文本
+         快照、不受外键约束，仍能说明「这条是谁发的」—— 不改成 unidentified，那样会
+         把已识别的流量错记成未识别，污染客户端排行。行上追加标记便于事后辨认。 */
+      if (!isForeignKeyFailure(err) || row.keyId === null) throw err;
+      effectiveKeyId = null;
+      info = this.insertStmt.run({
+        ...row,
+        keyId: null,
+        keyHint: row.keyHint ?? null,
+        note: [row.note, ORPHANED_KEY_NOTE].filter(Boolean).join(','),
+        reasoningTokens: row.reasoningTokens ?? 0,
+        stream: row.stream ? 1 : 0,
+        createdAt: Date.now(),
+      });
+    }
     const errors = row.status >= 400 ? 1 : 0;
     const delta = {
       requests: 1,
@@ -162,7 +196,7 @@ export class RequestsRepository {
     this.aggregates.upsert(hour, 'status', String(row.status), delta);
     this.aggregates.upsert(hour, 'total', '-', delta);
     this.aggregates.upsert(day, 'total', '-', delta);
-    return Number(info.lastInsertRowid);
+    return { id: Number(info.lastInsertRowid), effectiveKeyId };
   }
 
   private buildWhere(q: RequestQuery): { sql: string; params: unknown[] } {

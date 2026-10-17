@@ -74,6 +74,13 @@ export function EditKeyModal({
       return next;
     });
 
+  /* 已选列表显示**名字**而不是绑定值本身。
+     [v1.6.26] 绑定值从 name 改成 id 后，这里直接渲染 value 会把 `p_default00` 这类
+     内部 id 摆到用户面前（勾选区显示的是名字，两处对不上）。value 仍是 id ——那是
+     提交给后端的唯一键；只在**显示**时翻译。找不到对应项（旧名字值 / 已删除）时
+     回落到 value 本身（诚实暴露孤儿绑定，与 providerOptions 的占位口径一致）。 */
+  const labelOf = (value: string) => providerOptions.find((o) => o.value === value)?.label ?? value;
+
   const trimmed = name.trim();
   const nameChanged = trimmed !== row.name;
   const origClients = row.clients ?? (row.client ? [row.client] : []);
@@ -179,14 +186,14 @@ export function EditKeyModal({
               </div>
               {clientPicks.length > 0 ? (
                 <div className="picked-list">
-                  {clientPicks.map((name, i) => (
-                    <div className="picked-item" key={name}>
+                  {clientPicks.map((value, i) => (
+                    <div className="picked-item" key={value}>
                       <span className="picked-rank">{i + 1}</span>
-                      <span className="picked-name">{name}</span>
+                      <span className="picked-name">{labelOf(value)}</span>
                       <span className="picked-actions">
                         <button type="button" className="pick-mv" disabled={i === 0} onClick={() => moveProvider(i, -1)} aria-label="上移">↑</button>
                         <button type="button" className="pick-mv" disabled={i === clientPicks.length - 1} onClick={() => moveProvider(i, 1)} aria-label="下移">↓</button>
-                        <button type="button" className="pick-rm" onClick={() => toggleProvider(name)} aria-label="移除">×</button>
+                        <button type="button" className="pick-rm" onClick={() => toggleProvider(value)} aria-label="移除">×</button>
                       </span>
                     </div>
                   ))}

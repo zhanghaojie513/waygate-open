@@ -9,4 +9,4 @@
  * `version` 一致，不一致直接 fail build —— 两处版本永远不会悄悄分叉。
  * 升版本 = 同时改 package.json 与这里（构建会逼你对齐）。
  */
-export const VERSION = '1.6.19';
+export const VERSION = '1.6.20';
