@@ -2,8 +2,10 @@
  * 目录同步编排（task#18；task 倍率接口化并入 /v3/config）：
  *   [v1.5.0] 纯接口口径（用户拍板）：目录 = 上游清单接口本轮返回的列表，**替换式**落库
  *   （replaceSync，manual 行保留）；拉取失败保留旧目录（不倒退）。observed 机制与
- *   Qoder 内置种子回落已废除 ——「客户端没给就是没有」。唯一例外：MiniMax（anthropic）
- *   上游无清单端点（实测 /models 恒 503），静态种子是它的唯一目录来源。
+ *   Qoder 内置种子回落已废除 ——「客户端没给就是没有」。
+ *   [v1.6.25] MiniMax（anthropic）改为**真拉取**（/mavis/api/v1/models，2026-10-17
+ *   实测发现——此前"无清单端点"的结论是测错了路径）；拉不到时回落静态种子
+ *   （与 Qoder 不同：MiniMax 已有种子用户在用，保留回落更安全）。
  *   倍率仍以 /v3/config 接口为权威（随清单一起合成）。逐项实测仅手动刷新。
  *
  * 从 models.service 抽出，原因：models.service 已越过 300 行门禁，
@@ -35,6 +37,7 @@ import { pullUpstreamModels, type CatalogEntry } from './pull';
 import { fetchV3ConfigModels } from './v3-config';
 import { stripTrailingSlash } from '../proxy/upstream-url';
 import { WbOauthService } from '../proxy/openai-upstream/wb-oauth.service';
+import { MinimaxTokenService } from '../proxy/anthropic-upstream/minimax-token.service';
 import { pullQoderModels } from './qoder-models';
 import { QoderCredentialStore } from '../proxy/qoder-upstream/credential';
 
@@ -131,7 +134,7 @@ export class CatalogSyncService implements OnApplicationBootstrap, OnModuleDestr
   private timer: NodeJS.Timeout | null = null;
 
   constructor(
-    /* [v1.6.11] openai 凭证改走 OAuth 后，本类不再读 config（原先只用于回落
+    /* [v1.6.13] openai 凭证改走 OAuth 后，本类不再读 config（原先只用于回落
        `config.upstreamKey`）。参数保留（不加访问修饰符，仅作 DI 位占位）：
        位置与 `design:paramtypes` 元数据不变，既有 spec / harness 按位置构造不受影响。 */
     _config: RelayConfigService,
@@ -144,9 +147,12 @@ export class CatalogSyncService implements OnApplicationBootstrap, OnModuleDestr
     /* [v0.5.0] 活提供商协议（anthropic 时目录走静态种子，不拉不测）。
        @Optional：既有 spec 按位置构造，末位新增不破坏它们。 */
     @Optional() private readonly providers?: ProvidersRepository,
-    /* [v1.6.11] WorkBuddy OAuth：openai 的目录拉取/实测凭证来源（ck_ 已退役）。
+    /* [v1.6.13] WorkBuddy OAuth：openai 的目录拉取/实测凭证来源（ck_ 已退役）。
        @Optional：既有 spec 按位置构造，末位新增不破坏它们。 */
     @Optional() private readonly wbOauth?: WbOauthService,
+    /* [v1.6.25] MiniMax access token（/mavis/api/v1/models 拉取用）。
+       @Optional：既有 spec 按位置构造，末位新增不破坏它们。 */
+    @Optional() private readonly minimaxTokens?: MinimaxTokenService,
   ) {}
 
   /** 活提供商集合（[v0.5.1] 多生效：列表而非单行）。未装配 providers 时返回空。 */
@@ -155,7 +161,7 @@ export class CatalogSyncService implements OnApplicationBootstrap, OnModuleDestr
   }
 
   /**
-   * [v1.6.11] openai 提供商的出站凭证：改从 **OAuth 槽**取 access token（ck_ 已退役）。
+   * [v1.6.13] openai 提供商的出站凭证：改从 **OAuth 槽**取 access token（ck_ 已退役）。
    * 取不到返回空串 —— 调用方据此判「未授权」（不回落任何全局密钥，用户口径）。
    */
   private async openAiCredential(provider: ProviderRow): Promise<string> {
@@ -164,6 +170,51 @@ export class CatalogSyncService implements OnApplicationBootstrap, OnModuleDestr
       return await this.wbOauth.accessToken(provider);
     } catch {
       return '';
+    }
+  }
+
+  /**
+   * [v1.6.25] anthropic（MiniMax）目录：**真拉取** `/mavis/api/v1/models` + 种子回落。
+   *
+   * 端点 2026-10-17 发现（此前"无清单端点"的结论是测了 `/models` 而非 `/mavis/api/v1/models`）。
+   * 响应形状：`{ providers: [{ providerId: 'minimax', config: { models: { [id]: { name, reasoning, tool_call, limit: {context, output}, ... } } } }] }`。
+   * 用 access token（MinimaxTokenService）鉴权，与 chat 端点同凭证链。
+   * 拉取失败回落静态种子（替换式失败时保留旧目录 + 种子兜底首启场景）。
+   */
+  private async pullMinimaxCatalog(provider: ProviderRow): Promise<SyncOutcome> {
+    /* 种子兜底（首启 / 拉取失败时用）。 */
+    const seedFallback = (): SyncOutcome => this.seedMinimaxCatalog(provider.id);
+    if (!this.minimaxTokens) return seedFallback();
+    try {
+      const token = await this.minimaxTokens.accessToken(provider);
+      const url = `${stripTrailingSlash(provider.base_url)}/mavis/api/v1/models`;
+      const res = await fetch(url, {
+        headers: { authorization: `Bearer ${token}`, accept: 'application/json' },
+        signal: AbortSignal.timeout(PULL_TIMEOUT_MS),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body = (await res.json()) as {
+        providers?: Array<{
+          providerId?: string;
+          config?: { models?: Record<string, { name?: string }> };
+        }>;
+      };
+      const models = body.providers?.find((p) => p.providerId === 'minimax')?.config?.models;
+      if (!models || typeof models !== 'object' || Object.keys(models).length === 0) {
+        throw new Error('响应无可解析的 models 段');
+      }
+      const entries = Object.entries(models).map(([id, m]) => ({
+        id,
+        displayName: typeof m?.name === 'string' && m.name ? m.name : id,
+        source: 'upstream' as const,
+        multiplier: null,
+        tag: null as string | null,
+      }));
+      const { inserted } = this.catalog.replaceSync(provider.id, entries);
+      return { pullOk: true, configOk: false, added: inserted, multipliersUpdated: 0 };
+    } catch (err) {
+      this.logger.warn(`MiniMax 目录拉取失败（回落静态种子）：${(err as Error).message}`);
+      return seedFallback();
     }
   }
 
@@ -369,8 +420,8 @@ export class CatalogSyncService implements OnApplicationBootstrap, OnModuleDestr
    * observed/种子合并全部废除；MiniMax 例外（上游无清单端点，种子是唯一来源）。
    */
   private async pullAndMergeFor(provider: ProviderRow): Promise<SyncOutcome> {
-    /* anthropic 协议：不拉上游（无清单端点）—— 静态种子（唯一例外，见方法注释）。 */
-    if (provider.protocol === 'anthropic') return this.seedMinimaxCatalog(provider.id);
+    /* anthropic 协议：/mavis/api/v1/models 真拉取，失败回落静态种子（见 pullMinimaxCatalog）。 */
+    if (provider.protocol === 'anthropic') return this.pullMinimaxCatalog(provider);
     /* qoder 协议：网关有 /model/list —— 真拉取，替换式。 */
     if (provider.protocol === 'qoder') return await this.pullQoderCatalog(provider);
     const base = stripTrailingSlash(provider.base_url);
@@ -417,7 +468,7 @@ export class CatalogSyncService implements OnApplicationBootstrap, OnModuleDestr
     if (this.refreshing) return; // 手动刷新在做同样的事（且更多），让路
     const actives = this.activeProviders();
     if (actives.length === 0) return;
-    /* [v1.6.11] openai 家需已导入 OAuth 授权才同步（ck_ 已退役，不再看全局位）。 */
+    /* [v1.6.13] openai 家需已导入 OAuth 授权才同步（ck_ 已退役，不再看全局位）。 */
     void (async () => {
       const openAiActives = actives.filter((p) => p.protocol === 'openai');
       const creds = await Promise.all(openAiActives.map((p) => this.openAiCredential(p)));
