@@ -46,14 +46,18 @@ export function EditKeyModal({
   const providers = useResource(() => api.providers(), [], { cacheKey: 'providers' });
 
   /* 候选 = 已登记的提供商。当前绑定若不在候选里（该提供商已删），补一个占位项，
-     避免它从列表消失、被静默解绑。 */
+     避免它从列表消失、被静默解绑。
+     [2026-10-17] value 改为提供商 **id**（唯一）——之前用名字，删除重建同名会错绑。
+     旧数据里的名字值按原样显示（后端 resolveRoute 双匹配兜底）。 */
   const providerOptions = (() => {
     const opts = (providers.data?.items ?? [])
-      .map((p) => ({ value: p.name, label: p.active ? `${p.name}（已启用）` : p.name }))
-      .sort((a, b) => a.value.localeCompare(b.value, 'zh-Hans-CN'));
+      .map((p) => ({ value: p.id, label: p.active ? `${p.name}（已启用）` : p.name }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'zh-Hans-CN'));
     for (const picked of clientPicks) {
       if (!opts.some((o) => o.value === picked)) {
-        opts.push({ value: picked, label: `${picked}（已登记，当前不在列表）` });
+        /* 旧数据里的名字值 / 已删除的 id 都显示原值（诚实——用户看得到
+           "这是个孤儿绑定"，不会被同名新提供商骗过去）。 */
+        opts.push({ value: picked, label: `${picked}（已删除，当前不在列表）` });
       }
     }
     return opts;

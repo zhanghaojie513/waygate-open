@@ -21,6 +21,7 @@ import { QoderCredentialStore } from './qoder-upstream/credential';
 import { buildCosyBearer, cosyChatHeaders, qEncode, DEFAULT_QODER_CHAT_PATH } from './qoder-upstream/cosy';
 import { ProvidersRepository, type ProviderRow } from '../store/repositories/providers.repo';
 import { WbOauthService, wbOauthHeaders } from './openai-upstream/wb-oauth.service';
+import { ChannelBreaker, BREAKER_THRESHOLD } from './channel-breaker';
 import type { ChatChunk, ChatRequestBody } from './types';
 
 /** 写回客户端的动作，由 controller 负责真正落到 reply 上（service 不碰 req/res）。 */
@@ -138,6 +139,8 @@ export class ProxyService {
   /** [v0.6.0] Qoder 凭证与会话缓存。无依赖（只读数据目录），直接实例化 —— 不占 DI 装配，
       三个手动 new ProxyService 的 wiring spec 也不需要跟着改构造。 */
   private readonly qoderCredentials = new QoderCredentialStore();
+  /** [v1.6.27] 11128 渠道熔断（内存态，按提供商；重启即重学，见 channel-breaker.ts）。 */
+  private readonly channelBreaker = new ChannelBreaker();
 
   constructor(
     private readonly config: RelayConfigService,
@@ -147,7 +150,7 @@ export class ProxyService {
        不改它们的构造调用（openai 路径不碰这两个依赖，行为不变）。 */
     @Optional() private readonly providers?: ProvidersRepository,
     @Optional() private readonly minimaxTokens?: MinimaxTokenService,
-    /* [v1.6.11] WorkBuddy OAuth 令牌（openai 转发凭证）。@Optional：三个 wiring spec
+    /* [v1.6.13] WorkBuddy OAuth 令牌（openai 转发凭证）。@Optional：三个 wiring spec
        手动 new ProxyService(...)，不改它们的构造调用（openai 路径缺失时会明确报错）。 */
     @Optional() private readonly wbOauth?: WbOauthService,
   ) {
@@ -234,12 +237,19 @@ export class ProxyService {
         message: '没有生效中的提供商 —— 到「提供商管理」启用至少一家。',
       });
     }
+    /* [2026-10-17] 绑定值改为**双匹配**：新绑定存提供商 ID（唯一，删除重建同名不会错绑——
+       用户报告：删 MiniMax Code 后重建同名，密钥仍绑定旧名 = 名字碰撞）。旧数据存的是
+       名字，按名兜底。两者共用同一条优先链语义（只排序，不过滤）。 */
+    const bindById = new Map(actives.map((p) => [p.id, p]));
     const byName = new Map(actives.map((p) => [p.name, p]));
-    /* 候选提供商顺序：密钥优先级链（绑定名的启用户）在前，其余启用户按创建序垫后。 */
+    const resolveBinding = (v: string): ProviderRow | undefined => bindById.get(v) ?? byName.get(v);
     const trimmed = input.trim();
     const ordered = [
-      ...(keyClients ?? []).map((n) => byName.get(n)).filter((p): p is ProviderRow => p !== undefined),
-      ...actives.filter((p) => !(keyClients ?? []).includes(p.name)),
+      ...(keyClients ?? []).map((v) => resolveBinding(v)).filter((p): p is ProviderRow => p !== undefined),
+      ...actives.filter((p) => {
+        const binds = keyClients ?? [];
+        return !binds.includes(p.id) && !binds.includes(p.name);
+      }),
     ];
 
     /* ★ 两轮解析（跨全部候选，不是单家内部）：
@@ -331,7 +341,7 @@ export class ProxyService {
   }
 
   /**
-   * [v1.6.11] WorkBuddy 出站头（OAuth 形态）—— ck_ 退役后的转发凭证。
+   * [v1.6.13] WorkBuddy 出站头（OAuth 形态）—— ck_ 退役后的转发凭证。
    *
    * 与旧 `buildUpstreamHeaders` + ck_ 的差异：令牌来自 `WbOauthService`（按需刷新），
    * 并在指纹头之外补账号级设备头（x-user-id / x-machine-id / x-session-id，按 uid
@@ -468,9 +478,29 @@ export class ProxyService {
       return await this.doCallQoder(ctx, body, rewritten.body, cfg, slot, routed.provider);
     }
 
-    /* [v1.6.11] openai（WorkBuddy）转发改走 **OAuth** —— ck_ 已退役。
+    /* [v1.6.13] openai（WorkBuddy）转发改走 **OAuth** —— ck_ 已退役。
        令牌与账号级设备头由 WbOauthService 维护（与独立版 wb 工具同一形态）：
        access token 按需刷新，machine/session id 按 uid 稳定派生。 */
+    /* [v1.6.27] 11128 渠道熔断闸：阵发期（见 channel-breaker.ts 头注）快速失败。
+       放在并发槽语义之后、发请求之前 —— 槽在 callUpstream 已取得，这里立即释放，
+       净占用微秒级；快速失败行不带上游业务码（上游根本没回，守反代保真铁律）。 */
+    const breakerRemainMs = this.channelBreaker.blocked(routed.provider.id);
+    if (breakerRemainMs !== null) {
+      slot.release();
+      const retryAfterSec = Math.max(1, Math.ceil(breakerRemainMs / 1000));
+      return this.fail(
+        ctx,
+        new RelayHttpError({
+          httpStatus: 502,
+          code: 'upstream_channel_blocked',
+          message:
+            `上游渠道校验持续拒绝（11128 阵发），已启用熔断保护：预计约 ${retryAfterSec} 秒后自动放行探测请求，` +
+            '无需改动任何配置，请稍后重试。',
+          headers: { 'retry-after': String(retryAfterSec) },
+        }),
+        'breaker_open',
+      );
+    }
     const wbHeaders = await this.buildWorkBuddyHeaders(ctx, routed.provider, incomingHeaders, cfg, slot);
     if ('error' in wbHeaders) return wbHeaders.error;
     const headers = wbHeaders.headers;
@@ -591,6 +621,25 @@ export class ProxyService {
         slot.release();
         const failure = interpretUpstreamFailure(parseUpstreamFailure(res.status, raw));
         this.applyModelSideEffect(failure.upstreamCode, routed.provider.id, routed.id);
+        /* [v1.6.27] 熔断计数只在「渠道级」信号上：降级重试（中性提示）也是 11128 才算 ——
+           只拦下模板改写、降级能过的属于内容级问题，计入会把一个客户端的请求特征
+           变成全提供商的闸门。反之任何非 11128 的业务失败（校验链路已工作到深层，
+           如 11115）与成功一样视为渠道健康，全复位。 */
+        if (failure.upstreamCode === CHANNEL_REJECT_CODE) {
+          if (ctx.notes.includes(SYSPROMPT_DEGRADED_NOTE)) {
+            const t = this.channelBreaker.recordChannelRejection(routed.provider.id);
+            if (t.opened) {
+              this.logger.warn(
+                `11128 渠道熔断开闸：provider=${routed.provider.name} 连续${BREAKER_THRESHOLD}次渠道级拒绝，` +
+                  `冷却 ${Math.round(t.cooldownMs / 1000)}s（第 ${t.opens} 次开闸）`,
+              );
+            }
+          }
+          // 未带降级标记的 11128（rewrite=off 或降级前的首败）：不计入也不复位 ——
+          // 它区分不了内容级/渠道级，对熔断状态没有信息量。
+        } else if (failure.upstreamCode !== null) {
+          this.channelBreaker.recordHealthy(routed.provider.id);
+        }
         return this.fail(ctx, failure, failure.code);
       }
     }
@@ -608,6 +657,9 @@ export class ProxyService {
         'upstream empty body',
       );
     }
+
+    /* 上游接受了本次请求（含降级重试后被接受）= 渠道健康，熔断状态全复位。 */
+    this.channelBreaker.recordHealthy(routed.provider.id);
 
     return {
       traceId: ctx.traceId,

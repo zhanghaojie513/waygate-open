@@ -224,6 +224,11 @@ const NOTE_MAP: Record<string, string> = {
   stream_options_stripped: '已移除 stream_options',
   // [2026-10-07] 命中 11128 时 proxy.service 以 neutral 档自动降级重试一次（L2 fail-open）。
   sysprompt_degraded_retry: '命中渠道校验，已降级重试',
+  /* [v1.6.19] 11128 渠道熔断快速失败：阵发期（上游全拒，降级重试也 11128）连续 3 次后
+     开闸，后续请求不打上游、毫秒级返回 502 + retry-after。与上面的 upstream_11128 分开：
+     那条是**单次请求被拒**，这条是**渠道整体被闸住**，处置也不同（前者查提示指纹，
+     后者只需等阵发过去）。 */
+  breaker_open: '渠道熔断中（阵发期快速失败，稍后自动恢复）',
   stream_aborted: '流式中断',
   // 与 stream_aborted 必须分开：stream_aborted = 上游流中断（去查上游）；
   // client_detached = 客户端在流式进行中主动断开/写失败（去查客户端/网络）。处置相反，不可混同。

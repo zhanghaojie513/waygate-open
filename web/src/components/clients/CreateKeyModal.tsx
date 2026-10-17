@@ -85,10 +85,11 @@ export function CreateKeyModal({
      用户不必先失败一次才知道。 */
   const missingModels = kind === 'models' && models.length === 0;
 
-  /* 标出当前已启用的提供商；排序稳定，避免每次取数顺序变化。 */
+  /* 标出当前已启用的提供商；排序稳定，避免每次取数变化。
+     [2026-10-17] value 改为提供商 **id**（唯一）——名字会在删除重建同名时错绑。 */
   const providerOptions = (providers.data?.items ?? [])
-    .map((p) => ({ value: p.name, label: p.active ? `${p.name}（已启用）` : p.name }))
-    .sort((a, b) => a.value.localeCompare(b.value, 'zh-Hans-CN'));
+    .map((p) => ({ value: p.id, label: p.active ? `${p.name}（已启用）` : p.name }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'zh-Hans-CN'));
 
   /* [v0.4.20] 多选 + 优先级：clientPicks 是有序数组，第 1 项优先级最高。
      勾选即追加到末尾；取消勾选即移除。顺序由上下箭头调整（比拖拽在弹层里更可靠、可键盘操作）。 */

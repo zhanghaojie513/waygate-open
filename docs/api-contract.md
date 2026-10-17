@@ -428,6 +428,7 @@ credits = NULL           ← 上游未回报该次费用（未知）            
 | `upstream empty body` | `proxy/proxy.service.ts:ProxyService.doCall()` | 上游返回 200 但响应体为空，无法读取流 | 上游返回空响应 |
 | `upstream_11101` | `proxy/upstream-errors.ts:mapUpstreamBusinessCode()` | 上游业务码 `11101`（已被强制 `stream:true` 仍要求非流式 = 协议变更信号） | 上游要求强制流式 |
 | `upstream_11128` | `proxy/upstream-errors.ts:mapUpstreamBusinessCode()` | 上游业务码 `11128`（**根因定案 2026-10-07**：system 提示命中上游的第三方客户端模板 n-gram 指纹；`developer` role 是另一独立触发点。模板行改写与降级重试两道防线均未救回才落此行，见 §2.1.5 注） | 上游渠道校验拒绝（提示指纹） |
+| `breaker_open` | `proxy/proxy.service.ts`（`channel-breaker.ts` 熔断闸） | **渠道级**保护：连续 3 次「渠道级 11128」（降级重试后**仍然** 11128）后开闸；冷却期（30s 起指数退避，封顶 300s）内请求**不打上游**、毫秒级 502 + `retry-after`，不占并发槽 —— 阵发期避免烧满槽饿死其他提供商。与 `upstream_11128` 分开：那条是**单次请求被拒**（查提示指纹），这条是**渠道整体被闸住**（等阵发过去）。守保真铁律：`upstream_code=NULL`（上游没回）；任何成功或非 11128 业务失败即复位 | 渠道熔断中（阵发期快速失败，稍后自动恢复） |
 | `model_not_available` | `proxy/upstream-errors.ts:mapUpstreamBusinessCode()` | 上游业务码 `11102`（当前账号未开通该模型，同时把该行标 `verified=0`） | 账号未开通此模型 |
 | `invalid_max_tokens` | `proxy/upstream-errors.ts:mapUpstreamBusinessCode()` | 上游业务码 `11133`（`max_tokens` 过小，提升到下限后仍失败） | max_tokens 不合法 |
 | `context_length_exceeded` | `proxy/upstream-errors.ts:mapUpstreamBusinessCode()` | 上游业务码 `11115`（prompt 超过模型上下文上限，推理前拒绝；message 附上游原文的 token 数） | 上下文超限 |

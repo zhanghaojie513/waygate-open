@@ -19,6 +19,7 @@ const TAG_TONE = { live: 'live', off: 'off', exp: 'exp' } as const;
 export function KeyTable({
   rows,
   clientByKey,
+  providerNameById,
   pendingId,
   onToggle,
   onEdit,
@@ -26,6 +27,8 @@ export function KeyTable({
 }: {
   rows: ClientKeyRow[];
   clientByKey?: Map<string, { clientId: string; name: string }>;
+  /** 提供商 id → 显示名（绑定列解析 id 用；旧数据存名字则原样显示）。 */
+  providerNameById?: Map<string, string>;
   pendingId: string | null;
   onToggle: (row: ClientKeyRow) => void;
   onEdit: (row: ClientKeyRow) => void;
@@ -63,10 +66,13 @@ export function KeyTable({
               </td>
               <td>
                 {bindings.length > 0 ? (
-                  <Tooltip content={`绑定提供商（路由优先级从高到低）：\n${bindings.join('\n')}`}>
+                  <Tooltip content={`绑定提供商（路由优先级从高到低）：\n${bindings.map((b) => providerNameById?.get(b) ?? b).join('\n')}`}>
                     <span className="key-bindings">
                       {(() => {
-                        const name = bindings[0];
+                        /* [2026-10-17] 绑定值可能是提供商 id（新）或名字（旧数据）——
+                           id 解析回名字显示，名字原样（后端 resolveRoute 双匹配兜底）。 */
+                        const raw = bindings[0];
+                        const name = providerNameById?.get(raw) ?? raw;
                         const entity = client?.name === name ? client : undefined;
                         return (
                           <>

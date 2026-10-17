@@ -24,6 +24,9 @@ function selectedClientId(): string | null {
 export function ApiKeysPage() {
   const keys = useResource(() => api.keys(), [], { cacheKey: 'keys' });
   const clients = useResource(() => api.clients('30d'), [], { cacheKey: 'clients:30d' });
+  /* [2026-10-17] 绑定列解析：密钥的 clients 值是提供商 id（新）/名字（旧），需要 id→名字映射。 */
+  const providers = useResource(() => api.providers(), [], { cacheKey: 'providers' });
+  const providerNameById = new Map((providers.data?.items ?? []).map((p) => [p.id, p.name]));
   const [clientId, setClientId] = useState(selectedClientId);
   const [creating, setCreating] = useState(false);
   const [pendingId, setPendingId] = useState<string | null>(null);
@@ -190,6 +193,7 @@ export function ApiKeysPage() {
             <KeyTable
               rows={rows}
               clientByKey={clientByKey}
+              providerNameById={providerNameById}
               pendingId={pendingId}
               onToggle={(row) => void toggleKey(row)}
               onEdit={setEditing}
