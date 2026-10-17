@@ -670,6 +670,10 @@ button.switch:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--brand-t
 .um-info b { display: block; font-size: 12.5px; font-weight: 500; color: var(--text-secondary); }
 .um-info i { display: block; font-style: normal; font-size: var(--fs-2xs); color: var(--text-ghost); margin-top: 3px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 模型 ID 芯片按内容宽度（inline-block）——它是个「值」不是「行」。
+   原先继承 `i { display: block }` 被拉满整行宽，短 ID 右边留下一条空色带；
+   字号补全后再看尤其突兀。 */
+.um-info .code-chip { display: inline-block; max-width: 100%; margin-top: 3px; }
 .um-meta { display: flex; align-items: center; gap: 12px; flex: 0 0 auto; }
 .um-meta svg { flex: 0 0 auto; }
 .um-ok { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-2xs); color: var(--signal-live); }
@@ -1839,12 +1843,14 @@ svg.ua-ico.none { color: var(--text-ghost); }
   margin-bottom: 0;
   white-space: nowrap;
 }
-/* 口径注脚：靠右、小字、最弱一级。超长时截断（完整文案仍在 title 属性里）。 */
+/* 口径注脚：靠右，与左侧指标名**同字号**（用户指定 2026-10-17）。
+   它的层级靠颜色（--text-faint）而不是字号拉开，别再压小 ——
+   此前 var(--fs-2xs) 未定义导致它继承 16px，比 12px 的指标名还大。 */
 .app .statbar .sb-top .sdl {
   flex: 0 1 auto;
   min-width: 0;
   margin-top: 0;
-  font-size: var(--fs-2xs);
+  font-size: 12px;
   line-height: 1.4;
   color: var(--text-ghost);
   text-align: right;

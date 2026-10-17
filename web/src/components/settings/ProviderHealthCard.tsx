@@ -118,12 +118,17 @@ export function ProviderHealthCard() {
                             {' '}
                             <Tooltip
                               content={
-                                '累计消耗 —— 这个账号近一年在该平台消耗掉的 credits 总量（账号级）。\n' +
-                                '它不是当前余额，也不是本服务转发的那部分：含官方客户端直连的用量。\n' +
-                                '数值等于每日消耗热力图近 371 天之和。'
+                                '已消耗 / 累计发放 —— me/usage 的套餐内 + 资源包口径（与剩余同源同刻）。\n' +
+                                '含官方客户端直连的用量，不是本服务转发的那部分。\n' +
+                                '「累计消耗（账号级）」是另一个量（每日消耗热力图近 371 天之和），口径不同不并列。'
                               }
                             >
-                              <span className="credit-aside">累计消耗 {formatCredits(p.qoderCredits.lifetimeConsumed)}{p.qoderCredits.granted !== null ? ` / 发放 ${formatCredits(p.qoderCredits.granted)}` : ''}</span>
+                              {/* [2026-10-17 用户裁决修正] 发放**保留**、消耗换成 me/usage 的
+                                  consumed（与 granted 同源配对）—— 此前误用 lifetimeConsumed
+                                  （credits 端点的账号级近一年总量），与发放不同源，配对是错的。 */}
+                              <span className="credit-aside">
+                                已消耗 {formatCredits(p.qoderCredits.consumed ?? 0)} / 发放 {p.qoderCredits.granted !== null ? formatCredits(p.qoderCredits.granted) : '—'}
+                              </span>
                             </Tooltip>
                           </>
                         ) : null}

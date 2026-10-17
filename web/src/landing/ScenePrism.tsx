@@ -1,6 +1,10 @@
 import { useEffect } from 'react';
 import { mountScene } from './scene';
 import { SceneLayer } from './SceneLayer';
+/* [2026-10-17 修复] scene.css 原本只被 LandingPage.tsx 导入——登录页引
+   ScenePrism 时 DOM 挂了但样式没跟（.pl 背景为透明）。CSS 导入移到这里：
+   ScenePrism 是「宿主」组件，谁引它谁就得到场景的完整样式（DOM+CSS+引擎）。 */
+import './scene.css';
 
 /**
  * 场景层宿主（Spec §4.2 约定的挂载点）。

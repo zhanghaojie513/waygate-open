@@ -602,6 +602,16 @@ export function makeOverview(win: MockWindow = 'today', nowMs: number = Date.now
     share: 0,
   }));
   const creditsCenti = sum(byClient, (r) => cents(r.credits ?? 0));
+  /* [2026-10-17] byProvider（概览「提供商用量摘要」改用此维度）：与 byClient 同源分账，
+     但按提供商桶（CLIENT_MIX 一桶=一家提供商），providerId 取各家真实 id 前缀对齐 mock。 */
+  const byProvider = CLIENT_MIX.map((m, i) => ({
+    providerId: 'p_mock_' + i,
+    provider: providerBucketName(m.clientId),
+    requests: clientReqs[i],
+    tokens: clientTokens[i],
+    credits: cents(clientReqs[i] * m.rate) / 100,
+    lastSeenAt: new Date(Date.now() - (i + 1) * 3600_000).toISOString(),
+  }));
 
   /* 趋势的 credits **反向**从积分总额分账而来（权重 = 各桶请求数）。
      不能让它自己写 `requests × 0.9`：那会让 Σtrend.credits 与客户端侧的合计
@@ -765,6 +775,7 @@ export function makeOverview(win: MockWindow = 'today', nowMs: number = Date.now
     trend,
     byModel,
     byClient,
+    byProvider,
     byTool,
     /* 认不出来的 UA 原文 —— 直接对应的证据（生产取 TOP 10，空 UA 不入列）。
        刻意给一条"看起来像正经客户端"的，演示"该往关键词表里加什么"。

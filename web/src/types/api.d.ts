@@ -205,6 +205,9 @@ export interface OverviewData {
   trend: TrendPoint[];
   byModel: BreakdownItem[];
   byClient: BreakdownItem[];
+  /** [2026-10-17] 按提供商归因（模型 id → 目录 provider；providerId=null 为目录外）。
+   * 与 byClient 是两个正交维度：这是「流量最终由哪家承接」，byClient 是「哪把密钥进来的」。 */
+  byProvider: Array<{ providerId: string | null; provider: string | null; requests: number; tokens: number; credits: number; lastSeenAt: string | null }>;
   /** [2026-10-08] 按「请求来自哪个工具」聚合（从 `ua` 现解析）。见 `ToolBreakdownItem`。 */
   byTool: ToolBreakdownItem[];
   /**

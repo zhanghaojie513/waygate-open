@@ -50,6 +50,10 @@ function makeService(overrides: { baseUrl?: string; key?: string } = {}) {
       for (const e of entries) configSet.baseUrl.push(String(e.value));
       return { applied: entries.length, requiresRestart: false, version: 2 };
     },
+    /* [2026-10-17] 激活路径改走 applyInternal（内部写不撞只读闸）—— mock 同步补 */
+    applyInternal: (entries: Array<{ key: string; value: unknown }>) => {
+      for (const e of entries) configSet.baseUrl.push(String(e.value));
+    },
   } as unknown as RelayConfigService;
   /* 目录同步要打网络 —— 测试里换成桩（记录同步打给了哪家，断言"打给了谁"）。 */
   const resyncCalls: string[] = [];
@@ -68,7 +72,7 @@ function makeService(overrides: { baseUrl?: string; key?: string } = {}) {
   };
   /* 偏好仓库用真表（prefs 表在 schema 里），删除护栏的测试要断言连带清理。 */
   prefs = new ProviderModelPrefsRepository(db);
-  /* [v1.6.11] 第 8 参 = WorkBuddy OAuth 替身（openai 转发/试通已改走它）。 */
+  /* [v1.6.13] 第 8 参 = WorkBuddy OAuth 替身（openai 转发/试通已改走它）。 */
   svc = new ProvidersService(repo, config, sync, probe as unknown as ModelProbeService, prefs, undefined, undefined, fakeWbOauth('oauth-access-token-test', 'uidseed0000'));
   svc.setProvidersDirForTest(join(dir, 'providers'));
   return { config, resyncCalls, probes, prefs };
@@ -101,7 +105,7 @@ describe('种子（升级零行为变化）', () => {
       name: 'WorkBuddy',
       baseUrl: 'https://copilot.tencent.com',
       active: true,
-      /* [v1.6.11] ck_ 退役：种子不再把 config.upstreamKey 迁到 .key。
+      /* [v1.6.13] ck_ 退役：种子不再把 config.upstreamKey 迁到 .key。
          本 spec 注入了「已授权」的 OAuth 替身 → configured=true（真机上未授权时为 false）。 */
       configured: true,
     });
@@ -138,7 +142,7 @@ describe('种子（升级零行为变化）', () => {
     makeService({ key: 'ck_abcdefgh12345678.zzzz' });
     (svc as unknown as { onApplicationBootstrap: () => void }).onApplicationBootstrap();
     const raw = JSON.stringify(svc.list());
-    /* [v1.6.11] openai 的掩码来自 OAuth 替身（uid 前 8 位），没有 ck_ 参与。 */
+    /* [v1.6.13] openai 的掩码来自 OAuth 替身（uid 前 8 位），没有 ck_ 参与。 */
     expect(raw).not.toContain('ck_abcdefgh12345678');
     expect(raw).not.toContain('oauth-access-token-test');
     expect(raw).toContain('oauth(');
@@ -379,7 +383,7 @@ describe('凭证形状', () => {
     (svc as unknown as { onApplicationBootstrap: () => void }).onApplicationBootstrap();
   });
 
-  /* ★★ [v1.6.11] ck_ 已退役：openai 走 OAuth，手填密钥一律拒绝并指向「重新导入授权」。 */
+  /* ★★ [v1.6.13] ck_ 已退役：openai 走 OAuth，手填密钥一律拒绝并指向「重新导入授权」。 */
   it('★ openai 不再支持手填 ck_ 密钥', () => {
     for (const bad of ['ck_1234567890abcdef.zzzz', 'anything']) {
       expect(() =>

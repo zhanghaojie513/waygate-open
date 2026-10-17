@@ -233,6 +233,35 @@ export class RelayConfigService implements OnModuleInit {
     return { applied: entries.length, requiresRestart, version: this.version };
   }
 
+  /**
+   * 内部系统写入：**不走 `EDITABLE_KEYS` 闸**（那是用户设置 PUT 的防线）。
+   *
+   * 用途：提供商激活 / 改址时同步 `upstream.baseUrl` —— 该键 v0.6.5 起对用户只读
+   * （出站都读 `provider.base_url`），但仍是「空库种子」与「无 active 提供商时的
+   * 额度回落」的数据源，系统侧需要保持它指向当前活提供商。
+   *
+   * ⚠️ [2026-10-17 事故] 此前激活路径误走 `applyUpdates` —— 撞只读闸抛
+   * 「upstream.baseUrl 不是可修改的设置项」，而 `repo.activate()` 已先落库：
+   * 用户看到报错、刷新后却已启用（启用按钮自 v0.6.5 起一直带着这个静默故障，
+   * 首次 UI 触发激活是本次删除重导才暴露）。
+   */
+  applyInternal(entries: Array<{ key: string; value: unknown }>): void {
+    for (const entry of entries) {
+      const check = validateSetting(entry.key, entry.value);
+      if (!check.ok) throw new RelayHttpError({
+        httpStatus: 400, code: 'invalid_request_body', apiCode: ApiCode.BAD_PARAM,
+        message: check.message ?? `${entry.key} 校验失败`,
+      });
+      this.assign(entry.key, entry.value);
+    }
+    this.version += 1;
+    writeFileSync(
+      this.settingsPath(),
+      JSON.stringify({ version: this.version, settings: this.settings }, null, 2),
+      { mode: 0o600 },
+    );
+  }
+
   private assign(key: string, value: unknown): void {
     const [group, field] = key.split('.');
     const target = this.settings as unknown as Record<string, Record<string, unknown>>;

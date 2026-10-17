@@ -310,6 +310,11 @@ export class OverviewService {
                   MAX(ts) AS lastTs,
                   MAX(key_hint) AS keyHint
              FROM requests WHERE ts >= ? AND ts < ?
+               /* [2026-10-17] 排除 model 为空的行：实测 36 条全是 429 并发拒绝 ——
+                  请求在模型解析之前就被闸挡下，model 列为空串；它们不是任何
+                  「模型」的用量，进 byModel 只会多出一行 0 token 的「未知模型」。
+                  metrics.requests 仍计入（被拒也是一次请求），仅摘要剔除。 */
+               AND model <> ''
             GROUP BY client_id, model
          )
          SELECT g.client_id AS clientId, g.model, g.requests, g.errors, g.creditsRaw, g.knownCount,

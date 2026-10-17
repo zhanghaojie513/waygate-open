@@ -13,9 +13,7 @@ import { Panel, MetricCard } from '../components/ui/Panel';
 import { StateBlock, errorDetail } from '../components/ui/StateBlock';
 import { OverviewSkeleton } from '../components/ui/PageSkeleton';
 import { CreditBanner } from '../components/overview/CreditBanner';
-import { Tooltip } from '../components/ui/Tooltip';
 import { Banner } from '../components/ui/Banner';
-import { ClientModelTip } from '../components/usage/ClientModelTip';
 import { ClientMetricTip } from '../components/usage/ClientMetricTip';
 import { formatInt, formatCredits, formatPercent, formatRelative, formatTokens } from '../lib/format';
 import { WINDOW_OPTIONS, WINDOW_LABEL } from '../lib/console';
@@ -174,13 +172,16 @@ export function OverviewPage({ navigate }: { navigate: (r: Route) => void }) {
                 同一份 creditLedgers 仍在「设置 → 提供商健康卡」（语境正确，带口径
                 悬停解释）与「客户端管理 → 模型数 tooltip」（剩余/已用）展示。 */}
 
-            {/* [v0.5.2] 提供商用量摘要 —— 回答「谁在用」：哪把密钥消耗了多少。
-                与下方模型摘要（"花在哪"）构成两个正交视角，数据同源同窗口。 */}
-            <Panel title="提供商用量摘要" aside={<Pill>{d.byClient.length} 个提供商 · 按 Token 排序</Pill>}>
-              {d.byClient.length > 0 ? (
+            {/* [2026-10-17 修正] 本表改渲染 **byProvider**（按提供商归因：模型 id → 目录 provider）。
+                此前误用 byClient（按 API 密钥）——密钥显示名取首绑提供商，两把密钥
+                首绑同一家时（如 workbuddy 与 all 都首绑 WorkBuddy）出现"两个 WorkBuddy"，
+                与标题「提供商用量摘要」不符。byProvider 无逐模型明细（该维度在下方模型摘要表），
+                故本表不再挂 ClientModelTip。 */}
+            <Panel title="提供商用量摘要" aside={<Pill>{d.byProvider.length} 个提供商 · 按 Token 排序</Pill>}>
+              {d.byProvider.length > 0 ? (
                 <div className="tbl-scroll">
                   <table className="tbl">
-                    <caption className="sr-only">提供商用量摘要，共 {d.byClient.length} 个提供商</caption>
+                    <caption className="sr-only">提供商用量摘要，共 {d.byProvider.length} 个提供商</caption>
                     <thead>
                       <tr>
                         <th scope="col">提供商</th>
@@ -194,25 +195,26 @@ export function OverviewPage({ navigate }: { navigate: (r: Route) => void }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {[...d.byClient].sort((a, b) => (b.tokens ?? 0) - (a.tokens ?? 0)).slice(0, 6).map((c) => (
-                        <tr key={c.clientId ?? c.client ?? 'unknown'}>
+                      {[...d.byProvider].sort((a, b) => (b.tokens ?? 0) - (a.tokens ?? 0)).slice(0, 6).map((p) => {
+                        const share = d && d.metrics.totalTokens > 0 ? (p.tokens ?? 0) / d.metrics.totalTokens : null;
+                        return (
+                        <tr key={p.providerId ?? '__unattributed__'}>
                           <td className="td-strong">
-                            {/* 悬停提供商名 → 该提供商的按模型消耗；Portal Tooltip 会脱离表格滚动容器定位。 */}
-                            <Tooltip content={<ClientModelTip row={c} />}>
-                              <span>{c.client ?? '未归属'}</span>
-                            </Tooltip>
+                            {/* providerId=null = 目录外模型（请求日志「提供商」列同口径显示 —） */}
+                            <span>{p.provider ?? '未归属'}</span>
                           </td>
-                          <td className="r td-mono">{formatInt(c.requests)}</td>
-                          <td className="r td-mono">{formatTokens(c.tokens ?? 0)}</td>
-                          <td className="r td-mono">{formatCredits(c.credits)}</td>
-                          <td className="r td-mono">{formatPercent(c.share)}</td>
+                          <td className="r td-mono">{formatInt(p.requests)}</td>
+                          <td className="r td-mono">{formatTokens(p.tokens ?? 0)}</td>
+                          <td className="r td-mono">{formatCredits(p.credits)}</td>
+                          <td className="r td-mono">{formatPercent(share)}</td>
                           <td>
                             <div className="ov-bar-track">
-                              <div className="ov-bar-fill" style={{ width: `${Math.max(2, Math.round((c.share ?? 0) * 100))}%` }} />
+                              <div className="ov-bar-fill" style={{ width: `${Math.max(2, Math.round((share ?? 0) * 100))}%` }} />
                             </div>
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

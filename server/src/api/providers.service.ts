@@ -186,7 +186,7 @@ export class ProvidersService implements OnApplicationBootstrap {
     const baseUrl = this.config.get().upstream.baseUrl;
     this.repo.create({ id: DEFAULT_PROVIDER_ID, name: DEFAULT_PROVIDER_NAME, baseUrl, active: true });
 
-    /* [v1.6.11] 不再把 config.upstreamKey 迁到 .key —— WorkBuddy 的凭证是 OAuth 槽
+    /* [v1.6.13] 不再把 config.upstreamKey 迁到 .key —— WorkBuddy 的凭证是 OAuth 槽
        （ck_ 已退役）。升级后该行显示「未配置」，用户在控制台点「重新导入授权」即可。
        旧 .key 文件如存在也不读（不再是凭证来源），保留不删以免误伤回滚。 */
     if (this.catalog) {
@@ -288,7 +288,7 @@ export class ProvidersService implements OnApplicationBootstrap {
            否则出站继续用旧令牌 —— 用户视角就是「改了凭证却没生效」。 */
         if (row.protocol === 'anthropic') this.minimaxTokens?.invalidate(id);
       }
-      /* [v1.6.11] openai 走上面的 parseCredential 报错（ck_ 已退役）—— 这里到不了。 */
+      /* [v1.6.13] openai 走上面的 parseCredential 报错（ck_ 已退役）—— 这里到不了。 */
     }
 
     /* 活提供商的地址改了 → 立即写进设置（转发/实测/目录拉取都读它） */
@@ -316,7 +316,7 @@ export class ProvidersService implements OnApplicationBootstrap {
        其余都不放：
        · [v0.5.0] anthropic+oauth_minimax：文件里是 refresh token，出站时换 access token；
        · [v0.6.0] qoder：凭证是身份 JSON，出站由 QoderCredentialStore 直读文件；
-       · [v1.6.11] openai（WorkBuddy）：凭证是 OAuth 槽，出站由 WbOauthService 取（ck_ 已退役）。 */
+       · [v1.6.13] openai（WorkBuddy）：凭证是 OAuth 槽，出站由 WbOauthService 取（ck_ 已退役）。 */
     if (row.protocol === 'anthropic' && row.cred_kind !== 'oauth_minimax') {
       this.config.setUpstreamKey(this.readCredentialFile(id));
     }
@@ -344,13 +344,17 @@ export class ProvidersService implements OnApplicationBootstrap {
     this.repo.delete(id);
     /* 目录分区一并清（多生效下其他家的清单不动）。 */
     this.catalog?.clearProvider(id);
-    /* 偏好与凭证都是"这家提供商的"，一起清（provider_model_prefs 无 FK，不连带清理会留孤儿行）。 */
+    /* 偏好与凭证都是"这家提供商的"，一起清（provider_model_prefs 无 FK，不连带清理会留孤儿行）。
+       [2026-10-17] 凭证清理从「只删 .key」扩到「该 id 的全部凭证类文件」——
+       实测删 p_mm0001 后 .access 残留（token 服务的缓存文件不在原清理范围）。 */
     this.prefs.deleteForProvider(id);
-    try {
-      const file = this.credentialPath(id);
-      if (existsSync(file)) unlinkSync(file);
-    } catch (err) {
-      this.logger.warn(`删除凭证文件失败（提供商已删，文件遗留无危害）：${(err as Error).message}`);
+    for (const suffix of ['.key', '.access', '.oauth']) {
+      try {
+        const file = this.credentialPath(id).replace(/\.key$/, suffix);
+        if (existsSync(file)) unlinkSync(file);
+      } catch (err) {
+        this.logger.warn(`删除凭证文件 ${suffix} 失败（提供商已删，文件遗留无危害）：${(err as Error).message}`);
+      }
     }
     this.logger.log(`删除提供商 ${row.name}（${row.id}）`);
   }
@@ -404,7 +408,7 @@ export class ProvidersService implements OnApplicationBootstrap {
     const row = this.mustFind(id);
     let key: string;
     if (row.protocol === 'openai') {
-      /* [v1.6.11] WorkBuddy 的凭证是 OAuth 槽（不与行内文件同址）—— 从服务取 access token。
+      /* [v1.6.13] WorkBuddy 的凭证是 OAuth 槽（不与行内文件同址）—— 从服务取 access token。
          不接草稿 credential（ck_ 已退役，界面也不再提供输入框）。 */
       if (rawKey !== undefined && rawKey !== null && rawKey !== '') {
         throw this.bad('WorkBuddy 已不再使用 ck_ 密钥 —— 请用「重新导入授权」完成官方授权。');
@@ -465,7 +469,7 @@ export class ProvidersService implements OnApplicationBootstrap {
 
   private toItem(row: ProviderRow): ProviderItem {
     const key = this.readCredentialFile(row.id);
-    /* [v1.6.11] openai（WorkBuddy）的「已配置」改看 **OAuth 槽** —— ck_ 已退役。
+    /* [v1.6.13] openai（WorkBuddy）的「已配置」改看 **OAuth 槽** —— ck_ 已退役。
        其余两家仍看凭证文件（anthropic = mmort_ refresh token / M Plan key；
        qoder = 身份 JSON）。 */
     const isOpenai = row.protocol !== 'anthropic' && row.protocol !== 'qoder';
@@ -522,7 +526,7 @@ export class ProvidersService implements OnApplicationBootstrap {
 
   /** 写进 settings.upstream.baseUrl —— 持久化 + 热生效（resolveUpstreamBase 每请求都读它）。 */
   private applyBaseUrlToSettings(baseUrl: string): void {
-    this.config.applyUpdates([{ key: 'upstream.baseUrl', value: baseUrl }]);
+    this.config.applyInternal([{ key: 'upstream.baseUrl', value: baseUrl }]);
   }
 
   private readCredentialFile(id: string): string {
@@ -602,11 +606,11 @@ export class ProvidersService implements OnApplicationBootstrap {
    * 这两家的凭证是客户端登录态里的东西（MiniMax = `mmort_` refresh token；
    * Qoder = 一整段身份 JSON），用户手上没有、也手敲不出来 —— 「配置」抽屉为此在
    * v1.6.4 已改为导入指引。但**新增**弹窗当时没跟着改，仍强制必填，
-   * 于是这两家在界面上**根本建不出来**：导入脚本 `qoder-import-credential.mjs <id>`
+   * 于是这两家在界面上**根本建不出来**：导入又要 provider id
    * 又要 provider id，而 id 建完才有 —— 死锁。
    *
    * 放行留空后：行先建出来（`configured=false`），再用「自动导入」把凭证灌进去。
-   * [v1.6.11] openai（WorkBuddy）也放行留空 —— **ck_ 已退役**，三家统一走
+   * [v1.6.13] openai（WorkBuddy）也放行留空 —— **ck_ 已退役**，三家统一走
    * 「导入客户端 → 官方授权」；凭证分别落 .oauth（WorkBuddy）/ .key（另两家）。
    */
   private parseCredential(raw: unknown, protocol: 'openai' | 'anthropic' | 'qoder' = 'openai'): string {

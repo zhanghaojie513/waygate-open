@@ -1,6 +1,6 @@
 {
   "name": "waygate-open",
-  "version": "1.6.16",
+  "version": "1.6.17",
   "description": "途关 Waygate · 本地启动 —— 把 WorkBuddy / MiniMax Code / Qoder CN 的客户端订阅转成 OpenAI / Anthropic 兼容 base_url（自带控制台，一条命令起服务并自动打开浏览器）",
   "license": "MIT",
   "bin": {
