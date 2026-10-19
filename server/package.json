@@ -1,6 +1,6 @@
 {
   "name": "waygate-server",
-  "version": "1.6.26",
+  "version": "1.6.27",
   "private": true,
   "description": "驿站 · Relay — OpenAI 兼容反向代理与控制台（后端）",
   "engines": {

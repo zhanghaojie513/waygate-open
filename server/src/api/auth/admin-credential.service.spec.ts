@@ -498,3 +498,55 @@ describe('admin-credential · isBuiltinDefaultInUse（登录页预填判据）',
     expect(svc.isBuiltinDefaultInUse()).toBe(false);
   });
 });
+
+/*
+ * [v1.6.27] 自证式判定：不依赖 source 标记，直接验「哈希能否被 waygate 通过」。
+ *
+ * 这条修的是一个真实缺陷：`source='generated'` 同时表示「内置默认值」与
+ * 「随机生成的 16 位」，旧方案靠它判断会把「早先随机生成过口令的用户」
+ * 误判成「还在用默认值」—— 登录页于是显示一个根本不对的 waygate。
+ */
+describe('admin-credential · detectBuiltinDefault（自证式，不依赖 source）', () => {
+  it('★ 重启后仍识别：库里存的就是 waygate 哈希 → true', () => {
+    // 模拟「首次启动生成 waygate，重启后走数据库分支」
+    repo.upsert(hashPassword(BUILTIN_DEFAULT_PASSWORD), 'generated');
+    const svc = bootService();
+    expect(svc.isBuiltinDefaultInUse()).toBe(true);
+  });
+
+  it('★ source=generated 但哈希是随机的 16 位 → false（旧方案会误判成 true）', () => {
+    repo.upsert(hashPassword('Xk9mQ2pL7vN4tR8w'), 'generated');
+    const svc = bootService();
+    expect(svc.isBuiltinDefaultInUse()).toBe(false);
+  });
+
+  it('source=console 但哈希恰好是 waygate → true（自证优先于来源）', () => {
+    repo.upsert(hashPassword(BUILTIN_DEFAULT_PASSWORD), 'console');
+    const svc = bootService();
+    expect(svc.isBuiltinDefaultInUse()).toBe(true);
+  });
+
+  it('用户改密成别的值 → false', () => {
+    repo.upsert(hashPassword(BUILTIN_DEFAULT_PASSWORD), 'console');
+    const svc = bootService();
+    expect(svc.isBuiltinDefaultInUse()).toBe(true);
+    svc.setPassword('my-new-password-1');
+    expect(svc.isBuiltinDefaultInUse()).toBe(false);
+  });
+
+  it('用户改密成别的值后不能「改回」waygate（密码策略下限 8 位，waygate 只有 7 位）', () => {
+    repo.upsert(hashPassword('some-old-password-1'), 'console');
+    const svc = bootService();
+    expect(svc.isBuiltinDefaultInUse()).toBe(false);
+    /* 这是一条**安全性质**：默认口令比策略下限还短，用户无法主动把它设回去，
+       所以「改过密之后又回到默认值」这条路径根本不存在。 */
+    expect(() => svc.setPassword(BUILTIN_DEFAULT_PASSWORD)).toThrow();
+    expect(svc.isBuiltinDefaultInUse()).toBe(false);
+  });
+
+  it('坏哈希 → false（宁可不显示，也不显示错的）', () => {
+    repo.upsert('not-a-valid-hash', 'generated');
+    const svc = bootService();
+    expect(svc.isBuiltinDefaultInUse()).toBe(false);
+  });
+});

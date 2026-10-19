@@ -29,6 +29,7 @@
  */
 
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { scryptSync, timingSafeEqual } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { resolveDataDir } from '../../store/db';
@@ -79,12 +80,19 @@ export class AdminCredentialService implements OnModuleInit {
   /** 本次启动是否新生成过口令（用于在日志里给出明确指引）。 */
   private generatedThisBoot = false;
   /**
-   * [v1.6.25] 当前生效的口令**是否仍是本机内置默认值**（即 CLI 在回环绑定时注入的
-   * `waygate`）。只有这一种情形允许把明文告诉登录页 —— 它是公开的、写在文档里的值，
-   * 告诉前端不泄露任何秘密，反而省掉「去终端里找口令」这一步。
+   * [v1.6.27] 当前生效的口令**是否就是本机内置默认值 `waygate`**。
    *
-   * 一旦用户改过密（或用了 RELAY_ADMIN_PASSWORD_HASH / 自定口令 / 随机生成），
-   * 这里恒 false，登录页就不会显示任何提示。
+   * 只有这一种情形允许登录页把它显示出来 —— 它是公开值，不是用户的秘密。
+   *
+   * ★ 判定方式改成「**自证**」而不是「记标记」：
+   *   启动装载完哈希后，直接验一次 `waygate` 是否匹配。
+   *   为什么不靠数据库里的 `source` 字段：`'generated'` 同时表示
+   *   「内置默认值」与「随机生成的 16 位」，无法区分 —— 早先版本随机生成过口令的
+   *   用户（例如升级前就装过）会被误判成「还在用默认值」，登录页就会显示一个
+   *   根本不对的 `waygate`（实测踩过：用户照着输，报「管理口令不正确」）。
+   *   自证式判断没有这个歧义：验得过就是、验不过就不是。
+   *
+   * 代价：每次启动多一次 scrypt（实测 ~67ms，可接受）。
    */
   private builtinDefaultInUse = false;
 
@@ -92,6 +100,38 @@ export class AdminCredentialService implements OnModuleInit {
 
   onModuleInit(): void {
     this.storedHash = this.load();
+    this.detectBuiltinDefault();
+  }
+
+  /**
+   * 校验当前生效的哈希是否就是内置默认口令（同步版，启动期用一次）。
+   *
+   * 与 `verify()` 的区别：这里用 `scryptSync`，因为 `onModuleInit` 是同步签名；
+   * 只跑一次、~67ms，不值得为它把整个启动链改成异步。
+   */
+  private detectBuiltinDefault(): void {
+    if (!this.storedHash) {
+      this.builtinDefaultInUse = false;
+      return;
+    }
+    try {
+      const parsed = parsePasswordHash(this.storedHash);
+      if (!parsed) {
+        this.builtinDefaultInUse = false;
+        return;
+      }
+      const derived = scryptSync(BUILTIN_DEFAULT_PASSWORD, parsed.salt, parsed.hash.length, {
+        N: parsed.N,
+        r: parsed.r,
+        p: parsed.p,
+        maxmem: 128 * parsed.N * parsed.r * 2,
+      });
+      this.builtinDefaultInUse =
+        derived.length === parsed.hash.length && timingSafeEqual(derived, parsed.hash);
+    } catch {
+      /* 哈希损坏等：按「不是默认值」处理 —— 宁可不显示，也不显示错的。 */
+      this.builtinDefaultInUse = false;
+    }
   }
 
   private hashPath(): string {
@@ -188,9 +228,8 @@ export class AdminCredentialService implements OnModuleInit {
     const persisted = this.persist(stored, 'generated');
     this.generatedThisBoot = true;
     this.source = 'generated';
-    /* [v1.6.25] 只有「preset 恰为内置默认值」才算内置默认口令 —— 用户自定的口令
-       （哪怕很短）一律不算，登录页不会显示。 */
-    this.builtinDefaultInUse = preset === BUILTIN_DEFAULT_PASSWORD;
+    /* builtinDefaultInUse 不在这里设 —— 由 onModuleInit 的 detectBuiltinDefault()
+       统一按「哈希能否被 waygate 验证通过」自证，避免来源标记的歧义。 */
 
     // ★ 只在这里出现一次，且走 stdout 而非 logger（logger 可能被重定向到文件）
     process.stdout.write(
@@ -277,8 +316,8 @@ export class AdminCredentialService implements OnModuleInit {
     const persisted = this.persist(stored, source, Date.now());
     this.storedHash = stored;
     this.source = 'database';
-    /* [v1.6.25] 改密即不再使用内置默认口令 —— 登录页不能再把 `waygate` 显示出来。 */
-    this.builtinDefaultInUse = false;
+    /* [v1.6.27] 改密后重新自证：万一用户「改」成的就是 waygate，那它仍是默认值。 */
+    this.detectBuiltinDefault();
     return persisted;
   }
 
