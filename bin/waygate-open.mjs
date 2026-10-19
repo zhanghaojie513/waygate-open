@@ -211,12 +211,43 @@ async function main() {
   /* 端口预检（v1.6.23）：先探一次再 spawn，把「EACCES / EADDRINUSE + 原始堆栈」
      翻译成能直接照做的中文提示。Windows 上最常见的不是「被占用」，而是
      端口落在 **Hyper-V / WSL / Docker 预留的排除段**里 —— 那种情况 netstat
-     看不到任何进程，bind 却恒 EACCES，只给堆栈用户无从下手。 */
-  const portProblem = await probePort(host, Number(port));
+     看不到任何进程，bind 却恒 EACCES，只给堆栈用户无从下手。
+
+     [v1.6.24] 与三个独立工具对齐：用户**没显式指定 --port/RELAY_PORT** 时，
+     默认端口不可用就自动往后找一个能用的 ——「装完直接 npx 就能跑」是本地工具
+     的底线。显式指定了却绑不上仍原样报错（部署脚本里的固定端口不能被换掉）。 */
+  const portExplicit = args.port !== undefined || (process.env.RELAY_PORT ?? '').trim() !== '';
+  let effectivePort = Number(port);
+  let autoPortFrom = null;
+  const portProblem = await probePort(host, effectivePort);
   if (portProblem) {
-    console.error(portProblem);
-    process.exit(1);
+    if (portExplicit) {
+      console.error(portProblem);
+      process.exit(1);
+    }
+    const start = effectivePort >= 8691 && effectivePort <= 8790 ? 8791 : effectivePort + 1;
+    let found = null;
+    for (let i = 0; i < 20; i += 1) {
+      const candidate = start + i;
+      if (candidate > 65535) break;
+      if ((await probePort(host, candidate)) === null) {
+        found = candidate;
+        break;
+      }
+    }
+    if (found === null) {
+      console.error(portProblem);
+      process.exit(1);
+    }
+    autoPortFrom = effectivePort;
+    effectivePort = found;
+    console.error(
+      `默认端口 ${autoPortFrom} 在本机不可用（多半是 Windows 系统预留段），已自动改用 ${effectivePort}。\n` +
+        `  · 想固定下来：加 \`--port ${effectivePort}\`，或设 RELAY_PORT=${effectivePort}；\n` +
+        `  · 查预留段：netsh interface ipv4 show excludedportrange protocol=tcp`,
+    );
   }
+  const usePort = effectivePort;
 
   /* 对外监听（非回环）在服务端要显式放行 —— 把用户的 --host 意图翻译成那个环境变量，
      否则服务端会静默降级回 127.0.0.1，用户以为监听成功了。 */
@@ -232,7 +263,7 @@ async function main() {
 
   console.log('途关 Waygate · 本地启动');
   console.log(`  数据目录  ${dataDir}`);
-  console.log(`  监听      http://${host}:${port}`);
+  console.log(`  监听      http://${host}:${usePort}`);
   if (args.password ?? process.env.RELAY_ADMIN_PASSWORD ?? defaultPassword) {
     const pw = args.password ?? process.env.RELAY_ADMIN_PASSWORD ?? defaultPassword;
     console.log(`  管理口令  ${pw}${isLoopback && pw === defaultPassword ? '（默认，建议登录后改掉）' : ''}`);
@@ -243,7 +274,7 @@ async function main() {
     env: {
       ...process.env,
       RELAY_DATA_DIR: dataDir,
-      RELAY_PORT: port,
+      RELAY_PORT: String(usePort),
       ...(allowPublicBind ? { RELAY_ALLOW_PUBLIC_BIND: allowPublicBind } : {}),
       ...((args.password ?? process.env.RELAY_ADMIN_PASSWORD ?? defaultPassword)
         ? { RELAY_ADMIN_PASSWORD: args.password ?? process.env.RELAY_ADMIN_PASSWORD ?? defaultPassword }
@@ -261,10 +292,10 @@ async function main() {
 
   child.on('exit', (code) => process.exit(code ?? 0));
 
-  const base = `http://${host === '0.0.0.0' ? '127.0.0.1' : host}:${port}`;
+  const base = `http://${host === '0.0.0.0' ? '127.0.0.1' : host}:${usePort}`;
   const ready = await waitReady(base);
   if (!ready) {
-    console.error(`\n服务在 30 秒内没就绪，请查看上面的日志（端口 ${port} 可能被占用）。`);
+    console.error(`\n服务在 30 秒内没就绪，请查看上面的日志（端口 ${usePort} 可能被占用）。`);
     return;
   }
 

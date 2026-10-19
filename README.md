@@ -8,7 +8,7 @@
 [![NestJS](https://img.shields.io/badge/NestJS-12-E0234E?style=flat-square)](https://nestjs.com)
 [![SQLite](https://img.shields.io/badge/SQLite-better--sqlite3-003B57?style=flat-square)](https://github.com/WiseLibs/better-sqlite3)
 [![Node](https://img.shields.io/badge/Node-%E2%89%A522.9-3C873A?style=flat-square)](https://nodejs.org)
-[![version](https://img.shields.io/badge/version-1.6.23-4A38C0?style=flat-square)](https://github.com/zhanghaojie513/waygate-open/releases)
+[![version](https://img.shields.io/badge/version-1.6.24-4A38C0?style=flat-square)](https://github.com/zhanghaojie513/waygate-open/releases)
 [![tests](https://img.shields.io/badge/tests-754%20passed-0A7247?style=flat-square)](./server)
 
 ![途关 · Waygate](docs/img/intro.png)
@@ -73,7 +73,7 @@ npm install -g waygate-open
 waygate-open
 ```
 
-想看固定版本而不是跟着 `latest` 走：`npx waygate-open@1.6.23`。
+想看固定版本而不是跟着 `latest` 走：`npx waygate-open@1.6.24`。
 
 两种方式行为一致：起本地服务并**自动打开浏览器**到控制台（默认 <http://127.0.0.1:8787/console>）。
 首次启动的管理口令默认是 **`waygate`** —— 仅当只监听回环（`127.0.0.1`）时套用这个
@@ -427,4 +427,4 @@ tools/                     仓库级工具（lint 门禁、token 合并、截图
 
 ---
 
-版本约定：`1.0.0` 起 API 契约稳定（当前 `1.6.23`，见 `server/src/version.ts`；历史版本见 [Releases](https://github.com/zhanghaojie513/waygate-open/releases)）。
+版本约定：`1.0.0` 起 API 契约稳定（当前 `1.6.24`，见 `server/src/version.ts`；历史版本见 [Releases](https://github.com/zhanghaojie513/waygate-open/releases)）。
