@@ -1,7 +1,7 @@
 {
   "name": "waygate-web",
   "private": true,
-  "version": "1.6.25",
+  "version": "1.6.26",
   "type": "module",
   "description": "驿站 · Relay 控制台前端（React 19 + Vite 8 + TypeScript）",
   "engines": {

@@ -135,8 +135,9 @@ export function LoginPage({ session, mockHint }: { session: Session; mockHint: s
         <p className="login-hint">
           {usingDefault ? (
             <>
-              已填入<b>本机默认口令</b> <code>{password}</code> —— 直接点「进入控制台」即可。
-              登录后请到「设置 → 管理口令」改掉它。
+              本机默认口令：<code>{password}</code>
+              <br />
+              首次启动可直接登录，建议登录后到「设置 → 管理口令」改掉。
             </>
           ) : mockHint ? (
             `当前为 Mock 模式（npm run dev:mock），口令固定为 ${mockHint}。`

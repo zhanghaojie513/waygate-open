@@ -257,16 +257,30 @@ async function main() {
      理由：本地启动的诉求是"装上就能用"，不该卡在"去日志里抄那串随机字符"。
      而对外监听时，一个众所周知的口令等于把控制台公开 —— 那种情形仍走随机生成，
      用户从启动日志里取（CLI 会把日志透传出来）。
-     用户显式给了 --password / RELAY_ADMIN_PASSWORD 时以他给的为准。 */
+     用户显式给了 --password / RELAY_ADMIN_PASSWORD 时以他给的为准。
+
+     [v1.6.26] ★ 只有**首次启动**才打印它。
+     服务端装载优先级是「env hash > 数据库 > 文件 > 首次生成」—— 一旦库里已有口令
+     （用户改过密，或早先版本随机生成过），注入的 `waygate` **根本不会被采用**。
+     此前无条件打印，等于告诉用户一个无效口令（实测踩到：输入框填 waygate 报
+     「管理口令不正确」，因为库里是更早随机生成的那个）。
+     判据 = 数据目录里还没有库文件。宁可少说，也不能说错。 */
   const isLoopback = !allowPublicBind;
   const defaultPassword = isLoopback ? 'waygate' : undefined;
+  const explicitPw = args.password ?? process.env.RELAY_ADMIN_PASSWORD;
+  const firstRun = !existsSync(join(dataDir, 'relay.db'));
 
   console.log('途关 Waygate · 本地启动');
   console.log(`  数据目录  ${dataDir}`);
   console.log(`  监听      http://${host}:${usePort}`);
-  if (args.password ?? process.env.RELAY_ADMIN_PASSWORD ?? defaultPassword) {
-    const pw = args.password ?? process.env.RELAY_ADMIN_PASSWORD ?? defaultPassword;
-    console.log(`  管理口令  ${pw}${isLoopback && pw === defaultPassword ? '（默认，建议登录后改掉）' : ''}`);
+  if (explicitPw) {
+    console.log(`  管理口令  ${explicitPw}（你指定）`);
+  } else if (firstRun && defaultPassword) {
+    console.log(`  管理口令  ${defaultPassword}（默认，建议登录后改掉）`);
+  } else {
+    /* 库已存在 → 口令由服务端从库里取，我们不知道明文（也不该知道）。
+       指向「忘了怎么办」比编一个值有用。 */
+    console.log('  管理口令  沿用已有口令（忘记可在控制台重置：设置 → 管理口令）');
   }
 
   const child = spawn(process.execPath, [entry], {
