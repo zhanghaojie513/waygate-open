@@ -26,6 +26,7 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
+import { resolveDataDir } from '../store/db';
 
 const execFileAsync = promisify(execFile);
 
@@ -75,15 +76,29 @@ export class CredentialImportService {
     }
 
     if (protocol === 'openai') {
-      return { ok: false, outcome: 'unavailable', message: 'WorkBuddy 使用静态 API 密钥，无需本机导入（直接在「配置」里更换）。' };
+      /* [v1.6.28] 旧文案说「用静态 API 密钥，在配置里更换」—— ck_ 早已退役（v1.6.11
+         起转发与领取域都走 OAuth）。而且 WorkBuddy **本机没有可读的登录态文件**：
+         它的凭证来自设备授权，不走客户端文件。所以这里不是「暂时读不到」，
+         而是**这条路对它根本不适用** —— 说清楚，别让用户以为是环境问题。 */
+      return {
+        ok: false,
+        outcome: 'unavailable',
+        message: 'WorkBuddy 的凭证来自官方 OAuth 授权，本机没有可读取的登录态文件。\n'
+          + '请点「重新导入授权」走一次浏览器授权。',
+      };
     }
     if (protocol === 'anthropic') {
       if (!this.minimaxClientPresent()) {
         return {
           ok: false,
           outcome: 'unavailable',
-          message: '本服务所在机器上找不到 MiniMax Code 客户端登录态（分离部署的正常情形）。'
-            + '请在**装了客户端的那台机器**上跑：node tools/import-credential-push.mjs <relay地址> minimax',
+          /* [v1.6.28] 措辞分两种情况说清楚，别让本机启动的用户以为自己是"远程部署":
+             · 本机启动（开源版常态）→ 就是没登录过客户端，去装/登录即可；
+             · 分离部署 → 服务器读不到你本机的文件，用推送脚本。 */
+          message: '本机找不到 MiniMax Code 客户端的登录态文件'
+            + '（路径 ~/.minimax/auth/prod/cn/mcode-public/auth.json）。\n'
+            + '· 如果客户端就在这台机器上：先在客户端登录一次，再点本按钮。\n'
+            + '· 如果 relay 跑在服务器、客户端在你本机：在客户端那台机器上跑下面的命令推送。',
         };
       }
       return this.run(this.toolsPath('minimax-import-credential.mjs'), [providerId], providerId);
@@ -111,7 +126,13 @@ export class CredentialImportService {
     try {
       const { stdout } = await execFileAsync(process.execPath, [script, ...args], {
         cwd: this.repoRoot(),
-        env: { ...process.env, RELAY_DATA_DIR: process.env.RELAY_DATA_DIR ?? join(this.repoRoot(), '..', 'data') },
+        /* [v1.6.28] ★ 必须传**服务端自己正在用的**数据目录。
+           旧写法回落到 `server/../data`（包根下），而 npm 形态下服务端的数据目录是
+           `~/.waygate/open`（由 bin 注入 RELAY_DATA_DIR）—— 两者不一致时，
+           脚本会把凭证写到一个服务根本不看的地方：按钮报成功、控制台却仍是未配置。
+           `resolveDataDir()` 就是服务端自己的规则（RELAY_DATA_DIR || cwd/data），
+           两者从此同源。 */
+        env: { ...process.env, RELAY_DATA_DIR: resolveDataDir() },
         timeout: 30_000,
         encoding: 'utf8',
       });

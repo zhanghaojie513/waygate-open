@@ -484,12 +484,21 @@ function EditProviderDrawer({
         setImportMsg({ kind: 'ok', text: r.message + (r.detail ? `\n${r.detail}` : '') });
         onSaved();
       } else if (r.outcome === 'unavailable') {
-        /* 分离部署：服务端读不到客户端登录态 —— 给出本机推送命令（一条命令搞定）。 */
-        const kind = provider.protocol === 'qoder' ? 'qoder' : 'minimax';
+        /* [v1.6.28] 不再统一替换成「跨机推送」提示 —— 那个话术只适用于
+           「relay 在服务器、客户端在本机」的分离部署。
+           · WorkBuddy（openai）**根本没有可读的客户端登录态**：它走 OAuth，
+             本按钮对它永远不适用（UI 也已不再显示该按钮，这里是兜底）。
+           · 真·分离部署时，后端 message 已说明该跑什么；原文照显示，别覆盖。 */
         setImportMsg({
           kind: 'unavailable',
-          text: '本服务所在机器上读不到客户端登录态（远程部署的正常情形）。',
-          command: `node tools/import-credential-push.mjs ${location.origin} ${kind} --provider ${provider.id}`,
+          text: r.message,
+          ...(provider.protocol !== 'openai'
+            ? {
+                command: `node tools/import-credential-push.mjs ${location.origin} ${
+                  provider.protocol === 'qoder' ? 'qoder' : 'minimax'
+                } --provider ${provider.id}`,
+              }
+            : {}),
         });
       } else {
         setImportMsg({ kind: 'error', text: r.message + (r.detail ? `\n${r.detail}` : '') });
@@ -573,7 +582,7 @@ function EditProviderDrawer({
                 ) : provider.protocol === 'anthropic' ? (
                   <>
                     凭证是客户端登录态里的 <span className="code-chip">mmort_…</span> refresh token。
-                    请用<b>专用账号</b>（与桌面端共用会互相顶下线）。
+                    官方口径是<b>单会话</b>，建议用<b>专用账号</b>（与桌面端共用时可能出现互相顶下线）。
                   </>
                 ) : (
                   <>凭证来自 Qoder 客户端登录态（一段<b>身份 JSON</b>）。桌面客户端与它<b>互不影响</b>。</>
@@ -589,15 +598,21 @@ function EditProviderDrawer({
                   <Download size={14} />
                   重新导入授权
                 </button>
-                <button
-                  type="button"
-                  className="btn btn-quiet btn-sm"
-                  disabled={importing}
-                  onClick={() => void autoImport()}
-                >
-                  {importing ? <Loader2 size={14} /> : <Download size={14} />}
-                  从本机客户端读取
-                </button>
+                {/* [v1.6.28] 「从本机客户端读取」只对 **有本机登录态文件** 的两家有意义：
+                    MiniMax（~/.minimax/auth/.../auth.json）、Qoder（auth.v1.dat）。
+                    WorkBuddy 走 OAuth，本机没有可读文件 —— 显示这个按钮只会给出一条
+                    永远走不通的误导提示（用户实测踩到）。 */}
+                {provider.protocol === 'openai' ? null : (
+                  <button
+                    type="button"
+                    className="btn btn-quiet btn-sm"
+                    disabled={importing}
+                    onClick={() => void autoImport()}
+                  >
+                    {importing ? <Loader2 size={14} /> : <Download size={14} />}
+                    从本机客户端读取
+                  </button>
+                )}
               </div>
               {/* 自动导入的结果 / 降级提示（分离部署时给推送命令） */}
               {importMsg ? (

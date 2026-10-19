@@ -32,12 +32,15 @@ describe('CredentialImportService', () => {
     vi.restoreAllMocks();
   });
 
-  it('分离部署：本机无 MiniMax 客户端 → unavailable 并给推送命令', async () => {
+  it('[v1.6.28] 本机无 MiniMax 客户端 → unavailable，且同时说明「本机登录」与「跨机推送」两条路', async () => {
     const r = await svc.importFromLocal('p_mm0001', 'anthropic');
     expect(r.ok).toBe(false);
     expect(r.outcome).toBe('unavailable');
-    expect(r.message).toContain('import-credential-push.mjs');
-    expect(r.message).toContain('minimax');
+    /* 不再假设一定是分离部署 —— 开源版本地启动时，
+       最可能的原因是「客户端没登录过」，先点这条。 */
+    expect(r.message).toContain('auth.json');
+    expect(r.message).toContain('客户端就在这台机器上');
+    expect(r.message).toContain('推送');
   });
 
   it('分离部署：本机无 Qoder 客户端 → unavailable 并给推送命令', async () => {
@@ -48,11 +51,15 @@ describe('CredentialImportService', () => {
     expect(r.message).toContain('qoder');
   });
 
-  it('WorkBuddy（openai）不走本机导入 → unavailable 且说明用密钥', async () => {
+  it('[v1.6.28] WorkBuddy（openai）无本机登录态文件 → unavailable 且指向 OAuth 授权', async () => {
+    /* 旧断言查「静态 API 密钥」—— ck_ 早已退役（v1.6.11 起走 OAuth），
+       那句话是过时信息，用户会照着去「配置里换密钥」，根本没有那个入口。 */
     const r = await svc.importFromLocal('p_default00', 'openai');
     expect(r.ok).toBe(false);
     expect(r.outcome).toBe('unavailable');
-    expect(r.message).toContain('静态 API 密钥');
+    expect(r.message).toContain('OAuth');
+    expect(r.message).toContain('重新导入授权');
+    expect(r.message).not.toContain('静态 API 密钥');
   });
 
   it('providerId 形状非法 → 拒绝（参数注入防线）', async () => {
