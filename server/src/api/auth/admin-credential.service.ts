@@ -41,6 +41,15 @@ const HASH_FILE = 'admin.hash';
 /** 口令来源，用于控制台展示与排障。 */
 export type AdminCredentialSource = 'env' | 'database' | 'file' | 'generated' | 'tombstone';
 
+/**
+ * 本机启动形态的内置默认口令（CLI 在**回环绑定**时注入，见 bin/waygate-open.mjs）。
+ *
+ * 这是**公开值** —— 写在本文档、README 与启动输出里。它只用于「首次启动开箱可登录」，
+ * 用户改密后即失效且永不回落。登录页允许显示它（不是泄露），因为不用的话用户得去
+ * 终端里翻。
+ */
+export const BUILTIN_DEFAULT_PASSWORD = 'waygate';
+
 export interface ResetResult {
   /** 新口令明文。**这是唯一一次能拿到它的机会**，调用方必须立即交给用户。 */
   plain: string;
@@ -69,6 +78,15 @@ export class AdminCredentialService implements OnModuleInit {
   private source: AdminCredentialSource = 'tombstone';
   /** 本次启动是否新生成过口令（用于在日志里给出明确指引）。 */
   private generatedThisBoot = false;
+  /**
+   * [v1.6.25] 当前生效的口令**是否仍是本机内置默认值**（即 CLI 在回环绑定时注入的
+   * `waygate`）。只有这一种情形允许把明文告诉登录页 —— 它是公开的、写在文档里的值，
+   * 告诉前端不泄露任何秘密，反而省掉「去终端里找口令」这一步。
+   *
+   * 一旦用户改过密（或用了 RELAY_ADMIN_PASSWORD_HASH / 自定口令 / 随机生成），
+   * 这里恒 false，登录页就不会显示任何提示。
+   */
+  private builtinDefaultInUse = false;
 
   constructor(private readonly repo: AdminCredentialRepository) {}
 
@@ -170,6 +188,9 @@ export class AdminCredentialService implements OnModuleInit {
     const persisted = this.persist(stored, 'generated');
     this.generatedThisBoot = true;
     this.source = 'generated';
+    /* [v1.6.25] 只有「preset 恰为内置默认值」才算内置默认口令 —— 用户自定的口令
+       （哪怕很短）一律不算，登录页不会显示。 */
+    this.builtinDefaultInUse = preset === BUILTIN_DEFAULT_PASSWORD;
 
     // ★ 只在这里出现一次，且走 stdout 而非 logger（logger 可能被重定向到文件）
     process.stdout.write(
@@ -256,6 +277,8 @@ export class AdminCredentialService implements OnModuleInit {
     const persisted = this.persist(stored, source, Date.now());
     this.storedHash = stored;
     this.source = 'database';
+    /* [v1.6.25] 改密即不再使用内置默认口令 —— 登录页不能再把 `waygate` 显示出来。 */
+    this.builtinDefaultInUse = false;
     return persisted;
   }
 
@@ -311,6 +334,19 @@ export class AdminCredentialService implements OnModuleInit {
   /** 本次启动是否新生成过口令（冒烟/自检用）。 */
   wasGeneratedThisBoot(): boolean {
     return this.generatedThisBoot;
+  }
+
+  /**
+   * [v1.6.25] 登录页用：当前生效的口令是不是**本机内置默认值**。
+   *
+   * true 时调用方可把 `BUILTIN_DEFAULT_PASSWORD` 显示在输入框里 —— 那是公开值。
+   * 任何其它情形（改过密 / env hash / 自定口令 / 随机生成）恒 false。
+   *
+   * ⚠️ 用户一改密就必须立刻变 false：`setPassword` / `reset` 里会清掉标记，
+   *    否则控制台会在用户已经换过口令后还把 `waygate` 摆在输入框里（误导且危险）。
+   */
+  isBuiltinDefaultInUse(): boolean {
+    return this.builtinDefaultInUse;
   }
 
   /** 仅供测试：直接注入一个存储串，跳过正常的加载路径。 */

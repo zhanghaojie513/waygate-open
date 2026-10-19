@@ -78,6 +78,21 @@ export const api = {
     return apiRequest<LoginResult>('/api/auth/login', jsonBody({ password }));
   },
 
+  /**
+   * [v1.6.25] 登录页预填：当前是否仍用**内置默认口令**。
+   *
+   * 只有「服务端确认还在用内置默认值」且「请求来自回环」时才返回明文，
+   * 其余情形一律 `{ defaultInUse: false, password: null }`。
+   * 失败也不抛 —— 登录页据此什么都不预填即可，不该因此报红。
+   */
+  async bootstrapHint(): Promise<{ defaultInUse: boolean; password: string | null }> {
+    try {
+      return await apiRequest<{ defaultInUse: boolean; password: string | null }>('/api/auth/bootstrap-hint');
+    } catch {
+      return { defaultInUse: false, password: null };
+    }
+  },
+
   logout(): Promise<void> {
     if (MOCKS_ENABLED) return mockApi.logout();
     return apiRequest<void>('/api/auth/logout', { method: 'POST' });

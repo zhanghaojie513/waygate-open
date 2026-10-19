@@ -3,6 +3,7 @@ import { Eye, EyeOff, KeyRound, Loader2 } from 'lucide-react';
 import { Banner } from '../components/ui/Banner';
 import { BrandMark } from '../components/BrandMark';
 import { ApiError } from '../services/http';
+import { api } from '../services/api';
 import type { Session } from '../hooks/useSession';
 import { ScenePrism } from '../landing/ScenePrism';
 
@@ -26,6 +27,24 @@ export function LoginPage({ session, mockHint }: { session: Session; mockHint: s
   const [reveal, setReveal] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
+  /** [v1.6.25] 服务端确认「仍在用内置默认口令」时为 true —— 只有这种情况才预填。 */
+  const [usingDefault, setUsingDefault] = useState(false);
+
+  /* [v1.6.25] 预填内置默认口令：本机启动形态（CLI 在回环绑定时注入 `waygate`）下，
+     用户不该为了登录去终端里翻那串口令。服务端只在「确实是内置默认值」且
+     「请求来自回环」时返回明文，其它情况一律 null（见 bootstrapHint 的约束）。
+     失败静默忽略 —— 不预填而已，不能让登录页报错。 */
+  useEffect(() => {
+    let alive = true;
+    void api.bootstrapHint().then((hint) => {
+      if (!alive || !hint.defaultInUse || !hint.password) return;
+      setPassword(hint.password);
+      setUsingDefault(true);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   /* 光标聚光：pointermove 写 --mx/--my 到卡片（控制台 console-fx.js 同机制）。
      只在 hover 设备上跑——触屏没有「悬停」语义。 */
@@ -88,7 +107,11 @@ export function LoginPage({ session, mockHint }: { session: Session; mockHint: s
                 autoFocus
                 autoComplete="current-password"
                 placeholder="输入管理口令"
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  /* 用户一动输入框就不再是「默认值」了，提示随之撤掉。 */
+                  if (usingDefault) setUsingDefault(false);
+                }}
               />
               <button
                 type="button"
@@ -110,9 +133,16 @@ export function LoginPage({ session, mockHint }: { session: Session; mockHint: s
         </form>
 
         <p className="login-hint">
-          {mockHint
-            ? `当前为 Mock 模式（npm run dev:mock），口令固定为 ${mockHint}。`
-            : '口令首次启动时若未配置 RELAY_ADMIN_PASSWORD_HASH，会打印到服务端 stdout 一次。'}
+          {usingDefault ? (
+            <>
+              已填入<b>本机默认口令</b> <code>{password}</code> —— 直接点「进入控制台」即可。
+              登录后请到「设置 → 管理口令」改掉它。
+            </>
+          ) : mockHint ? (
+            `当前为 Mock 模式（npm run dev:mock），口令固定为 ${mockHint}。`
+          ) : (
+            '口令首次启动时若未配置 RELAY_ADMIN_PASSWORD_HASH，会打印到服务端 stdout 一次。'
+          )}
         </p>
       </div>
     </div>

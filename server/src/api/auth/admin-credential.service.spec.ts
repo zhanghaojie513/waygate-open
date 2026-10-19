@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { RelayHttpError } from '../../common/errors';
-import { AdminCredentialService } from './admin-credential.service';
+import { AdminCredentialService, BUILTIN_DEFAULT_PASSWORD } from './admin-credential.service';
 import { AdminCredentialRepository } from '../../store/repositories/admin-credential.repo';
 import { __setScryptParamsForTests, hashPassword, parsePasswordHash, verifyPassword } from './password';
 
@@ -431,5 +431,70 @@ describe('admin-credential · setPassword（用户自定义口令）', () => {
     expect(Object.keys(res)).toEqual(['persisted']);
     expect(res).not.toHaveProperty('plain');
     expect(JSON.stringify(res)).not.toContain('test-admin-pw-1');
+  });
+});
+
+/*
+ * [v1.6.25] 登录页预填的判据：`isBuiltinDefaultInUse()`。
+ *
+ * 只有「CLI 在回环绑定时注入的内置默认值（waygate）」才算 —— 登录页据此把口令
+ * 填进输入框。任何其它来源都必须 false，否则会把「用户自定的口令」当成公开值。
+ */
+describe('admin-credential · isBuiltinDefaultInUse（登录页预填判据）', () => {
+  const PW_KEY = 'RELAY_ADMIN_PASSWORD';
+
+  it('首次启动 + 注入内置默认口令 → true', () => {
+    const saved = process.env[PW_KEY];
+    process.env[PW_KEY] = BUILTIN_DEFAULT_PASSWORD;
+    try {
+      const svc = bootService();
+      expect(svc.isBuiltinDefaultInUse()).toBe(true);
+    } finally {
+      if (saved === undefined) delete process.env[PW_KEY];
+      else process.env[PW_KEY] = saved;
+    }
+  });
+
+  it('★ 首次启动 + 用户自定口令 → false（自定值不是公开值）', () => {
+    const saved = process.env[PW_KEY];
+    process.env[PW_KEY] = 'my-own-secret-123';
+    try {
+      const svc = bootService();
+      expect(svc.isBuiltinDefaultInUse()).toBe(false);
+    } finally {
+      if (saved === undefined) delete process.env[PW_KEY];
+      else process.env[PW_KEY] = saved;
+    }
+  });
+
+  it('随机生成（未注入任何初始口令）→ false', () => {
+    const saved = process.env[PW_KEY];
+    delete process.env[PW_KEY];
+    try {
+      const svc = bootService();
+      expect(svc.isBuiltinDefaultInUse()).toBe(false);
+    } finally {
+      if (saved !== undefined) process.env[PW_KEY] = saved;
+    }
+  });
+
+  it('★ 改密后立刻变 false（不能在用户换过口令后还把这个值摆在输入框）', () => {
+    const saved = process.env[PW_KEY];
+    process.env[PW_KEY] = BUILTIN_DEFAULT_PASSWORD;
+    try {
+      const svc = bootService();
+      expect(svc.isBuiltinDefaultInUse()).toBe(true);
+      svc.setPassword('brand-new-pw-1');
+      expect(svc.isBuiltinDefaultInUse()).toBe(false);
+    } finally {
+      if (saved === undefined) delete process.env[PW_KEY];
+      else process.env[PW_KEY] = saved;
+    }
+  });
+
+  it('已有库内口令（非本次生成）→ false', () => {
+    repo.upsert(hashPassword('existing-pw-123'), 'console');
+    const svc = bootService();
+    expect(svc.isBuiltinDefaultInUse()).toBe(false);
   });
 });

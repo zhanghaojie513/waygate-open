@@ -17,7 +17,7 @@ import { Body, Controller, Get, HttpCode, Logger, Post, Req, Res } from '@nestjs
 import type { FastifyReply } from 'fastify';
 import { ok, RelayHttpError, ApiCode } from '../../common/errors';
 import { RelayConfigService } from '../../config/config.service';
-import { AdminCredentialService } from './admin-credential.service';
+import { AdminCredentialService, BUILTIN_DEFAULT_PASSWORD } from './admin-credential.service';
 import {
   buildClearCookie,
   buildSessionCookie,
@@ -28,7 +28,7 @@ import {
 import { assertOrigin } from './origin';
 import { LoginRateLimiter } from './rate-limit';
 import { readCookie } from './session.guard';
-import { clientIpOf, describeUa as describeUaHeaders } from '../../common/client-ip';
+import { clientIpOf, describeUa as describeUaHeaders, socketPeerOf } from '../../common/client-ip';
 import type { ApiRequest } from '../api.types';
 
 interface LoginBody {
@@ -142,6 +142,34 @@ export class AuthController {
       authenticated: true,
       expiresAt: new Date(result.payload.exp * 1000).toISOString(),
     });
+  }
+
+  /**
+   * [v1.6.25] 登录页用：当前是否仍在用**内置默认口令**，以及在用的话它是什么。
+   *
+   * ## 为什么可以返回明文
+   * `waygate` 是**公开值**（README / 启动日志 / 源码里都有），不是秘密。把它交给
+   * 登录页只是省掉「去终端里找口令」这一步，不增加任何暴露面。
+   *
+   * ## 两条硬约束
+   * 1. **只在「确实是内置默认值」时才返回明文**。用户改过密、用了
+   *    `RELAY_ADMIN_PASSWORD_HASH`、自定口令或随机生成 —— 一律返回
+   *    `{ defaultInUse: false }`，一个字符都不给。
+   * 2. **只对回环请求开放**。若实例被 `--host 0.0.0.0` 暴露到公网，这个接口会把
+   *    「默认口令是 waygate」告诉所有人。所以非回环一律返回 `defaultInUse:false`
+   *    （不是报错 —— 登录页不需要知道原因，也不该因此报红）。
+   *
+   * 用 `socketPeerOf`（真实 TCP 对端，忽略 XFF）判定，避免伪造头绕过。
+   */
+  @Get('bootstrap-hint')
+  bootstrapHint(@Req() req: ApiRequest): unknown {
+    const peer = socketPeerOf(req as never);
+    const isLoopback =
+      peer === '127.0.0.1' || peer === '::1' || peer === '::ffff:127.0.0.1';
+    if (!isLoopback || !this.admin.isBuiltinDefaultInUse()) {
+      return ok({ defaultInUse: false, password: null });
+    }
+    return ok({ defaultInUse: true, password: BUILTIN_DEFAULT_PASSWORD });
   }
 
   private tooMany(retryAfterSeconds: number): RelayHttpError {
