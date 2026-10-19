@@ -25,6 +25,7 @@
 
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -32,6 +33,56 @@ import { fileURLToPath } from 'node:url';
 const HERE = dirname(fileURLToPath(import.meta.url));
 /** 本包根目录：bin/ 的上一级。 */
 const PKG_ROOT = resolve(HERE, '..');
+
+// ---------------------------------------------------------------- 端口预检
+
+/**
+ * 试绑一次端口。返回 null = 可用；返回字符串 = 给人看的失败说明。
+ *
+ * 为什么要在 spawn 之前单独探：服务端失败时只会抛 `listen EACCES` + 一屏堆栈，
+ * 而 Windows 上那个错误的真凶通常是 **端口落在系统预留段**（Hyper-V / WSL /
+ * Docker 向 usermode 申请的排除区间），`netstat` 里根本看不到占用者。
+ * 不解释这一点，用户会一直以为「没人用啊」。
+ */
+function probePort(host, port) {
+  return new Promise((resolvePromise) => {
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      resolvePromise(`端口不合法：${port}（应为 1–65535）`);
+      return;
+    }
+    const srv = createServer();
+    srv.unref();
+    srv.once('error', (err) => {
+      const code = err?.code ?? '';
+      if (code === 'EADDRINUSE') {
+        resolvePromise(
+          `端口 ${port} 已被占用。\n` +
+            `  · 换一个：\`npx waygate-open --port 8791\`\n` +
+            `  · 或找出占用者：Windows \`netstat -ano | findstr :${port}\`；macOS/Linux \`lsof -i :${port}\``,
+        );
+        return;
+      }
+      if (code === 'EACCES') {
+        resolvePromise(
+          `端口 ${port} 无权绑定（EACCES）。\n` +
+            `  · 常见原因：该端口落在 **Windows 系统预留段**里（Hyper-V / WSL / Docker\n` +
+            `    向系统申请的排除区间）。这种情况 \`netstat\` 看不到任何进程占用 ——\n` +
+            `    不是你的错觉，是被系统预定了。\n` +
+            `  · 查预留段：以管理员身份运行\n` +
+            `      netsh interface ipv4 show excludedportrange protocol=tcp\n` +
+            `  · 换一个不在预留段里的端口即可（下面这个是常见的可用值）：\n` +
+            `      npx waygate-open --port 8791\n` +
+            `  · 也可以用环境变量常驻：Windows \`setx RELAY_PORT 8791\`；\n` +
+            `    macOS/Linux 在 shell 配置里 \`export RELAY_PORT=8791\``,
+        );
+        return;
+      }
+      resolvePromise(`端口 ${port} 无法绑定：${code || err.message}`);
+    });
+    srv.once('listening', () => srv.close(() => resolvePromise(null)));
+    srv.listen({ host, port, exclusive: true });
+  });
+}
 
 // ---------------------------------------------------------------- 参数解析
 
@@ -156,6 +207,17 @@ async function main() {
 
   const port = args.port ?? process.env.RELAY_PORT ?? '8787';
   const host = args.host ?? '127.0.0.1';
+
+  /* 端口预检（v1.6.23）：先探一次再 spawn，把「EACCES / EADDRINUSE + 原始堆栈」
+     翻译成能直接照做的中文提示。Windows 上最常见的不是「被占用」，而是
+     端口落在 **Hyper-V / WSL / Docker 预留的排除段**里 —— 那种情况 netstat
+     看不到任何进程，bind 却恒 EACCES，只给堆栈用户无从下手。 */
+  const portProblem = await probePort(host, Number(port));
+  if (portProblem) {
+    console.error(portProblem);
+    process.exit(1);
+  }
+
   /* 对外监听（非回环）在服务端要显式放行 —— 把用户的 --host 意图翻译成那个环境变量，
      否则服务端会静默降级回 127.0.0.1，用户以为监听成功了。 */
   const allowPublicBind = ['127.0.0.1', '::1', 'localhost'].includes(host) ? undefined : '1';
