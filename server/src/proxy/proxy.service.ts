@@ -10,7 +10,7 @@ import { createReadGuard, readUpstreamSse } from './sse-stream';
 import { capBody } from './body-capture';
 import { upstreamFetch } from './upstream-fetch';
 import { resolveConcurrencyLimit } from './concurrency';
-import { buildChatCompletionsUrl, stripTrailingSlash } from './upstream-url';
+import { buildChatCompletionsUrl, buildCustomChatUrl, stripTrailingSlash } from './upstream-url';
 import { scopeAllowsModel, describeScope } from './model-scope';
 import { toAnthropicRequest } from './anthropic-upstream/translate';
 import { anthropicToOpenAiSse } from './anthropic-upstream/stream-decode';
@@ -18,6 +18,7 @@ import { MinimaxTokenService } from './anthropic-upstream/minimax-token.service'
 import { toQoderRequest } from './qoder-upstream/translate';
 import { qoderToOpenAiSse } from './qoder-upstream/stream-decode';
 import { QoderCredentialStore } from './qoder-upstream/credential';
+import { readCustomApiKey } from './custom-upstream/credential';
 import { buildCosyBearer, cosyChatHeaders, qEncode, DEFAULT_QODER_CHAT_PATH } from './qoder-upstream/cosy';
 import { ProvidersRepository, type ProviderRow } from '../store/repositories/providers.repo';
 import { WbOauthService, wbOauthHeaders } from './openai-upstream/wb-oauth.service';
@@ -466,15 +467,21 @@ export class ProxyService {
     cfg: ReturnType<RelayConfigService['get']>,
     slot: ActiveSlot,
   ): Promise<UpstreamStream> {
-    /* 路由解析统一在下方 routed 处（避免双重解析）。 */
+    /* [v0.5.1] 路由驱动：协议由**路由到的提供商**决定（不再看全局唯一活行）。
+       [v1.7.0] 路由提到**改写之前**：custom 出站要的是客户端原文 —— prompt 重写
+       （中性 system 注入）是 WorkBuddy 指纹对抗的手段，对通用 OpenAI 端点只会
+       污染用户的对话。先路由、按方言决定改不改，三家内置路径行为不变。 */
+    const routed = this.resolveRoute(body.model, ctx.keyContext?.clients ?? null, ctx);
+    if (routed.provider.protocol === 'custom') {
+      return await this.doCallCustom(ctx, body, cfg, slot, routed.provider, routed.id);
+    }
+
     const rewritten = rewriteRequestBody(body, {
       promptRewrite: cfg.upstream.promptRewrite,
       neutralPrompt: cfg.upstream.defaultSystemPrompt || undefined,
     });
     ctx.notes = [...rewritten.notes];
 
-    /* [v0.5.1] 路由驱动：协议由**路由到的提供商**决定（不再看全局唯一活行）。 */
-    const routed = this.resolveRoute(body.model, ctx.keyContext?.clients ?? null, ctx);
     if (routed.provider.protocol === 'anthropic') {
       return await this.doCallAnthropic(ctx, body, rewritten.body, cfg, slot, routed.provider);
     }
@@ -787,6 +794,95 @@ export class ProxyService {
       ),
       failure: null,
       model: ctx.modelId ?? '',
+    };
+  }
+
+  /**
+   * [v1.7.0] 自定义提供商出站（OpenAI 兼容方言，protocol='custom'）。
+   *
+   * 与内置三家的差异全在「**没有**上游特化」：
+   *   · 凭证：本行 `.key` 里的静态 API key，`Authorization: Bearer` 直发；
+   *   · 请求体：客户端原文透传 —— **不做 prompt 重写**（那是 WorkBuddy 指纹对抗）；
+   *   · **没有** 11133/11128 重试梯与渠道熔断（通用端点不会发 111xx 业务码）；
+   *   · **没有**指纹 UA / 设备头（undici 默认 UA）。
+   *
+   * 复用的部分（与 openai 路径同源）：URL 智能解析（buildCustomChatUrl）、首字
+   * ReadGuard、并发槽、readUpstreamSse（OpenAI SSE 形状原样进）。
+   */
+  private async doCallCustom(
+    ctx: StreamContext,
+    body: ChatRequestBody,
+    cfg: ReturnType<RelayConfigService['get']>,
+    slot: ActiveSlot,
+    provider: ProviderRow,
+    modelId: string,
+  ): Promise<UpstreamStream> {
+    let credential: string;
+    try {
+      credential = readCustomApiKey(provider.id);
+    } catch (err) {
+      slot.release();
+      return this.fail(ctx, new RelayHttpError({
+        httpStatus: 502, code: 'upstream_credential_invalid',
+        message: `提供商 ${provider.name} 的凭证不可用：${(err as Error).message}`,
+      }), 'missing custom api key');
+    }
+
+    const url = buildCustomChatUrl(provider.base_url, provider.chat_path);
+    const headers: Record<string, string> = {
+      authorization: `Bearer ${credential}`,
+      'content-type': 'application/json',
+      accept: 'text/event-stream',
+      'x-request-id': ctx.traceId,
+    };
+
+    if (cfg.logs?.recordRequestBody && bodyCaptureActive(cfg.logs)) ctx.requestBody = capBody(JSON.stringify(body));
+    const payload = JSON.stringify(body);
+
+    const guard = createReadGuard(cfg.limits.firstByteTimeoutMs || 30_000);
+    let res: Response;
+    try {
+      res = await upstreamFetch(url, { method: 'POST', headers, body: payload, signal: guard.signal });
+    } catch (err) {
+      slot.release();
+      this.logger.error(`上游不可达（custom）trace=${ctx.traceId} url=${url}: ${(err as Error).message}`);
+      return this.fail(ctx, this.networkFailure(err), 'upstream unreachable');
+    }
+    if (!res.ok) {
+      slot.release();
+      /* 失败体只读一次（同 openai 路径的教训）：先 text() 再解析。 */
+      const raw = await res.text().catch(() => '');
+      const failure = parseUpstreamFailure(res.status, raw);
+      let upstreamMsg = raw.slice(0, 300);
+      try {
+        const parsed = JSON.parse(raw) as { error?: { message?: string } | string; message?: string };
+        upstreamMsg = typeof parsed.error === 'string' ? parsed.error : parsed.error?.message ?? parsed.message ?? upstreamMsg;
+      } catch { /* 非 JSON 原样截断 */ }
+      const authRejected = res.status === 401 || res.status === 403;
+      return this.fail(ctx, new RelayHttpError({
+        httpStatus: 502,
+        code: authRejected ? 'upstream_credential_invalid' : 'upstream_error',
+        // 端点若带数字业务码（部分兼容网关有）就落审计列；标准 OpenAI 错误是字符串码，为 null。
+        upstreamCode: failure.businessCode,
+        message: `上游（${provider.name}）HTTP ${res.status}：${upstreamMsg || '无响应体'}`,
+      }), `custom upstream ${res.status}`);
+    }
+    if (!res.body) {
+      slot.release();
+      return this.fail(ctx, new RelayHttpError({
+        httpStatus: 502, code: 'upstream_error',
+        message: '上游返回 200 但响应体为空，无法读取流。',
+      }), 'upstream empty body');
+    }
+
+    return {
+      traceId: ctx.traceId,
+      status: 200,
+      upstreamCode: null,
+      /* 响应就是 OpenAI SSE 形状，无转换直进（首字超时/看门狗/聚合/落库语义同源）。 */
+      events: readUpstreamSse(res.body, ctx, this.log, cfg.logs?.recordResponseBody === true, guard),
+      failure: null,
+      model: modelId,
     };
   }
 

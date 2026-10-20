@@ -105,7 +105,7 @@ export class ModelsService {
       upstreamReachable: this.config.upstreamConfigured(),
       models: rows.map((r) => ({
         id: r.id,
-        /* [v1.6.32] 带上 providerId：请求日志要用 `requests.provider_id`（事实列）
+        /* [v1.6.33] 带上 providerId：请求日志要用 `requests.provider_id`（事实列）
            精确解析提供商，前端需要一张 id → 名字的表。只给名字不够 ——
            同名模型（如 M3.1-Flash 同时在 Code / Code2 的目录里）无法区分。 */
         providerId: r.provider_id,
@@ -137,6 +137,51 @@ export class ModelsService {
     added: number;
   }> {
     return this.sync.refresh();
+  }
+
+  /**
+   * [v1.7.0] 给自定义提供商手动补一个模型（source='manual'）。
+   *
+   * 为什么只对 custom 开放：内置三家的目录来自各自上游清单（权威），手填会把
+   * 猜测混进去；custom 端点可能没有 /v1/models，手填是唯一途径。manual 行
+   * 在 replaceSync 的替换清除之外（只清非 manual），拉取成功也不会冲掉它。
+   * multiplier 恒 null —— 不自标定，积分列落「未回报」口径。
+   */
+  addManualModel(providerId: string, body: unknown): { id: string; added: boolean } {
+    const provider = this.providers.list().find((p) => p.id === providerId);
+    if (!provider) {
+      throw new RelayHttpError({
+        httpStatus: 404, code: 'provider_not_found', apiCode: ApiCode.NOT_FOUND,
+        message: `提供商 ${providerId} 不存在`,
+      });
+    }
+    if (provider.protocol !== 'custom') {
+      throw new RelayHttpError({
+        httpStatus: 400, code: 'invalid_request_body', apiCode: ApiCode.BAD_PARAM,
+        message: '只有自定义提供商支持手动添加模型 —— 内置三家的清单以上游接口为准。',
+      });
+    }
+    const raw = body as { id?: unknown; displayName?: unknown } | null | undefined;
+    if (typeof raw?.id !== 'string' || !raw.id.trim()) {
+      throw new RelayHttpError({
+        httpStatus: 400, code: 'invalid_request_body', apiCode: ApiCode.BAD_PARAM,
+        message: 'id 必须是非空字符串（模型 ID，如 deepseek-chat）。',
+      });
+    }
+    const id = raw.id.trim();
+    if (id.length > 200 || /[\r\n\t]/.test(id)) {
+      throw new RelayHttpError({
+        httpStatus: 400, code: 'invalid_request_body', apiCode: ApiCode.BAD_PARAM,
+        message: 'id 过长或含控制字符。',
+      });
+    }
+    const displayName = typeof raw.displayName === 'string' && raw.displayName.trim() ? raw.displayName.trim() : id;
+    /* mergeSync 只增不改：已存在 → inserted=0，幂等返回 added:false（不报错——
+       用户重复粘贴同一个模型 id 不该吃一个红条）。 */
+    const { inserted } = this.catalog.mergeSync(providerId, [{
+      id, displayName, source: 'manual', multiplier: null, tag: null,
+    }]);
+    return { id, added: inserted > 0 };
   }
 
   /**

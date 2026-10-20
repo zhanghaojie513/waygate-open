@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { CheckCircle2, Loader2, RefreshCw, XCircle } from 'lucide-react';
+import { CheckCircle2, Loader2, Plus, RefreshCw, XCircle } from 'lucide-react';
 import { Banner } from '../ui/Banner';
+import { api } from '../../services/api';
 import type { CatalogData, CatalogModel } from '../../types/api';
-import type { ApiError } from '../../services/http';
+import { ApiError } from '../../services/http';
 import { StateBlock, errorDetail } from '../ui/StateBlock';
 import { Switch } from '../ui/Switch';
 import { Tooltip } from '../ui/Tooltip';
@@ -41,6 +42,7 @@ export function UpstreamModels({
   onCatalogRefresh,
   onCatalogReload,
   onModelToggled,
+  manualAdd,
 }: {
   catalog: CatalogData | null;
   catalogLoading: boolean;
@@ -49,8 +51,29 @@ export function UpstreamModels({
   onCatalogRefresh: () => void;
   onCatalogReload: () => void;
   onModelToggled: (id: string, enabled: boolean) => Promise<void>;
+  /** [v1.7.0] 手动补模型（仅 custom 提供商传入）：端点没有 /v1/models 时的唯一途径。 */
+  manualAdd?: { providerId: string; onAdded: () => void } | null;
 }) {
   const [pendingModel, setPendingModel] = useState<string | null>(null);
+  const [manualId, setManualId] = useState('');
+  const [manualBusy, setManualBusy] = useState(false);
+  const [manualErr, setManualErr] = useState<ApiError | null>(null);
+
+  const addManual = async () => {
+    if (!manualAdd || manualBusy || !manualId.trim()) return;
+    setManualBusy(true);
+    setManualErr(null);
+    try {
+      const r = await api.addManualModel(manualAdd.providerId, { id: manualId.trim() });
+      setManualId('');
+      /* added=false（已存在）不算错 —— 幂等，静默收起即可。 */
+      if (r.added) manualAdd.onAdded();
+    } catch (e) {
+      setManualErr(e instanceof ApiError ? e : new ApiError(String(e), 0, 0));
+    } finally {
+      setManualBusy(false);
+    }
+  };
 
   const toggleModel = async (m: CatalogModel) => {
     setPendingModel(m.id);
@@ -101,6 +124,41 @@ export function UpstreamModels({
       {catalogMsg ? (
         <Banner tone={catalogMsg.kind === 'error' ? 'error' : catalogMsg.kind === 'partial' ? 'warn' : 'success'}>
           {catalogMsg.text}
+        </Banner>
+      ) : null}
+
+      {/* [v1.7.0] 手动补模型（custom 专属）：端点没有 /v1/models（部分兼容服务器）时，
+          手填模型 id 是唯一途径。manual 行不会被「获取模型」的替换式同步冲掉。 */}
+      {manualAdd ? (
+        <div className="up-manual-add" style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 4 }}>
+          <input
+            className="field-input text"
+            style={{ flex: 1 }}
+            value={manualId}
+            placeholder="手动补模型：填模型 ID（如 deepseek-chat），回车或点添加"
+            onChange={(e) => setManualId(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                void addManual();
+              }
+            }}
+            aria-label="手动添加模型 ID"
+          />
+          <button
+            type="button"
+            className="btn btn-quiet btn-sm"
+            disabled={manualBusy || !manualId.trim()}
+            onClick={() => void addManual()}
+          >
+            {manualBusy ? <Loader2 size={14} /> : <Plus size={14} />}
+            添加
+          </button>
+        </div>
+      ) : null}
+      {manualErr ? (
+        <Banner tone="error" >
+          {errorDetail(manualErr)}
         </Banner>
       ) : null}
 

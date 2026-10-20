@@ -37,7 +37,7 @@ export function RequestDetailView({
   onToggleReasoning: () => void;
   /** 快照名 → 当前显示名（§9.2）。与日志表同一份解析，避免「同一行两个名字」。 */
   resolveClientName: (row: RequestLogRow) => string;
-  /** [v1.6.32] 逐行提供商：优先事实列 `providerId`，回落目录反解。 */
+  /** [v1.6.33] 逐行提供商：优先事实列 `providerId`，回落目录反解。 */
   providerOf: (row: { providerId?: string | null; model: string }) => string | null;
   /** 按模型 ID 查计价标签（夜间折扣/限时免费等），与日志表同源 —— 详情里也要能看到
    *  「这条为什么便宜」，不该要回表格里对。 */
@@ -69,7 +69,7 @@ export function RequestDetailView({
         <span className="k">提供商</span>
         <span className="v">
           {/* [v0.5.13] 不能显示成密钥绑定名（那只是路由偏好）。
-              [v1.6.32] 优先读**事实列** `providerId`（本请求实际路由到哪家）——
+              [v1.6.33] 优先读**事实列** `providerId`（本请求实际路由到哪家）——
               按模型目录反解在同名模型上必然歧义（M3.1-Flash 同时在 Code / Code2）。
               老行（迁移前没有该列）才回落到目录反解，再不行用密钥归属名。 */}
           {providerOf(row) ?? resolveClientName(row)}

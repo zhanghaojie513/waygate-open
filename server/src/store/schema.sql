@@ -5,7 +5,7 @@
 -- 驿站 · Relay v0.4.29 — SQLite Schema
 -- 引擎：better-sqlite3 13.0.3（同步 API，无 ORM）
 -- 文件位置：data/relay.db
--- 迁移版本：PRAGMA user_version = 18
+-- 迁移版本：PRAGMA user_version = 19
 --
 -- 迁移规则（手写迁移，不用 ORM / 不用迁移框架）：
 --   1. 本文件是 v1 的**完整建表 + 种子数据**，只在空库上跑一次。
@@ -21,7 +21,7 @@
 PRAGMA journal_mode = WAL;
 PRAGMA synchronous  = NORMAL;
 PRAGMA foreign_keys = ON;
-PRAGMA user_version = 18;
+PRAGMA user_version = 19;
 
 -- -----------------------------------------------------------------------------
 -- 1. requests —— 请求日志，权威数据源
@@ -270,7 +270,9 @@ CREATE TABLE IF NOT EXISTS providers (
   active     INTEGER NOT NULL DEFAULT 0
              CHECK (active IN (0, 1)),        -- 恰有一行为 1（服务层维护）
   protocol   TEXT    NOT NULL DEFAULT 'openai'
-             CHECK (protocol IN ('openai', 'anthropic', 'qoder')),  -- [v0.5.0] 上游方言（WorkBuddy=openai / mavis=anthropic / Qoder CN=qoder）
+             CHECK (protocol IN ('openai', 'anthropic', 'qoder', 'custom')),  -- [v0.5.0] 上游方言；[v1.7.0] 新增 custom
+                                                            --   （WorkBuddy=openai / mavis=anthropic / Qoder CN=qoder /
+                                                            --    custom=任意 OpenAI 兼容端点，静态 API key 鉴权）
   chat_path  TEXT,                            -- [v0.5.0] 聊天端点路径；NULL = 协议默认
   cred_kind  TEXT    NOT NULL DEFAULT 'static'
              CHECK (cred_kind IN ('static', 'oauth_minimax')),  -- [v0.5.0] 凭证生命周期类型

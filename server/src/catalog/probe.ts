@@ -53,10 +53,12 @@ export class ModelProbeService {
    *   URL 解析，task#37）；传入别的值时用于「试通一个**尚未激活**的提供商」——
    *   [2026-10-08] 自定义提供商的「先验后切」需要它：不切过去就能测那家的连通性。
    *   传了 overrideBase 而没传 overrideKey 时凭证仍取当前生效值（调用方负责组合）。
+   * @param overrideUrl [v1.7.0] 完整端点 URL（custom 提供商用——它的路径由
+   *   buildCustomChatUrl 智能解析，不是 WorkBuddy 的 /v2 布局）。优先于 overrideBase。
    */
-  async probe(modelId: string, overrideKey?: string, overrideBase?: string): Promise<ProbeOutcome> {
+  async probe(modelId: string, overrideKey?: string, overrideBase?: string, overrideUrl?: string): Promise<ProbeOutcome> {
     // 与真实转发共用同一处 URL 解析（task#37），避免「试通」与「转发」用不同的上游地址。
-    const url = buildChatCompletionsUrl(overrideBase ?? resolveUpstreamBase(this.config));
+    const url = overrideUrl ?? buildChatCompletionsUrl(overrideBase ?? resolveUpstreamBase(this.config));
     try {
       const res = await fetch(url, {
         method: 'POST',

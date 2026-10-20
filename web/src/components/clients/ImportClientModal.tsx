@@ -9,7 +9,7 @@ import { CopyCommand } from '../ui/CopyCommand';
 import { useToast } from '../ui/Toast';
 
 /**
- * 「导入客户端」/「重新导入授权」（v1.6.12，v1.6.11 起为唯一凭证入口）。
+ * 「导入客户端」/「重新导入授权」（v1.6.12，v1.6.13 起为唯一凭证入口）。
  *
  * ## 两种用法
  *   · **建新行**（`provider` 缺省）：选客户端 + 起个名字 → 建行（无凭证）→ 官方授权。
@@ -18,7 +18,7 @@ import { useToast } from '../ui/Toast';
  *
  * ## 为什么凭证只能这样来
  * 三家的凭证都在**客户端登录态**里，用户拿不到、也手敲不出来（WorkBuddy 曾用 ck_
- * 密钥，v1.6.11 起也统一走官方 OAuth 设备授权）。所以「授权导入」是唯一的凭证入口。
+ * 密钥，v1.6.13 起也统一走官方 OAuth 设备授权）。所以「授权导入」是唯一的凭证入口。
  *
  * ## 流程
  *   ① 选客户端（建新行时）+ 起个名字
@@ -51,11 +51,13 @@ const POLL_MAX_MS = 5 * 60 * 1000;
 
 type Phase = 'pick' | 'confirm' | 'waiting' | 'done';
 
-/** 可选的「重新导入」目标：已存在的提供商行。 */
+/** 可选的「重新导入」目标：已存在的提供商行。
+ *  [v1.7.0] protocol 联合随 ProviderItem 放宽到含 custom —— custom 家的配置抽屉
+ *  不渲染「重新导入授权」按钮，正常到不了这里；防御性兜底见下方 early return。 */
 export interface ReimportTarget {
   id: string;
   name: string;
-  protocol: 'openai' | 'anthropic' | 'qoder';
+  protocol: 'openai' | 'anthropic' | 'qoder' | 'custom';
 }
 
 export function ImportClientModal({
@@ -69,9 +71,13 @@ export function ImportClientModal({
   onImported: () => void;
 }) {
   const toast = useToast();
-  /* 重新导入时跳过「选客户端」——协议与名称都沿用该行。 */
+  /* 重新导入时跳过「选客户端」——协议与名称都沿用该行。
+     [v1.7.0] custom 家没有授权通道（key 是手填的），防御性回落 anthropic ——
+     正常到不了这里（custom 的配置抽屉不渲染重新导入按钮），只是类型收窄。 */
   const [phase, setPhase] = useState<Phase>(provider ? 'confirm' : 'pick');
-  const [protocol, setProtocol] = useState<'openai' | 'anthropic' | 'qoder'>(provider?.protocol ?? 'anthropic');
+  const [protocol, setProtocol] = useState<'openai' | 'anthropic' | 'qoder'>(
+    provider?.protocol === 'custom' ? 'anthropic' : (provider?.protocol ?? 'anthropic'),
+  );
   const [name, setName] = useState(provider?.name ?? '');
   const [authUrl, setAuthUrl] = useState('');
   const [userCode, setUserCode] = useState('');

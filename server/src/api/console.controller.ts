@@ -229,6 +229,21 @@ export class ConsoleController {
   }
 
   /**
+   * [v1.7.0] 给自定义提供商手动补一个模型（source='manual'）。
+   *
+   * 只对 protocol='custom' 开放 —— 内置三家的清单以上游接口为准，手填等于把猜测
+   * 混进权威数据；自定义端点则可能没有 /v1/models，手填是唯一途径。
+   * manual 行不会被替换式同步冲掉（replaceSync 只清非 manual）。
+   */
+  @Post('models/catalog/:providerId/manual-model')
+  @HttpCode(200)
+  addManualModel(@Param('providerId') providerId: string, @Body() body: unknown): unknown {
+    const result = this.models.addManualModel(providerId, body);
+    this.invalidateOverview();
+    return ok(result);
+  }
+
+  /**
    * 用一把**尚未保存**的凭证试通上游。
    *
    * ## 为什么必须有这条

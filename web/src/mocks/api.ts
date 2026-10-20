@@ -12,6 +12,7 @@ import type {
   ClientKeyRow,
   ClientRow,
   CreatedKey,
+  CatalogModel,
   ProviderUsageRow,
   CreateKeyInput,
   CredentialTestResult,
@@ -131,8 +132,11 @@ export const mockApi = {
     return makeRequestDetail(id);
   },
 
-  async catalog(): Promise<CatalogData> {
+  async catalog(provider?: string): Promise<CatalogData> {
     await sleep(150);
+    /* [v1.7.0] custom 示例家**动态生成**清单 —— 手动补的模型 reload 后立即可见
+       （其余家的清单仍是 switchMockCatalog 切换时的快照，旧语义不动）。 */
+    if (provider === 'p_custom01') switchMockCatalog('p_custom01');
     return CATALOG;
   },
 
@@ -387,11 +391,15 @@ export const mockApi = {
     return sleep(160).then(() => ({ items: providerStore }));
   },
 
-  createProvider(input: { name: string; baseUrl: string; credential: string; protocol?: 'openai' | 'anthropic' | 'qoder'; activate?: boolean }): Promise<{ item: ProviderItem; activated: boolean }> {
+  createProvider(input: { name: string; baseUrl: string; credential: string; protocol?: 'openai' | 'anthropic' | 'qoder' | 'custom'; chatPath?: string | null; activate?: boolean }): Promise<{ item: ProviderItem; activated: boolean }> {
     return sleep(320).then(() => {
-      /* [v1.6.11] ck_ 退役：openai（WorkBuddy）不再接受手填密钥 —— 与真机同语义。 */
+      /* [v1.6.13] ck_ 退役：openai（WorkBuddy）不再接受手填密钥 —— 与真机同语义。
+         [v1.7.0] custom 是另一回事：静态 API key 就是它的原生鉴权，放行。 */
       if (input.protocol === 'openai' && input.credential) {
         throw new ApiError('WorkBuddy 已不再使用 ck_ 密钥 —— 请用「导入客户端」完成官方授权。', 40001, 400);
+      }
+      if (input.protocol === 'custom' && input.credential && input.credential.trim().length < 8) {
+        throw new ApiError('API Key 格式不正确：应为 8 位以上可打印字符。', 40001, 400);
       }
       const item: ProviderItem = {
         id: `p_${Math.random().toString(16).slice(2, 10)}`,
@@ -402,9 +410,10 @@ export const mockApi = {
         configured: Boolean(input.credential),
         active: false,
         protocol: input.protocol ?? 'openai',
+        chatPath: input.protocol === 'custom' ? (input.chatPath ?? null) : null,
         credKind: input.protocol === 'anthropic' ? 'oauth_minimax' : 'static',
-        modelCount: input.protocol === 'anthropic' ? 4 : input.protocol === 'qoder' ? 14 : 17,
-        modelEnabled: input.protocol === 'anthropic' ? 4 : input.protocol === 'qoder' ? 14 : 17,
+        modelCount: 0,
+        modelEnabled: 0,
         signin: { checkedOn: null, streak: null, lastPoints: null },
         wbOAuth: { configured: false, uidMask: null, expiresAt: null }, wbCredits: null,
         qoderCredits: null,
@@ -413,11 +422,16 @@ export const mockApi = {
       };
       providerStore.push(item);
       if (input.activate) activateProviderInStore(item.id);
+      /* custom 家：建好即拉一次「模型清单」（演示 /v1/models 或手动补的形态）。 */
+      if (input.protocol === 'custom' && input.activate) {
+        item.modelCount = 2;
+        item.modelEnabled = 2;
+      }
       return { item, activated: input.activate === true };
     });
   },
 
-  patchProvider(id: string, input: { name?: string; baseUrl?: string; credential?: string }): Promise<ProviderItem> {
+  patchProvider(id: string, input: { name?: string; baseUrl?: string; credential?: string; chatPath?: string | null }): Promise<ProviderItem> {
     return sleep(260).then(() => {
       const t = providerStore.find((p) => p.id === id);
       if (!t) throw new ApiError(`提供商 ${id} 不存在`, 40401, 404);
@@ -427,15 +441,35 @@ export const mockApi = {
         t.credentialMask = maskProviderKey(input.credential);
         t.configured = Boolean(input.credential);
       }
+      if (input.chatPath !== undefined && t.protocol === 'custom') t.chatPath = input.chatPath;
       return { ...t };
     });
   },
 
   /**
-   * [v1.6.11] 自动导入凭证的 Mock —— 演示「同机部署 → 真·一键」的成功路径。
-   * 真机分离部署时服务端返回 unavailable 并给推送命令；要在 Mock 里看那条分支，
-   * 把 outcome 改成 'unavailable' 即可。
+   * [v1.7.0] 手动补模型（custom 专属）的 Mock —— 与真机同语义：
+   * 内置三家 400（清单以上游为准）；重复添加幂等 added=false。
+   * 添加成功把该家的 modelCount +1（界面行内计数跟着动）。
    */
+  addManualModel(providerId: string, input: { id: string; displayName?: string }): Promise<{ id: string; added: boolean }> {
+    return sleep(240).then(() => {
+      const t = providerStore.find((p) => p.id === providerId);
+      if (!t) throw new ApiError(`提供商 ${providerId} 不存在`, 40401, 404);
+      if (t.protocol !== 'custom') {
+        throw new ApiError('只有自定义提供商支持手动添加模型 —— 内置三家的清单以上游接口为准。', 40001, 400);
+      }
+      if (!input.id || !input.id.trim()) throw new ApiError('id 必须是非空字符串。', 40001, 400);
+      const id = input.id.trim();
+      const exists = mockCustomModels.some((m) => m.id === id);
+      if (!exists) {
+        mockCustomModels.push({ id, displayName: input.displayName?.trim() || id, source: 'manual' });
+        t.modelCount += 1;
+        t.modelEnabled += 1;
+      }
+      return { id, added: !exists };
+    });
+  },
+
   providerImportLocal(id: string): Promise<{ ok: boolean; outcome: 'imported' | 'unavailable' | 'error'; message: string }> {
     return sleep(420).then(() => {
       const t = providerStore.find((p) => p.id === id);
@@ -580,26 +614,48 @@ const MOCK_CATALOG_CUSTOM: CatalogData = {
 };
 
 function switchMockCatalog(providerId: string): void {
-  const custom = providerStore.find((p) => p.id === providerId && p.id !== 'p_default00');
-  CATALOG.models = custom ? [...MOCK_CATALOG_CUSTOM.models] : [...DEFAULT_CATALOG_MODELS.map((m) => ({ ...m }))];
+  /* [v1.7.0] custom 家用自己的清单（含手动补的模型）—— 手动添加后重开抽屉能看到新行；
+     其余非默认家维持「一份 4 项的小清单」的旧演示形态。 */
+  if (providerId === 'p_custom01') {
+    CATALOG.models = mockCustomModels.map((m) => ({
+      id: m.id, displayName: m.displayName, provider: 'DeepSeek（示例）', providerId: 'p_custom01',
+      family: m.id.split('-')[0], tag: null, multiplier: null, source: m.source, verified: 1, enabled: true, lastVerifiedAt: null,
+    }));
+  } else {
+    const custom = providerStore.find((p) => p.id === providerId && p.id !== 'p_default00');
+    CATALOG.models = custom ? [...MOCK_CATALOG_CUSTOM.models] : [...DEFAULT_CATALOG_MODELS.map((m) => ({ ...m }))];
+  }
   CATALOG.fetchedAt = new Date().toISOString();
 }
 
 /** [v1.6.12] 设备授权导入的轮询计数（providerId → 已轮询次数），演示 pending → done。 */
 const deviceImportPolls = new Map<string, number>();
 
+/**
+ * [v1.7.0] 自定义示例提供商的模型清单（可变 ——「手动添加模型」的 Mock 落点）。
+ * multiplier 恒 null：标准端点不报倍率，不自标定（积分列 -- 的真实形态）。
+ * ⚠️ 必须声明在 providerStore 之前 —— 后者的 modelCount 要读它（TDZ）。
+ */
+const mockCustomModels: Array<{ id: string; displayName: string; source: CatalogModel['source'] }> = [
+  { id: 'deepseek-chat', displayName: 'DeepSeek Chat', source: 'upstream' },
+  { id: 'deepseek-reasoner', displayName: 'DeepSeek Reasoner', source: 'manual' },
+];
+
 let providerStore: ProviderItem[] = [
   /* 与服务端种子同名（DEFAULT_PROVIDER_NAME = 'WorkBuddy'）—— 现库那条上游连接
      就是 WorkBuddy 的地址与密钥，名字说清楚比叫"默认"好。 */
-  { id: 'p_default00', name: 'WorkBuddy', baseUrl: 'https://copilot.tencent.com', credentialMask: 'oauth(98b9303e…)', configured: true, active: true, protocol: 'openai', credKind: 'static', modelCount: 17, modelEnabled: 17, signin: { checkedOn: null, streak: null, lastPoints: null }, wbOAuth: { configured: true, uidMask: '98b9303e…', expiresAt: Date.now() + 20 * 86400_000 }, wbCredits: { remaining: 3741.03, granted: 7901, consumed: 4159.97, nextExpireAt: Date.now() + 26 * 86400_000, packages: [] }, qoderCredits: null, wbSignin: { checkedOn: new Date().toISOString().slice(0,10), streak: 10, lastPoints: 100 }, credits: null },
+  { id: 'p_default00', name: 'WorkBuddy', baseUrl: 'https://copilot.tencent.com', credentialMask: 'oauth(98b9303e…)', configured: true, active: true, protocol: 'openai', chatPath: null, credKind: 'static', modelCount: 17, modelEnabled: 17, signin: { checkedOn: null, streak: null, lastPoints: null }, wbOAuth: { configured: true, uidMask: '98b9303e…', expiresAt: Date.now() + 20 * 86400_000 }, wbCredits: { remaining: 3741.03, granted: 7901, consumed: 4159.97, nextExpireAt: Date.now() + 26 * 86400_000, packages: [] }, qoderCredits: null, wbSignin: { checkedOn: new Date().toISOString().slice(0,10), streak: 10, lastPoints: 100 }, credits: null },
   /* [v0.5.13] MiniMax Code 提供商（anthropic 方言 + 真实积分账本）—— 数值取自
      生产实测（剩余 717.69 / 已用 82.31），演示「积分 ⓘ」tooltip 与签到状态。 */
-  { id: 'p_qoder01', name: 'Qoder CN', baseUrl: 'https://gateway.qoder.com.cn', credentialMask: 'oauth(identity ••••c4)', configured: true, active: true, protocol: 'qoder', credKind: 'static', modelCount: 14, modelEnabled: 14, signin: { checkedOn: null, streak: null, lastPoints: null }, wbOAuth: { configured: false, uidMask: null, expiresAt: null }, wbCredits: null, qoderCredits: { available: true, granted: 500, remaining: 495, consumed: 5, nextExpireAt: null, lifetimeConsumed: 241.82, stale: false, fetchedAt: new Date(Date.now() - 30 * 60_000).toISOString(), message: '口径：资源包余额（495/500）；到期时刻上游不提供' }, wbSignin: { checkedOn: null, streak: null, lastPoints: null }, credits: null },
-  { id: 'p_mmx002', name: 'MiniMax Code', baseUrl: 'https://mavis.minimax.io', credentialMask: 'oauth(refresh ••••9c)', configured: true, active: false, protocol: 'anthropic', credKind: 'oauth_minimax', modelCount: 4, modelEnabled: 4, signin: { checkedOn: new Date(Date.now() - 6 * 3600_000).toISOString(), streak: 12, lastPoints: 1200 }, wbOAuth: { configured: false, uidMask: null, expiresAt: null }, wbCredits: null, qoderCredits: null, wbSignin: { checkedOn: null, streak: null, lastPoints: null }, credits: { providerId: 'p_mmx002', providerName: 'MiniMax Code', available: true, granted: 800, remaining: 717.69, consumed: 82.31, nextExpireAt: new Date(Date.now() + 22 * 86_400_000).toISOString(), stale: false, fetchedAt: new Date(Date.now() - 40 * 60_000).toISOString(), message: '' } },
-  /* [v1.6.32] 第二家 MiniMax（Code2）：与上一家**目录里有同名模型**（M3.1-Flash），
+  { id: 'p_qoder01', name: 'Qoder CN', baseUrl: 'https://gateway.qoder.com.cn', credentialMask: 'oauth(identity ••••c4)', configured: true, active: true, protocol: 'qoder', chatPath: null, credKind: 'static', modelCount: 14, modelEnabled: 14, signin: { checkedOn: null, streak: null, lastPoints: null }, wbOAuth: { configured: false, uidMask: null, expiresAt: null }, wbCredits: null, qoderCredits: { available: true, granted: 500, remaining: 495, consumed: 5, nextExpireAt: null, lifetimeConsumed: 241.82, stale: false, fetchedAt: new Date(Date.now() - 30 * 60_000).toISOString(), message: '口径：资源包余额（495/500）；到期时刻上游不提供' }, wbSignin: { checkedOn: null, streak: null, lastPoints: null }, credits: null },
+  { id: 'p_mmx002', name: 'MiniMax Code', baseUrl: 'https://mavis.minimax.io', credentialMask: 'oauth(refresh ••••9c)', configured: true, active: false, protocol: 'anthropic', chatPath: null, credKind: 'oauth_minimax', modelCount: 4, modelEnabled: 4, signin: { checkedOn: new Date(Date.now() - 6 * 3600_000).toISOString(), streak: 12, lastPoints: 1200 }, wbOAuth: { configured: false, uidMask: null, expiresAt: null }, wbCredits: null, qoderCredits: null, wbSignin: { checkedOn: null, streak: null, lastPoints: null }, credits: { providerId: 'p_mmx002', providerName: 'MiniMax Code', available: true, granted: 800, remaining: 717.69, consumed: 82.31, nextExpireAt: new Date(Date.now() + 22 * 86_400_000).toISOString(), stale: false, fetchedAt: new Date(Date.now() - 40 * 60_000).toISOString(), message: '' } },
+  /* [v1.6.33] 第二家 MiniMax（Code2）：与上一家**目录里有同名模型**（M3.1-Flash），
      复现生产实况 —— 用于验证请求日志「提供商」列读事实列、而不是按模型名反解。
      修复前这一家的流量会全被显示成上一家（用户实测报障）。 */
-  { id: 'p_mm2c02', name: 'MiniMax Code2', baseUrl: 'https://agent.minimax.cn', credentialMask: 'oauth(refresh ••••2f)', configured: true, active: true, protocol: 'anthropic', credKind: 'oauth_minimax', modelCount: 4, modelEnabled: 4, signin: { checkedOn: null, streak: null, lastPoints: null }, wbOAuth: { configured: false, uidMask: null, expiresAt: null }, wbCredits: null, qoderCredits: null, wbSignin: { checkedOn: null, streak: null, lastPoints: null }, credits: null },
+  { id: 'p_mm2c02', name: 'MiniMax Code2', baseUrl: 'https://agent.minimax.cn', credentialMask: 'oauth(refresh ••••2f)', configured: true, active: true, protocol: 'anthropic', chatPath: null, credKind: 'oauth_minimax', modelCount: 4, modelEnabled: 4, signin: { checkedOn: null, streak: null, lastPoints: null }, wbOAuth: { configured: false, uidMask: null, expiresAt: null }, wbCredits: null, qoderCredits: null, wbSignin: { checkedOn: null, streak: null, lastPoints: null }, credits: null },
+  /* [v1.7.0] 自定义提供商示例（OpenAI 兼容 + 静态 key）：演示「新增自定义」建出来的形态 ——
+     没有签到/账本/OAuth（健康卡那几列全是 —），凭证是 key 掩码，chatPath=null（智能默认）。 */
+  { id: 'p_custom01', name: 'DeepSeek（示例）', baseUrl: 'https://api.deepseek.com', credentialMask: 'sk-c••••9x2f', configured: true, active: false, protocol: 'custom', chatPath: null, credKind: 'static', modelCount: 2, modelEnabled: 2, signin: { checkedOn: null, streak: null, lastPoints: null }, wbOAuth: { configured: false, uidMask: null, expiresAt: null }, wbCredits: null, qoderCredits: null, wbSignin: { checkedOn: null, streak: null, lastPoints: null }, credits: null },
 ];
 
 /** 默认目录的**深拷贝**留底 —— 切换提供商后要能切回来。 */

@@ -100,7 +100,11 @@ export function ProviderTable({
                   {p.active ? <Pill tone="live">已启用</Pill> : <Pill tone="ghost">未启用</Pill>}
                   {/* [v0.5.0] 协议徽标：一眼区分 WorkBuddy（OpenAI 方言）与 MiniMax（Anthropic 方言）。
                       [v0.6.0] Qoder CN（COSY 协议，免费档）。 */}
-                  {p.protocol === 'anthropic' ? (
+                  {p.protocol === 'custom' ? (
+                    <Tooltip content="自定义 OpenAI 兼容端点：静态 API key 鉴权；模型清单拉 /v1/models 或手动补；无签到与积分账本（用量按 token，积分列 --）">
+                      <span className="pill pill-ghost">自定义</span>
+                    </Tooltip>
+                  ) : p.protocol === 'anthropic' ? (
                     <Tooltip content="Anthropic Messages 方言（mavis 网关）：模型目录用内置清单，凭证为 refresh token 自动换新">
                       <span className="pill pill-ghost">Anthropic</span>
                     </Tooltip>

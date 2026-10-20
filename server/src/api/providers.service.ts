@@ -55,6 +55,7 @@ import { WbOauthService } from '../proxy/openai-upstream/wb-oauth.service';
 import { QuotaSourceService } from '../proxy/quota/quota-source.service';
 import { QoderActivityService, type QoderLedgerBlock } from '../proxy/qoder-upstream/qoder-activity.service';
 import { ModelProbeService } from '../catalog/probe';
+import { buildCustomChatUrl } from '../proxy/upstream-url';
 
 /** 默认行的 id 固定成可读的名字 —— 迁移种子与排障日志里都要能认出它。 */
 export const DEFAULT_PROVIDER_ID = 'p_default00';
@@ -92,8 +93,10 @@ export interface ProviderItem {
   configured: boolean;
   /** 是否当前生效（恰有一个 true）。 */
   active: boolean;
-  /** [v0.5.0] 上游方言。 */
-  protocol: 'openai' | 'anthropic' | 'qoder';
+  /** [v0.5.0] 上游方言；[v1.7.0] 加 'custom'（任意 OpenAI 兼容端点，静态 key）。 */
+  protocol: 'openai' | 'anthropic' | 'qoder' | 'custom';
+  /** [v0.5.0] 聊天端点路径；NULL = 协议默认（custom 的默认按 base 智能解析，见 buildCustomChatUrl）。 */
+  chatPath: string | null;
   /** [v0.5.0] 凭证生命周期。 */
   credKind: 'static' | 'oauth_minimax';
   /** [v0.5.4] 该提供商自己分区的模型数 / 启用数。 */
@@ -117,8 +120,10 @@ export interface CreateProviderInput {
   name?: unknown;
   baseUrl?: unknown;
   credential?: unknown;
-  /** [v0.5.0] 上游方言：'openai'（默认，WorkBuddy）| 'anthropic'（mavis / Anthropic 兼容）。 */
+  /** [v0.5.0] 上游方言：'openai'（默认，WorkBuddy）| 'anthropic'（mavis / Anthropic 兼容）| 'custom'（v1.7.0，OpenAI 兼容）。 */
   protocol?: unknown;
+  /** [v1.7.0] 聊天端点路径（custom 提供商的非标布局覆盖）；缺省 = 智能默认。 */
+  chatPath?: unknown;
   /** 创建后立即激活（默认 false —— 先建好、试通、再切换）。 */
   activate?: unknown;
 }
@@ -127,6 +132,8 @@ export interface PatchProviderInput {
   name?: unknown;
   baseUrl?: unknown;
   credential?: unknown;
+  /** [v1.7.0] 改聊天端点路径；null = 回到协议默认。 */
+  chatPath?: unknown;
 }
 
 @Injectable()
@@ -231,12 +238,15 @@ export class ProvidersService implements OnApplicationBootstrap {
     const baseUrl = this.parseBaseUrl(input.baseUrl);
     const protocol = this.parseProtocol(input.protocol);
     const credential = this.parseCredential(input.credential, protocol);
+    /* [v1.7.0] chat_path 只对 custom 有入口（内置三家的路径是协议常量，不该被行数据覆盖）。 */
+    const chatPath = protocol === 'custom' ? this.parseChatPath(input.chatPath) : null;
 
     const id = `p_${randomBytes(4).toString('hex')}`;
     this.repo.create({
       id, name, baseUrl, active: false,
       protocol,
       credKind: protocol === 'anthropic' ? 'oauth_minimax' : 'static',
+      chatPath,
     });
     /* [v1.6.11] 空凭证不落盘 —— 落一个空文件会让 `configured` 判断（读文件非空）
        与实际不符。留空就是"待导入"，等「自动导入」写进来。 */
@@ -276,14 +286,20 @@ export class ProvidersService implements OnApplicationBootstrap {
     }
     if (Object.keys(patch).length > 0) this.repo.patch(id, patch);
 
+    /* [v1.7.0] 聊天端点路径：只有 custom 有入口（内置三家的路径是协议常量）。 */
+    if (input.chatPath !== undefined && row.protocol === 'custom') {
+      this.repo.setChatPath(id, this.parseChatPath(input.chatPath));
+    }
+
     /* 凭证单独走（只写文件；改的是活提供商时还要热载入内存） */
     if (input.credential !== undefined) {
-      const credential = this.parseCredential(input.credential, row.protocol as 'openai' | 'anthropic' | 'qoder');
+      const credential = this.parseCredential(input.credential, row.protocol as 'openai' | 'anthropic' | 'qoder' | 'custom');
       if (row.protocol !== 'openai') {
         this.writeCredentialFile(id, credential);
         /* [v0.5.0] oauth 提供商的凭证不进全局位 —— 出站时由 MinimaxTokenService 换新。
-           [v0.6.0] qoder 同理：凭证是身份 JSON，出站由 QoderCredentialStore 直读文件。 */
-        if (row.active && row.protocol !== 'anthropic' && row.protocol !== 'qoder') this.config.setUpstreamKey(credential);
+           [v0.6.0] qoder 同理：凭证是身份 JSON，出站由 QoderCredentialStore 直读文件。
+           [v1.7.0] custom 同理：出站直读本行 .key，也不进全局位。
+           （历史遗留的「openai+ck_ 活行写全局位」分支已随 ck_ 退役成为死代码，删除。 */
         /* [v1.6.5] anthropic：换了 refresh token 必须作废旧 access token，
            否则出站继续用旧令牌 —— 用户视角就是「改了凭证却没生效」。 */
         if (row.protocol === 'anthropic') this.minimaxTokens?.invalidate(id);
@@ -291,9 +307,11 @@ export class ProvidersService implements OnApplicationBootstrap {
       /* [v1.6.13] openai 走上面的 parseCredential 报错（ck_ 已退役）—— 这里到不了。 */
     }
 
-    /* 活提供商的地址改了 → 立即写进设置（转发/实测/目录拉取都读它） */
+    /* 活提供商的地址改了 → 立即写进设置（转发/实测/目录拉取都读它）。
+       [v1.7.0] custom 不参与：settings.upstream.baseUrl 是内置链路的全局位，
+       不能被一个自定义端点覆盖。 */
     const updated = this.repo.findById(id)!;
-    if (updated.active && patch.baseUrl !== undefined) {
+    if (updated.active && patch.baseUrl !== undefined && row.protocol !== 'custom') {
       this.applyBaseUrlToSettings(patch.baseUrl);
     }
     return this.toItem(updated);
@@ -316,11 +334,14 @@ export class ProvidersService implements OnApplicationBootstrap {
        其余都不放：
        · [v0.5.0] anthropic+oauth_minimax：文件里是 refresh token，出站时换 access token；
        · [v0.6.0] qoder：凭证是身份 JSON，出站由 QoderCredentialStore 直读文件；
-       · [v1.6.13] openai（WorkBuddy）：凭证是 OAuth 槽，出站由 WbOauthService 取（ck_ 已退役）。 */
+       · [v1.6.13] openai（WorkBuddy）：凭证是 OAuth 槽，出站由 WbOauthService 取（ck_ 已退役）；
+       · [v1.7.0] custom：API key 在本行 .key，出站直读 —— 也不进全局位。 */
     if (row.protocol === 'anthropic' && row.cred_kind !== 'oauth_minimax') {
       this.config.setUpstreamKey(this.readCredentialFile(id));
     }
-    this.applyBaseUrlToSettings(row.base_url);
+    /* settings.upstream.baseUrl 同理是内置链路的全局位 —— custom 不写它
+       （自定义端点的地址只活在行数据里，转发/拉清单都按行走）。 */
+    if (row.protocol !== 'custom') this.applyBaseUrlToSettings(row.base_url);
   }
 
   /**
@@ -437,12 +458,29 @@ export class ProvidersService implements OnApplicationBootstrap {
           );
         }
       }
+      /* [v1.7.0] custom：草稿 key 走与保存时同一条格式规则，坏 key 在测之前就被拦下。 */
+      if (row.protocol === 'custom') {
+        if (!/^[\x21-\x7e]{8,}$/.test(key)) {
+          throw this.bad('API Key 格式不正确：应为 8 位以上可打印字符。');
+        }
+      }
     }
+    /* [v1.7.0] 探针目标模型：调用方没指定时的回退。
+       内置三家沿用 hunyuan-lite（腾讯系轻量模型，历史口径）；custom 端点不可能有它 ——
+       探针打一个不存在的模型只会得到 404，被误读成「连上了但被拒」。
+       改用它自己清单里第一个启用模型；清单空（还没拉、也没手动补）才回落
+       hunyuan-lite（那次 404 反而如实提示「先去拉模型清单」）。 */
     const modelId =
-      typeof model === 'string' && model.trim() ? model.trim() : PROBE_MODEL_FALLBACK;
+      typeof model === 'string' && model.trim()
+        ? model.trim()
+        : row.protocol === 'custom'
+          ? this.catalog?.all(row.id).find((m) => m.enabled === 1)?.id ?? PROBE_MODEL_FALLBACK
+          : PROBE_MODEL_FALLBACK;
 
     const startedAt = Date.now();
-    const outcome = await this.probe.probe(modelId, key, row.base_url);
+    /* [v1.7.0] custom 用自己的端点 URL（智能路径解析）—— 试通与转发必须同一条 URL 规则。 */
+    const customUrl = row.protocol === 'custom' ? buildCustomChatUrl(row.base_url, row.chat_path) : undefined;
+    const outcome = await this.probe.probe(modelId, key, row.base_url, customUrl);
     const elapsedMs = Date.now() - startedAt;
 
     /* ★ 不记录 key 本身，只记录"某次试通的结果"（与 models.service 同一条纪律）。 */
@@ -470,9 +508,12 @@ export class ProvidersService implements OnApplicationBootstrap {
   private toItem(row: ProviderRow): ProviderItem {
     const key = this.readCredentialFile(row.id);
     /* [v1.6.13] openai（WorkBuddy）的「已配置」改看 **OAuth 槽** —— ck_ 已退役。
-       其余两家仍看凭证文件（anthropic = mmort_ refresh token / M Plan key；
-       qoder = 身份 JSON）。 */
-    const isOpenai = row.protocol !== 'anthropic' && row.protocol !== 'qoder';
+       其余家仍看凭证文件（anthropic = mmort_ refresh token / M Plan key；
+       qoder = 身份 JSON；custom = API key）。
+       [v1.7.0] ⚠️ isOpenai 必须是**精确等于** openai —— 此前写的是
+       「非 anthropic/qoder 即 openai」，custom 进来会被误判成 WorkBuddy OAuth 形态
+       （configured 恒 false、掩码显示「未配置」）。协议值每加一个，这个推导都要审一遍。 */
+    const isOpenai = row.protocol === 'openai';
     const wbStatus = this.wbOauth?.statusOf(row.id);
     const configured = isOpenai ? Boolean(wbStatus?.configured) : key !== '';
     return {
@@ -484,8 +525,12 @@ export class ProvidersService implements OnApplicationBootstrap {
         : maskSecret(key),
       configured,
       active: row.active === 1,
-      /* [v0.6.0] 三方言语义透传 —— 此前非 anthropic 一律写 openai，会把 qoder 谎报成 openai。 */
-      protocol: (row.protocol === 'anthropic' ? 'anthropic' : row.protocol === 'qoder' ? 'qoder' : 'openai'),
+      /* [v0.6.0] 三方言语义透传 —— 此前非 anthropic 一律写 openai，会把 qoder 谎报成 openai。
+         [v1.7.0] custom 同理必须透传（三元兜底会把它折成 openai，前端协议胶囊就错了）。 */
+      protocol: (row.protocol === 'anthropic' || row.protocol === 'qoder' || row.protocol === 'custom'
+        ? row.protocol
+        : 'openai'),
+      chatPath: row.chat_path,
       credKind: (row.cred_kind === 'oauth_minimax' ? 'oauth_minimax' : 'static'),
       /* [v0.5.4] 各自的模型清单计数（不是合并目录）—— 提供商行上回答这家有什么。 */
       modelCount: this.catalog ? this.catalog.all(row.id).length : 0,
@@ -603,10 +648,24 @@ export class ProvidersService implements OnApplicationBootstrap {
    * [v0.5.0] 协议解析：'openai'（默认）| 'anthropic'。非法值 400 —— 协议选错
    * 意味着后面所有请求都用错误方言打上游，宁可建不成。
    */
-  private parseProtocol(raw: unknown): 'openai' | 'anthropic' | 'qoder' {
+  private parseProtocol(raw: unknown): 'openai' | 'anthropic' | 'qoder' | 'custom' {
     if (raw === undefined || raw === null || raw === '') return 'openai';
-    if (raw === 'openai' || raw === 'anthropic' || raw === 'qoder') return raw;
-    throw this.bad('protocol 只能是 openai、anthropic 或 qoder。');
+    if (raw === 'openai' || raw === 'anthropic' || raw === 'qoder' || raw === 'custom') return raw;
+    throw this.bad('protocol 只能是 openai、anthropic、qoder 或 custom。');
+  }
+
+  /**
+   * [v1.7.0] custom 的聊天端点路径覆盖。规则：null/undefined/'' = 用智能默认；
+   * 否则必须以 `/` 开头且不含查询串（路径就是路径，query 属于请求参数）。
+   */
+  private parseChatPath(raw: unknown): string | null {
+    if (raw === undefined || raw === null || raw === '') return null;
+    if (typeof raw !== 'string') throw this.bad('chatPath 必须是字符串。');
+    const path = raw.trim();
+    if (!path.startsWith('/') || path.includes('?') || path.includes('#')) {
+      throw this.bad('chatPath 必须以 / 开头，且不含查询串或锚点。');
+    }
+    return path;
   }
 
   /**
@@ -622,7 +681,7 @@ export class ProvidersService implements OnApplicationBootstrap {
    * [v1.6.13] openai（WorkBuddy）也放行留空 —— **ck_ 已退役**，三家统一走
    * 「导入客户端 → 官方授权」；凭证分别落 .oauth（WorkBuddy）/ .key（另两家）。
    */
-  private parseCredential(raw: unknown, protocol: 'openai' | 'anthropic' | 'qoder' = 'openai'): string {
+  private parseCredential(raw: unknown, protocol: 'openai' | 'anthropic' | 'qoder' | 'custom' = 'openai'): string {
     if (typeof raw !== 'string' || !raw.trim()) {
       /* 三家都可先建后导（openai 的 ck_ 已退役，凭证来自 OAuth 授权）。 */
       return '';
@@ -632,6 +691,14 @@ export class ProvidersService implements OnApplicationBootstrap {
       throw this.bad(
         'WorkBuddy 已不再使用 ck_ 密钥 —— 请用「导入客户端」完成官方授权（凭证自动落盘，无需手填）。',
       );
+    }
+    /* [v1.7.0] custom：任意 OpenAI 兼容端点的 API key（sk-… 形态各异，不预设前缀）。
+       只要求可打印且够长（过短的几乎必是手滑）；留空 = 先建后填。 */
+    if (protocol === 'custom') {
+      if (!/^[\x21-\x7e]{8,}$/.test(key)) {
+        throw this.bad('API Key 格式不正确：应为 8 位以上可打印字符（sk-… 等，具体形态看你端点的文档）。');
+      }
+      return key;
     }
     /* [v0.6.0] Qoder：身份 JSON（五个必填字符串字段）。结构错误在出站前就报清楚，
        不把坏凭证存进去、也不等出站半路炸。 */
@@ -657,7 +724,7 @@ export class ProvidersService implements OnApplicationBootstrap {
       }
       return key;
     }
-    /* openai 分支已在上面拦下（ck_ 退役），此处只可能是 anthropic / qoder。 */
+    /* openai 分支已在上面拦下（ck_ 退役），custom/qoder/anthropic 也各自 return —— 这里是防御性兜底。 */
     return '';
   }
 

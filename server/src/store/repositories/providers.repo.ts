@@ -39,6 +39,8 @@ export interface CreateProviderInput {
   protocol?: string;
   /** [v0.5.0] 缺省 'static'（旧行为）。 */
   credKind?: string;
+  /** [v1.7.0] 聊天端点路径（custom 提供商用得最多）；缺省 NULL = 协议默认。 */
+  chatPath?: string | null;
 }
 
 @Injectable()
@@ -51,13 +53,14 @@ export class ProvidersRepository {
   private readonly activeListStmt;
   private readonly setActiveStmt;
   private readonly patchStmt;
+  private readonly patchChatPathStmt;
   private readonly deleteStmt;
   private readonly countStmt;
 
   constructor(@Inject(DB_TOKEN) private readonly db: Db) {
     this.insertStmt = db.prepare(
-      `INSERT INTO providers (id, name, base_url, active, protocol, cred_kind, created_at, updated_at)
-       VALUES (@id, @name, @baseUrl, @active, @protocol, @credKind, @now, @now)`,
+      `INSERT INTO providers (id, name, base_url, active, protocol, chat_path, cred_kind, created_at, updated_at)
+       VALUES (@id, @name, @baseUrl, @active, @protocol, @chatPath, @credKind, @now, @now)`,
     );
     this.listStmt = db.prepare('SELECT * FROM providers ORDER BY created_at ASC');
     this.byIdStmt = db.prepare('SELECT * FROM providers WHERE id = ?');
@@ -72,6 +75,11 @@ export class ProvidersRepository {
          base_url  = COALESCE(@baseUrl, base_url),
          updated_at = @now
        WHERE id = @id`,
+    );
+    /* [v1.7.0] chat_path 单独 patch：它要能改成 NULL（回到协议默认），
+       COALESCE 做不到「传 null 即清空」，只能专用语句。 */
+    this.patchChatPathStmt = db.prepare(
+      'UPDATE providers SET chat_path = @chatPath, updated_at = @now WHERE id = @id',
     );
     this.deleteStmt = db.prepare('DELETE FROM providers WHERE id = ?');
     this.countStmt = db.prepare('SELECT COUNT(*) AS n FROM providers');
@@ -100,6 +108,7 @@ export class ProvidersRepository {
       active: input.active ? 1 : 0,
       protocol: input.protocol ?? 'openai',
       credKind: input.credKind ?? 'static',
+      chatPath: input.chatPath ?? null,
       now: Date.now(),
     });
   }
@@ -125,6 +134,11 @@ export class ProvidersRepository {
 
   patch(id: string, patch: { name?: string; baseUrl?: string }): void {
     this.patchStmt.run({ id, name: patch.name ?? null, baseUrl: patch.baseUrl ?? null, now: Date.now() });
+  }
+
+  /** [v1.7.0] 改聊天端点路径；传 null = 回到协议默认。 */
+  setChatPath(id: string, chatPath: string | null): void {
+    this.patchChatPathStmt.run({ id, chatPath, now: Date.now() });
   }
 
   delete(id: string): void {

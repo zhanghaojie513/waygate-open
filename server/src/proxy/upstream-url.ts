@@ -68,3 +68,36 @@ export function resolveUpstreamBase(config: Pick<RelayConfigService, 'get'>): st
 export function buildChatCompletionsUrl(baseUrl: string): string {
   return `${stripTrailingSlash(baseUrl)}${CHAT_COMPLETIONS_PATH}`;
 }
+
+/* =====================================================================
+ * [v1.7.0] 自定义提供商（protocol='custom'）—— 任意 OpenAI 兼容端点。
+ * 与上面 WorkBuddy 的 /v2 前缀无关：标准 OpenAI 布局是 /v1/chat/completions，
+ * 但用户填 base 时两种惯例都有（https://api.x.com 与 https://api.x.com/v1），
+ * 智能默认让两种填法都落到标准端点；不猜的兜底是显式 chatPath。
+ * ===================================================================== */
+
+/** 自定义提供商的默认 chat 路径（OpenAI 标准）。 */
+export const CUSTOM_CHAT_PATH = '/v1/chat/completions';
+
+/**
+ * 自定义提供商的聊天端点。
+ * ① 显式 chatPath（以 `/` 开头）优先 —— **根相对**：先剥掉 base 结尾的 `/vN` 版本段
+ *    再拼（base 填了 `…/v1` 又显式给 `/v1/chat/completions` 的双写不会翻倍）；
+ * ② base 以 `/v1`（或任意 `/vN`）结尾 → 只拼 `/chat/completions`（用户把版本段含进了 base）；
+ * ③ 其余 → 拼 `/v1/chat/completions`。
+ * 新建表单里要实时预览这个结果 —— 用户看到的 URL 就是将要请求的 URL。
+ */
+export function buildCustomChatUrl(baseUrl: string, chatPath?: string | null): string {
+  const base = stripTrailingSlash(baseUrl);
+  if (typeof chatPath === 'string' && chatPath.startsWith('/')) {
+    return `${base.replace(/\/v\d+$/i, '')}${chatPath}`;
+  }
+  if (/\/v\d+$/i.test(base)) return `${base}/chat/completions`;
+  return `${base}${CUSTOM_CHAT_PATH}`;
+}
+
+/** 自定义提供商的模型清单端点（OpenAI 标准 GET /v1/models；同样吸收 /vN 结尾的 base）。 */
+export function buildCustomModelsUrl(baseUrl: string): string {
+  const base = stripTrailingSlash(baseUrl);
+  return /\/v\d+$/i.test(base) ? `${base}/models` : `${base}/v1/models`;
+}

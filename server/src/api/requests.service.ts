@@ -26,7 +26,7 @@ export interface RequestListItem {
   model: string;
   modelDisplay: string | null;
   /**
-   * [v1.6.32] 本请求**实际路由到的**提供商 id（迁移 018 落库的事实列）。
+   * [v1.6.33] 本请求**实际路由到的**提供商 id（迁移 018 落库的事实列）。
    *
    * ★ 为什么必须由后端给、前端不能自己算：按模型目录反解在同名模型上**必然歧义** ——
    * `MiniMax-M3.1-Flash` 同时出现在「MiniMax Code」与「MiniMax Code2」两家的目录里，
@@ -360,7 +360,7 @@ export class RequestQueryService {
       }),
       model: r.model,
       modelDisplay: r.model_display,
-      /* [v1.6.32] 事实列：本请求实际路由到哪家。前端据此显示提供商 ——
+      /* [v1.6.33] 事实列：本请求实际路由到哪家。前端据此显示提供商 ——
          不再自己按模型目录反解（同名模型反解必然歧义，见 RequestListItem 注释）。 */
       providerId: r.provider_id ?? null,
       status: r.status,

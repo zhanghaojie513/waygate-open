@@ -33,13 +33,14 @@ import { ProviderModelPrefsRepository } from '../store/repositories/provider-mod
 import { ProvidersRepository, type ProviderRow } from '../store/repositories/providers.repo';
 import { RelayHttpError, ApiCode } from '../common/errors';
 import { ModelProbeService, PROBE_INTERVAL_MS } from './probe';
-import { pullUpstreamModels, type CatalogEntry } from './pull';
+import { pullUpstreamModels, parseUpstreamModels, type CatalogEntry } from './pull';
 import { fetchV3ConfigModels } from './v3-config';
-import { stripTrailingSlash } from '../proxy/upstream-url';
+import { stripTrailingSlash, buildCustomModelsUrl } from '../proxy/upstream-url';
 import { WbOauthService } from '../proxy/openai-upstream/wb-oauth.service';
 import { MinimaxTokenService } from '../proxy/anthropic-upstream/minimax-token.service';
 import { pullQoderModels } from './qoder-models';
 import { QoderCredentialStore } from '../proxy/qoder-upstream/credential';
+import { readCustomApiKey } from '../proxy/custom-upstream/credential';
 
 /**
  * [v0.5.0] MiniMax（anthropic 协议）的静态模型种子。
@@ -257,6 +258,34 @@ export class CatalogSyncService implements OnApplicationBootstrap, OnModuleDestr
   }
 
   /**
+   * [v1.7.0] 自定义提供商目录：`GET /v1/models`（OpenAI 标准，Bearer 静态 key）。
+   * 响应形状复用 parseUpstreamModels（它本来就兼容 `{data:[{id}]}`）。
+   * 拉取失败保留旧目录（与别家同纪律：网络失败 ≠ 上游没有）。
+   * 端点没有 /v1/models（部分兼容服务器）→ 用户在模型抽屉里手动补（POST …/models）。
+   */
+  private async pullCustomCatalog(provider: ProviderRow): Promise<SyncOutcome> {
+    try {
+      const key = readCustomApiKey(provider.id);
+      const url = buildCustomModelsUrl(stripTrailingSlash(provider.base_url));
+      const res = await fetch(url, {
+        headers: { authorization: `Bearer ${key}`, accept: 'application/json' },
+        signal: AbortSignal.timeout(PULL_TIMEOUT_MS),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const entries = parseUpstreamModels(await res.json());
+      if (!entries) throw new Error('响应不是可解析的模型清单（{data:[{id}]} 形状）');
+      /* multiplier 恒 null：标准端点不报倍率，本服务不自标定 —— 积分列落「未回报」口径。 */
+      this.catalog.replaceSync(provider.id, entries.map((e) => ({
+        id: e.id, displayName: e.displayName, source: 'upstream' as const, multiplier: null, tag: null,
+      })));
+      return { pullOk: true, configOk: false, added: entries.length, multipliersUpdated: 0 };
+    } catch (err) {
+      this.logger.warn(`自定义提供商目录拉取失败（保留旧目录）：${(err as Error).message}`);
+      return { pullOk: false, configOk: false, added: 0, multipliersUpdated: 0 };
+    }
+  }
+
+  /**
    * 启动即静默同步一次倍率（补上停机期间的官方调价），随后每 24h 一次。
    * [v0.5.1] 对**每个**生效提供商各同步各的（目录按提供商分区）。
    * 只拉取+合并，不实测（实测消耗积分，仅手动触发）。失败只记 debug，不影响启动。
@@ -357,9 +386,11 @@ export class CatalogSyncService implements OnApplicationBootstrap, OnModuleDestr
         anyPullOk = anyPullOk || outcome.pullOk;
         anyConfigOk = anyConfigOk || outcome.configOk;
 
-        // ③ 逐项实测（严格串行 + 固定间隔）—— anthropic / qoder 跳过（方言不符，清单即权威）
+        // ③ 逐项实测（严格串行 + 固定间隔）—— anthropic / qoder / custom 跳过：
+        //   anthropic/qoder 方言不符（清单即权威）；custom 实测是真计费请求，
+        //   标准 API 按 token 收钱，不能为打勾白花用户的钱（verified 由手动「试通」来验）。
         const rows = this.catalog.all(provider.id);
-        if (provider.protocol === 'anthropic' || provider.protocol === 'qoder') {
+        if (provider.protocol === 'anthropic' || provider.protocol === 'qoder' || provider.protocol === 'custom') {
           checked += rows.length;
           okCount += rows.length;
           perProvider.push({ id: provider.id, name: provider.name, checked: rows.length, ok: rows.length, failed: [] });
@@ -424,6 +455,8 @@ export class CatalogSyncService implements OnApplicationBootstrap, OnModuleDestr
     if (provider.protocol === 'anthropic') return this.pullMinimaxCatalog(provider);
     /* qoder 协议：网关有 /model/list —— 真拉取，替换式。 */
     if (provider.protocol === 'qoder') return await this.pullQoderCatalog(provider);
+    /* [v1.7.0] custom 协议：OpenAI 标准 /v1/models，静态 key。 */
+    if (provider.protocol === 'custom') return await this.pullCustomCatalog(provider);
     const base = stripTrailingSlash(provider.base_url);
     const key = await this.openAiCredential(provider);
     const [pull, config] = await Promise.all([

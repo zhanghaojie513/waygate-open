@@ -33,6 +33,7 @@ const PROTOCOL_LABEL: Record<string, string> = {
   openai: 'OpenAI 方言',
   anthropic: 'Anthropic 方言',
   qoder: 'COSY 协议',
+  custom: '自定义 · OpenAI 兼容',
 };
 
 export function ProviderHealthCard() {

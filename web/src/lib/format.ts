@@ -245,6 +245,8 @@ const NOTE_MAP: Record<string, string> = {
   'missing wb oauth credential': 'WorkBuddy 未导入授权',
   'wb token refresh failed': 'WorkBuddy 授权刷新失败',
   'qoder credential invalid': 'Qoder 凭证无效',
+  /* [v1.7.0] 自定义提供商（OpenAI 兼容 + 静态 key）出站失败留痕。 */
+  'missing custom api key': '自定义 API Key 未配置',
   // [历史·v0.5.8 起后端不再写入] 旧本地兜底公式的标记。保留映射只为**历史行仍可读**——
   // 公式已整段移除（上游未回报即 credits=null），新行不会再出现这两个 token。
   'multiplier-unknown': '倍率未知（历史：积分按中性估算）',

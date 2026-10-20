@@ -248,7 +248,7 @@ export const api = {
 
   /** [v0.5.4] provider 给定时只取该提供商自己的分区（各自维护清单的视图）。 */
   catalog(provider?: string): Promise<CatalogData> {
-    if (MOCKS_ENABLED) return mockApi.catalog();
+    if (MOCKS_ENABLED) return mockApi.catalog(provider);
     return apiRequestGuarded<CatalogData>(`/api/models/catalog${provider ? `?provider=${encodeURIComponent(provider)}` : ''}`);
   },
 
@@ -282,6 +282,15 @@ export const api = {
     return apiRequestGuarded<ModelEnabledResult>(
       `/api/models/catalog/${encodeURIComponent(id)}${provider ? `?provider=${encodeURIComponent(provider)}` : ''}`,
       { method: 'PATCH', body: JSON.stringify({ enabled }) },
+    );
+  },
+
+  /** [v1.7.0] 给自定义提供商手动补一个模型（source='manual'；仅 custom 开放）。 */
+  addManualModel(providerId: string, input: { id: string; displayName?: string }): Promise<{ id: string; added: boolean }> {
+    if (MOCKS_ENABLED) return mockApi.addManualModel(providerId, input);
+    return apiRequestGuarded<{ id: string; added: boolean }>(
+      `/api/models/catalog/${encodeURIComponent(providerId)}/manual-model`,
+      { method: 'POST', body: JSON.stringify(input) },
     );
   },
 
@@ -365,8 +374,10 @@ export const api = {
     name: string;
     baseUrl: string;
     credential: string;
-    /** [v0.5.0] 上游方言；缺省 openai。 */
-    protocol?: 'openai' | 'anthropic' | 'qoder';
+    /** [v0.5.0] 上游方言；缺省 openai。[v1.7.0] custom = 任意 OpenAI 兼容端点。 */
+    protocol?: 'openai' | 'anthropic' | 'qoder' | 'custom';
+    /** [v1.7.0] 聊天端点路径覆盖（仅 custom；缺省 = 智能默认）。 */
+    chatPath?: string | null;
     activate?: boolean;
   }): Promise<{ item: ProviderItem; activated: boolean }> {
     if (MOCKS_ENABLED) return mockApi.createProvider(input);
@@ -378,7 +389,7 @@ export const api = {
 
   patchProvider(
     id: string,
-    input: { name?: string; baseUrl?: string; credential?: string },
+    input: { name?: string; baseUrl?: string; credential?: string; chatPath?: string | null },
   ): Promise<ProviderItem> {
     if (MOCKS_ENABLED) return mockApi.patchProvider(id, input);
     return apiRequestGuarded<ProviderItem>(`/api/providers/${encodeURIComponent(id)}`, {

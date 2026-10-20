@@ -40,7 +40,7 @@ const MODEL_SEED: Array<Pick<CatalogModel, 'displayName' | 'id' | 'tag' | 'multi
   { displayName: 'Step-5-Preview', id: 'step-5-preview', tag: '订阅优先', multiplier: 0.43 },
   // 上游目录新增、本地映射表尚无它的那一类 —— 倍率未知（null），不编造。
   { displayName: 'Kimi-K3-1', id: 'kimi-k3-1', tag: '订阅优先', multiplier: null },
-  /* [v1.6.32] 同名模型场景（生产实测）：M3.1-Flash 同时登记在「MiniMax Code」与
+  /* [v1.6.33] 同名模型场景（生产实测）：M3.1-Flash 同时登记在「MiniMax Code」与
      「MiniMax Code2」两家目录里。mock 的目录按 id 前缀给 provider 名，这一行走
      'MiniMax Code' —— 即"反解必错"的那家；实际路由见 MOCK_MODEL_PROVIDER_ID（Code2）。 */
   { displayName: 'MiniMax-M3.1-Flash', id: 'MiniMax-M3.1-Flash', tag: '限时免费', multiplier: 0.0 },
@@ -61,7 +61,7 @@ function sourceOf(id: string): CatalogModel['source'] {
 }
 
 /**
- * [v1.6.32] mock 用的「模型 → 提供商 id」映射（模拟生产 `requests.provider_id` 事实列）。
+ * [v1.6.33] mock 用的「模型 → 提供商 id」映射（模拟生产 `requests.provider_id` 事实列）。
  *
  * 为什么需要：请求日志的「提供商」列现在读事实列。mock 若不给，
  * 那一列的走查就退回到"按模型名反解"，而那条路在有**同名模型**时必然显示错家
@@ -93,7 +93,7 @@ export const CATALOG: CatalogData = {
     family: m.id.split('-')[0],
     source: sourceOf(m.id),
     provider: m.id.startsWith('MiniMax-') || m.id.startsWith('minimax-') ? 'MiniMax Code' : 'WorkBuddy',
-    /* [v1.6.32] 带 providerId：请求日志用它把 `requests.providerId` 翻成显示名。 */
+    /* [v1.6.33] 带 providerId：请求日志用它把 `requests.providerId` 翻成显示名。 */
     providerId: MOCK_MODEL_PROVIDER_ID[m.id] ?? 'p_default00',
     verified: m.id === 'glm-5.1' || m.id === 'hy3' ? 0 : 1,
     enabled: true,
@@ -254,7 +254,7 @@ export function makeRequestRow(i: number): RequestLogRow {
     client: clientSnapshotName(client.id),
     model,
     modelDisplay: modelById(model).displayName,
-    /* [v1.6.32] 事实列：本请求实际路由到哪家。mock 里按行的 model 反解一个 id ——
+    /* [v1.6.33] 事实列：本请求实际路由到哪家。mock 里按行的 model 反解一个 id ——
        目的是让「提供商」列走**与生产同一条路径**（读 providerId），
        而不是继续靠模型名反解（那条路在有同名模型时必然显示错家）。 */
     providerId: MOCK_MODEL_PROVIDER_ID[model] ?? null,

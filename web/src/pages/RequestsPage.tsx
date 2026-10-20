@@ -118,7 +118,7 @@ export function RequestsPage() {
     return m;
   }, [catalog.data]);
   const modelTagOf = (modelId: string) => tagByModel.get(modelId) ?? null;
-  /* [v1.6.32] 提供商解析优先级（用户实测报障后改）：
+  /* [v1.6.33] 提供商解析优先级（用户实测报障后改）：
        ① `requests.providerId`（迁移 018 的**事实列**）→ 用 id → 名字表翻；
        ② 回落「模型目录反解」—— 只服务迁移前的老行（那时没这一列）。
 

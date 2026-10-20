@@ -65,7 +65,7 @@ export function RequestTable({
   /** 按模型 ID 查计价标签（夜间折扣/限时免费等），由 RequestsPage 从模型目录建查表。 */
   modelTagOf: (modelId: string) => string | null;
   /**
-   * [v1.6.32] 逐行解析**提供商**：优先读事实列 `providerId`（本请求实际路由到哪家），
+   * [v1.6.33] 逐行解析**提供商**：优先读事实列 `providerId`（本请求实际路由到哪家），
    * 迁移前的老行才回落到「模型目录反解」，再不行由调用方回落到密钥归属名。
    *
    * ⚠️ 不能只按模型目录反解：同名模型（M3.1-Flash 同时在 MiniMax Code 与 Code2 的
@@ -147,7 +147,7 @@ export function RequestTable({
                   <div className="model-meta">
                     {/* [v0.5.13] 提供商不能显示成密钥绑定名 —— 绑定 WorkBuddy 的密钥请求
                         MiniMax 模型时实际走 MiniMax Code，旧显示会把人引去查错家。
-                        [v1.6.32] 改为**优先读事实列** `requests.providerId`（实际路由到哪家）。
+                        [v1.6.33] 改为**优先读事实列** `requests.providerId`（实际路由到哪家）。
                         旧实现只按模型目录反解，同名模型（M3.1-Flash 同时在 Code / Code2）
                         永远只能显示一家，Code2 的流量被显示成 Code（用户实测报障）。
                         目录里已无该模型（老行/已删）才回落到目录反解，再不行才用密钥名。 */}

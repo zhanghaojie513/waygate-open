@@ -245,7 +245,7 @@ export interface RequestLogRow {
   model: string;
   modelDisplay: string;
   /**
-   * [v1.6.32] 本请求**实际路由到的**提供商 id（后端 `requests.provider_id`）。
+   * [v1.6.33] 本请求**实际路由到的**提供商 id（后端 `requests.provider_id`）。
    * 「提供商」列必须优先用它 —— 按模型目录反解在同名模型上必然歧义。
    * `null` = 本地拒绝（无归属）或迁移前的老行；`undefined` = 旧 mock 数据。
    */
@@ -657,8 +657,12 @@ export interface ProviderItem {
   configured: boolean;
   /** 是否当前生效（列表里恰有一个 true）。 */
   active: boolean;
-  /** [v0.5.0] 上游方言：openai（WorkBuddy）| anthropic（MiniMax mavis / M Plan）。 */
-  protocol: 'openai' | 'anthropic' | 'qoder';
+  /** [v0.5.0] 上游方言：openai（WorkBuddy）| anthropic（MiniMax mavis / M Plan）。
+   *  [v1.7.0] custom：任意 OpenAI 兼容端点（静态 API key，无 OAuth/签到/账本）。 */
+  protocol: 'openai' | 'anthropic' | 'qoder' | 'custom';
+  /** [v1.7.0] 聊天端点路径覆盖；null = 智能默认（base 无版本段拼 /v1/chat/completions，
+   *  以 /vN 结尾只拼 /chat/completions）。仅 custom 提供商使用。 */
+  chatPath: string | null;
   /** [v0.5.0] 凭证生命周期：static（直发）| oauth_minimax（refresh→access）。 */
   credKind: 'static' | 'oauth_minimax';
   /** [v0.5.4] 该提供商自己分区的模型数 / 启用数。 */
@@ -694,14 +698,14 @@ export type ModelSource = 'upstream' | 'seed' | 'manual';
 export interface CatalogModel {
   id: string;
   /**
-   * [v1.6.32] 该目录行属于哪个提供商 id —— 把 `requests.providerId` 翻成显示名用。
+   * [v1.6.33] 该目录行属于哪个提供商 id —— 把 `requests.providerId` 翻成显示名用。
    * 可选：mock / 旧数据可能没有；缺失时前端回落到按模型名反解。
    */
   providerId?: string;
 
   /**
    * [v0.5.13] 该模型归属的提供商显示名。
-   * [v1.6.32] ⚠️ 仅供**目录/模型清单**展示。请求日志的「提供商」列**不得**再靠它反解 ——
+   * [v1.6.33] ⚠️ 仅供**目录/模型清单**展示。请求日志的「提供商」列**不得**再靠它反解 ——
    * 同名模型（M3.1-Flash 同时在 Code / Code2 的目录里）反解只能取到一家，
    * 另一家永远显示不出来（用户实测报障）。逐行归属读 `requests.providerId`。
    */
