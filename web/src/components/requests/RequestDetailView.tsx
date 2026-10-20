@@ -30,15 +30,15 @@ export function RequestDetailView({
   onToggleReasoning,
   resolveClientName,
   modelTagOf,
-  providerOfModel,
+  providerOf,
 }: {
   row: RequestDetail;
   reasoningOpen: boolean;
   onToggleReasoning: () => void;
   /** 快照名 → 当前显示名（§9.2）。与日志表同一份解析，避免「同一行两个名字」。 */
   resolveClientName: (row: RequestLogRow) => string;
-  /** [v0.5.13] 按模型 ID 解析提供商（目录归属）；查不到回落密钥归属名。 */
-  providerOfModel: (modelId: string) => string | null;
+  /** [v1.6.32] 逐行提供商：优先事实列 `providerId`，回落目录反解。 */
+  providerOf: (row: { providerId?: string | null; model: string }) => string | null;
   /** 按模型 ID 查计价标签（夜间折扣/限时免费等），与日志表同源 —— 详情里也要能看到
    *  「这条为什么便宜」，不该要回表格里对。 */
   modelTagOf: (modelId: string) => string | null;
@@ -68,9 +68,11 @@ export function RequestDetailView({
       <div className="detail-row">
         <span className="k">提供商</span>
         <span className="v">
-          {/* [v0.5.13] 按模型目录归属解析（同表格的提供商药丸）；密钥绑定名只是路由偏好。
-              目录里已无该模型才回落到密钥归属客户端名。 */}
-          {providerOfModel(row.model) ?? resolveClientName(row)}
+          {/* [v0.5.13] 不能显示成密钥绑定名（那只是路由偏好）。
+              [v1.6.32] 优先读**事实列** `providerId`（本请求实际路由到哪家）——
+              按模型目录反解在同名模型上必然歧义（M3.1-Flash 同时在 Code / Code2）。
+              老行（迁移前没有该列）才回落到目录反解，再不行用密钥归属名。 */}
+          {providerOf(row) ?? resolveClientName(row)}
           {/* 这一栏是「哪把密钥进来的」，与下一栏的「工具」是两个问题 —— 显式标出规则，
               用户才不会把两者当成同一件事。 */}
           <span className="code-chip" style={{ marginLeft: 8 }}>

@@ -244,6 +244,12 @@ export interface RequestLogRow {
   client: string;
   model: string;
   modelDisplay: string;
+  /**
+   * [v1.6.32] 本请求**实际路由到的**提供商 id（后端 `requests.provider_id`）。
+   * 「提供商」列必须优先用它 —— 按模型目录反解在同名模型上必然歧义。
+   * `null` = 本地拒绝（无归属）或迁移前的老行；`undefined` = 旧 mock 数据。
+   */
+  providerId?: string | null;
   status: number;
   upstreamCode: number | null;
   ms: number;
@@ -688,8 +694,16 @@ export type ModelSource = 'upstream' | 'seed' | 'manual';
 export interface CatalogModel {
   id: string;
   /**
-   * [v0.5.13] 该模型归属的提供商显示名。请求日志的「提供商」按**模型 id → 目录**解析
-   * （requests 无 provider_id，逐行服务方不可知）；密钥绑定名只是路由偏好，不能冒充提供商。
+   * [v1.6.32] 该目录行属于哪个提供商 id —— 把 `requests.providerId` 翻成显示名用。
+   * 可选：mock / 旧数据可能没有；缺失时前端回落到按模型名反解。
+   */
+  providerId?: string;
+
+  /**
+   * [v0.5.13] 该模型归属的提供商显示名。
+   * [v1.6.32] ⚠️ 仅供**目录/模型清单**展示。请求日志的「提供商」列**不得**再靠它反解 ——
+   * 同名模型（M3.1-Flash 同时在 Code / Code2 的目录里）反解只能取到一家，
+   * 另一家永远显示不出来（用户实测报障）。逐行归属读 `requests.providerId`。
    */
   provider: string;
   displayName: string;

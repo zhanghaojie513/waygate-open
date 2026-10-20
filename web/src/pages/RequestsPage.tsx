@@ -118,6 +118,25 @@ export function RequestsPage() {
     return m;
   }, [catalog.data]);
   const modelTagOf = (modelId: string) => tagByModel.get(modelId) ?? null;
+  /* [v1.6.32] 提供商解析优先级（用户实测报障后改）：
+       ① `requests.providerId`（迁移 018 的**事实列**）→ 用 id → 名字表翻；
+       ② 回落「模型目录反解」—— 只服务迁移前的老行（那时没这一列）。
+
+     ⚠️ 旧实现只有 ②，于是同名模型永远显示错家：`MiniMax-M3.1-Flash` 同时出现在
+     「MiniMax Code」与「MiniMax Code2」的目录里，反解取到先登记的那家，
+     Code2 的流量全被显示成 Code。**目录反解本质是"猜"，事实列才是"记"。** */
+  const providersRes = useResource(() => api.providers(), [], { cacheKey: 'providers' });
+  /* id → 名字表：**提供商列表是权威源**（目录只有"启用中且有模型"的提供商 ——
+     提供商停用后目录行消失，它的历史请求会翻不到名字，又退回错家的反解）。
+     目录只作兜底补位（providers 接口失败时不至于整列空）。 */
+  const providerNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const p of providersRes.data?.items ?? []) m.set(p.id, p.name);
+    for (const mod of catalog.data?.models ?? []) {
+      if (mod.providerId && !m.has(mod.providerId)) m.set(mod.providerId, mod.provider);
+    }
+    return m;
+  }, [providersRes.data, catalog.data]);
   const providerByModel = useMemo(() => {
     const m = new Map<string, string>();
     for (const mod of catalog.data?.models ?? []) {
@@ -125,7 +144,14 @@ export function RequestsPage() {
     }
     return m;
   }, [catalog.data]);
-  const providerOfModel = (modelId: string) => providerByModel.get(modelId) ?? null;
+  /** 逐行提供商：优先事实列，回落目录反解（仅老行）。 */
+  const providerOf = (row: { providerId?: string | null; model: string }): string | null => {
+    if (row.providerId) {
+      const byId = providerNameById.get(row.providerId);
+      if (byId) return byId;
+    }
+    return providerByModel.get(row.model) ?? null;
+  };
 
   const clientOptions = useMemo(
     () => [
@@ -389,7 +415,7 @@ export function RequestsPage() {
                 onOpen={openDetail}
                 resolveClientName={currentClientName}
                 modelTagOf={modelTagOf}
-                providerOfModel={providerOfModel}
+                providerOf={providerOf}
               />
             )}
           </div>
@@ -447,7 +473,7 @@ export function RequestsPage() {
               onToggleReasoning={() => setReasoningOpen((v) => !v)}
               resolveClientName={currentClientName}
               modelTagOf={modelTagOf}
-              providerOfModel={providerOfModel}
+              providerOf={providerOf}
             />
           ) : null}
         </Drawer>

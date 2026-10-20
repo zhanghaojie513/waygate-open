@@ -25,6 +25,15 @@ export interface RequestListItem {
   client: string;
   model: string;
   modelDisplay: string | null;
+  /**
+   * [v1.6.32] 本请求**实际路由到的**提供商 id（迁移 018 落库的事实列）。
+   *
+   * ★ 为什么必须由后端给、前端不能自己算：按模型目录反解在同名模型上**必然歧义** ——
+   * `MiniMax-M3.1-Flash` 同时出现在「MiniMax Code」与「MiniMax Code2」两家的目录里，
+   * 反解只能取到先注册的那家，于是**永远显示不成 Code2**（用户实测报障）。
+   * `null` = 模型解析前就被本地拒绝（无归属），或迁移前的老行（那时没这一列）。
+   */
+  providerId: string | null;
   status: number;
   upstreamCode: number | null;
   ms: number;
@@ -88,6 +97,8 @@ interface RawRow {
   key_hint: string | null;
   model: string;
   model_display: string | null;
+  /** [v1.6.30] 实际路由到的提供商 id（迁移 018）；迁移前的老行为 null。 */
+  provider_id: string | null;
   status: number;
   upstream_code: number | null;
   ms: number;
@@ -239,7 +250,7 @@ export class RequestQueryService {
     const fetched = this
       .stmt(
         `SELECT r.id, r.ts, r.client, r.client_rule, r.client_id, r.key_id, r.key_hint,
-                r.model, r.model_display, r.status, r.upstream_code, r.ms, r.queued_ms, r.first_byte_ms,
+                r.model, r.model_display, r.provider_id, r.status, r.upstream_code, r.ms, r.queued_ms, r.first_byte_ms,
                 r.prompt_tokens, r.completion_tokens, r.reasoning_tokens, r.cached_tokens, r.total_tokens, r.credits, r.stream,
                 r.retry_count, r.note, r.remote_ip, r.ua,
                 ck.client AS bound_name, ck.name AS key_name, ck.id AS key_exists_id
@@ -295,7 +306,7 @@ export class RequestQueryService {
     const row = this
       .stmt(
         `SELECT r.id, r.ts, r.client, r.client_rule, r.client_id, r.key_id, r.key_hint,
-                r.model, r.model_display, r.status, r.upstream_code, r.ms, r.queued_ms, r.first_byte_ms,
+                r.model, r.model_display, r.provider_id, r.status, r.upstream_code, r.ms, r.queued_ms, r.first_byte_ms,
                 r.prompt_tokens, r.completion_tokens, r.reasoning_tokens, r.cached_tokens, r.total_tokens, r.credits, r.stream,
                 r.retry_count, r.note, r.remote_ip, r.ua, r.request_body, r.response_body,
                 ck.client AS bound_name, ck.name AS key_name, ck.id AS key_exists_id
@@ -349,6 +360,9 @@ export class RequestQueryService {
       }),
       model: r.model,
       modelDisplay: r.model_display,
+      /* [v1.6.32] 事实列：本请求实际路由到哪家。前端据此显示提供商 ——
+         不再自己按模型目录反解（同名模型反解必然歧义，见 RequestListItem 注释）。 */
+      providerId: r.provider_id ?? null,
       status: r.status,
       upstreamCode: r.upstream_code,
       ms: r.ms,

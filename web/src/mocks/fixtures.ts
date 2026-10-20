@@ -40,6 +40,10 @@ const MODEL_SEED: Array<Pick<CatalogModel, 'displayName' | 'id' | 'tag' | 'multi
   { displayName: 'Step-5-Preview', id: 'step-5-preview', tag: '订阅优先', multiplier: 0.43 },
   // 上游目录新增、本地映射表尚无它的那一类 —— 倍率未知（null），不编造。
   { displayName: 'Kimi-K3-1', id: 'kimi-k3-1', tag: '订阅优先', multiplier: null },
+  /* [v1.6.32] 同名模型场景（生产实测）：M3.1-Flash 同时登记在「MiniMax Code」与
+     「MiniMax Code2」两家目录里。mock 的目录按 id 前缀给 provider 名，这一行走
+     'MiniMax Code' —— 即"反解必错"的那家；实际路由见 MOCK_MODEL_PROVIDER_ID（Code2）。 */
+  { displayName: 'MiniMax-M3.1-Flash', id: 'MiniMax-M3.1-Flash', tag: '限时免费', multiplier: 0.0 },
 ];
 
 /**
@@ -56,6 +60,27 @@ function sourceOf(id: string): CatalogModel['source'] {
   return 'seed';
 }
 
+/**
+ * [v1.6.32] mock 用的「模型 → 提供商 id」映射（模拟生产 `requests.provider_id` 事实列）。
+ *
+ * 为什么需要：请求日志的「提供商」列现在读事实列。mock 若不给，
+ * 那一列的走查就退回到"按模型名反解"，而那条路在有**同名模型**时必然显示错家
+ * （生产实测：M3.1-Flash 有 254 条走 Code2，界面全显示成 Code）。
+ * 这里让 mock 与生产走同一条路径，改动才验得出来。
+ */
+const MOCK_MODEL_PROVIDER_ID: Record<string, string> = {
+  'kimi-k3': 'p_default00',
+  'kimi-k3-1': 'p_default00',
+  'glm-5.3': 'p_default00',
+  'kimi-k2.7': 'p_default00',
+  'minimax-m3': 'p_mmx002',
+  'deepseek-v4.1-flash': 'p_qoder01',
+  /* ★ 同名模型复现场景：M3.1-Flash 同时存在于两家目录，但**这一行实际走 Code2**。
+     修复前「提供商」列按模型名反解，只能显示成 MiniMax Code（错的）；
+     修复后读 providerId，正确显示 MiniMax Code2。 */
+  'MiniMax-M3.1-Flash': 'p_mm2c02',
+};
+
 export const CATALOG: CatalogData = {
   source: 'seed',
   fetchedAt: new Date(Date.now() - 2 * 3600_000).toISOString(),
@@ -68,6 +93,8 @@ export const CATALOG: CatalogData = {
     family: m.id.split('-')[0],
     source: sourceOf(m.id),
     provider: m.id.startsWith('MiniMax-') || m.id.startsWith('minimax-') ? 'MiniMax Code' : 'WorkBuddy',
+    /* [v1.6.32] 带 providerId：请求日志用它把 `requests.providerId` 翻成显示名。 */
+    providerId: MOCK_MODEL_PROVIDER_ID[m.id] ?? 'p_default00',
     verified: m.id === 'glm-5.1' || m.id === 'hy3' ? 0 : 1,
     enabled: true,
     lastVerifiedAt: new Date(Date.now() - 2 * 3600_000).toISOString(),
@@ -154,7 +181,7 @@ const KEY_HINTS = [
   'sk-waygate-77c1…b8f0',
   'sk-waygate-2e6b…0a13',
 ];
-const HOT_MODELS = ['kimi-k3', 'glm-5.3', 'kimi-k2.7', 'deepseek-v4.1-flash', 'minimax-m3', 'kimi-k2.8-preview'];
+const HOT_MODELS = ['kimi-k3', 'glm-5.3', 'kimi-k2.7', 'deepseek-v4.1-flash', 'minimax-m3', 'kimi-k2.8-preview', 'MiniMax-M3.1-Flash'];
 
 function modelById(id: string): CatalogModel {
   return CATALOG.models.find((m) => m.id === id) ?? CATALOG.models[0];
@@ -203,7 +230,9 @@ export function makeRequestRow(i: number): RequestLogRow {
      固定算式，不是生产计价逻辑（生产那份逻辑已整段删除，见 proxy-log.ts）。
      槽位 9 演示「上游未回报」：credits = null（界面渲染 `--`，不是 0）。
      ⚠️ 不要把这里当成计价公式的参考实现 —— 参考实现不存在，因为本服务不标定。 */
-  const creditsUnknown = note.includes('credits_unknown');
+  /* M3.1-Flash 与生产实测一致：上游**从不回报**单次积分（用量页那行 credits=null
+     的日志侧形态）。别让 0.0 倍率算出 0.00 —— "未回报"和"回报了 0"是两件事。 */
+  const creditsUnknown = note.includes('credits_unknown') || model === 'MiniMax-M3.1-Flash';
   const multiplier = modelById(model).multiplier ?? NEUTRAL_MULTIPLIER;
   const credits = creditsUnknown
     ? null
@@ -225,6 +254,10 @@ export function makeRequestRow(i: number): RequestLogRow {
     client: clientSnapshotName(client.id),
     model,
     modelDisplay: modelById(model).displayName,
+    /* [v1.6.32] 事实列：本请求实际路由到哪家。mock 里按行的 model 反解一个 id ——
+       目的是让「提供商」列走**与生产同一条路径**（读 providerId），
+       而不是继续靠模型名反解（那条路在有同名模型时必然显示错家）。 */
+    providerId: MOCK_MODEL_PROVIDER_ID[model] ?? null,
     status,
     upstreamCode,
     ms: failed ? 310 + ((i * 53) % 900) : 640 + ((i * 67) % 2400),
@@ -596,6 +629,7 @@ const MODEL_MIX: Array<{ id: string; requests: number }> = [
   { id: 'minimax-m3', requests: 104 },
   { id: 'deepseek-v4.1-flash', requests: 212 },
 ];
+
 
 /**
  * 客户端明细的请求数种子与单次均耗（Σ 请求数同上）。

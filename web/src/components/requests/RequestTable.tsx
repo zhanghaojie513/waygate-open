@@ -56,7 +56,7 @@ export function RequestTable({
   onOpen,
   resolveClientName,
   modelTagOf,
-  providerOfModel,
+  providerOf,
 }: {
   rows: RequestLogRow[];
   activeId: number | null;
@@ -65,11 +65,13 @@ export function RequestTable({
   /** 按模型 ID 查计价标签（夜间折扣/限时免费等），由 RequestsPage 从模型目录建查表。 */
   modelTagOf: (modelId: string) => string | null;
   /**
-   * [v0.5.13] 按模型 ID 解析**提供商**（模型目录归属）。
-   * 密钥绑定名只是路由偏好，不能冒充提供商；requests 无 provider_id，
-   * 目录归属是当前最诚实的口径 —— 查不到（模型已不在目录）回落到密钥归属客户端名。
+   * [v1.6.32] 逐行解析**提供商**：优先读事实列 `providerId`（本请求实际路由到哪家），
+   * 迁移前的老行才回落到「模型目录反解」，再不行由调用方回落到密钥归属名。
+   *
+   * ⚠️ 不能只按模型目录反解：同名模型（M3.1-Flash 同时在 MiniMax Code 与 Code2 的
+   * 目录里）反解只能取到一家，另一家的流量会被显示成错的（用户实测报障）。
    */
-  providerOfModel: (modelId: string) => string | null;
+  providerOf: (row: { providerId?: string | null; model: string }) => string | null;
 }) {
   return (
     <div className="tbl-scroll">
@@ -143,12 +145,17 @@ export function RequestTable({
                 <td>
                   <div className="td-strong">{uaName}</div>
                   <div className="model-meta">
-                    {/* [v0.5.13] 提供商按**模型目录归属**解析 —— 绑定 WorkBuddy 的密钥请求
-                        MiniMax 模型时实际走 MiniMax Code，旧显示（密钥归属名）把人引去查错家。
-                        目录里已无该模型（如已删）才回落到密钥归属名。 */}
-                    <Tooltip content={`提供商：${providerOfModel(r.model) ?? resolveClientName(r)}（按模型目录归属解析）`}>
+                    {/* [v0.5.13] 提供商不能显示成密钥绑定名 —— 绑定 WorkBuddy 的密钥请求
+                        MiniMax 模型时实际走 MiniMax Code，旧显示会把人引去查错家。
+                        [v1.6.32] 改为**优先读事实列** `requests.providerId`（实际路由到哪家）。
+                        旧实现只按模型目录反解，同名模型（M3.1-Flash 同时在 Code / Code2）
+                        永远只能显示一家，Code2 的流量被显示成 Code（用户实测报障）。
+                        目录里已无该模型（老行/已删）才回落到目录反解，再不行才用密钥名。 */}
+                    <Tooltip
+                      content={`提供商：${providerOf(r) ?? resolveClientName(r)}（按本请求实际路由记录）`}
+                    >
                       <span className="prov-pill">
-                        {providerOfModel(r.model) ?? resolveClientName(r)}
+                        {providerOf(r) ?? resolveClientName(r)}
                       </span>
                     </Tooltip>
                     {modelTagOf(r.model) ? <span className="mu-tag">{modelTagOf(r.model)}</span> : null}

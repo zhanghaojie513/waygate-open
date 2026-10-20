@@ -68,6 +68,11 @@ export interface RequestRow {
   note: string;
   remote_ip: string | null;
   ua: string | null;
+  /** [v1.6.30] 本次请求**实际路由到的**提供商 id（迁移 018 加的列）。
+   *  null = 模型解析前就被本地拒绝（无归属），或迁移前的老行。
+   *  ★ 请求日志「提供商」列应优先读它 —— 按模型目录反解在同名模型上必然歧义
+   *  （如 M3.1-Flash 同时在 MiniMax Code 与 Code2 的目录里，反解只会取到其中一家）。 */
+  provider_id: string | null;
   request_body: string | null;
   response_body: string | null;
   created_at: number;
@@ -256,6 +261,7 @@ export class RequestsRepository {
     ).n;
     const items = this.stmt(
         `SELECT id, ts, trace_id, client, client_rule, client_id, key_id, key_hint, model, model_display,
+                provider_id,
                 status, upstream_code, ms, queued_ms, first_byte_ms, prompt_tokens,
                 completion_tokens, total_tokens, cached_tokens, reasoning_tokens, credits, stream, retry_count, note,
                 remote_ip, ua, created_at

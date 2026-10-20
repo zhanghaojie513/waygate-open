@@ -105,6 +105,10 @@ export class ModelsService {
       upstreamReachable: this.config.upstreamConfigured(),
       models: rows.map((r) => ({
         id: r.id,
+        /* [v1.6.32] 带上 providerId：请求日志要用 `requests.provider_id`（事实列）
+           精确解析提供商，前端需要一张 id → 名字的表。只给名字不够 ——
+           同名模型（如 M3.1-Flash 同时在 Code / Code2 的目录里）无法区分。 */
+        providerId: r.provider_id,
         provider: providerName.get(r.provider_id) ?? r.provider_id,
         displayName: r.display_name,
         family: r.family,
