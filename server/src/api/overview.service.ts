@@ -23,7 +23,7 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { DB_TOKEN, type Db } from '../store/db';
 import { createStmtCache } from '../store/cached-stmt';
-import { fillEmptyBuckets, round2, round2OrNull, share, toIso, type WindowSpec, windowRange } from './window';
+import { fillEmptyBuckets, markPartialBuckets, round2, round2OrNull, share, toIso, type WindowSpec, windowRange } from './window';
 import { resolveClientName } from './client-name';
 import { computeCacheHitRate } from './token-metrics';
 import { detectTool } from '../identify/ua-table';
@@ -72,7 +72,21 @@ export interface OverviewPayload {
   /** [v0.5.7] 各提供商的**真实**积分账本（MiniMax 有；WorkBuddy 的上游未提供）。 */
   creditLedgers: CreditLedgerBlock[];
   metrics: {
+    /** 本窗口请求总数（**含**模型解析前被本地拒绝的行 —— 被拒也是一次请求）。 */
     requests: number;
+    /**
+     * 本窗口 `errors` 条数（status >= 400，含本地 429 拒绝）。
+     * `successRate = (requests - errors) / requests`。
+     */
+    errors: number;
+    /**
+     * [2026-10-18] 本窗口 `model = ''` 的行数 —— 模型解析前就被本地拒绝
+     * （实测全是 429 并发闸）。它们计入 `requests`，但不进 `byModel` / `byClient` /
+     * `byProvider` 摘要（空 model 不属于任何模型，也不该冒充「未归属」）。
+     * 因此 `ΣbyModel.requests = metrics.requests - requestsWithoutModel` 是**预期**，
+     * 不是 bug —— 前端要解释差值时用这个字段。
+     */
+    requestsWithoutModel: number;
     /**
      * 本窗口积分合计 = `SUM(requests.credits)` —— 只含**上游实扣**（`usage.credit`）。
      * 上游未回报的行（`credits IS NULL`）对合计贡献 0，其条数见 `creditsUnknownCount`。
@@ -101,7 +115,20 @@ export interface OverviewPayload {
      */
     creditsUnknownCount: number;
   };
-  trend: Array<{ bucket: string; requests: number; credits: number; tokens: number; errors: number; models: TrendModelSlice[] }>;
+  trend: Array<{
+    bucket: string;
+    requests: number;
+    credits: number;
+    tokens: number;
+    errors: number;
+    models: TrendModelSlice[];
+    /**
+     * [v1.6.31] 本桶是否只覆盖窗口的**一部分**（首/末桶常态）。
+     * 数字仍是真实的（只统计窗口内），但不足一整格 —— 前端 tooltip 据此注明，
+     * 避免把「半小时的桶」读成「一整个小时」。
+     */
+    partial: boolean;
+  }>;
   byModel: Array<{
     model: string;
     displayName: string | null;
@@ -158,7 +185,11 @@ export interface OverviewPayload {
     client: string;
     requests: number;
     tokens: number;
-    credits: number;
+    /**
+     * 本桶积分。**null = 该桶全部请求上游都未回报费用（未知）**，前端显示 `--`；
+     * 只要有一条回报过就是已知部分之和（未知当 0）。与 `byModel` 同构（2026-10-18）。
+     */
+    credits: number | null;
     share: number;
     /**
      * [v0.5.18] 该客户端消耗的**模型切片**（按 tokens 降序取前 `CLIENT_MODEL_SLICE` 个）。
@@ -170,7 +201,10 @@ export interface OverviewPayload {
       displayName: string | null;
       requests: number;
       tokens: number;
-      credits: number;
+      /** 同上：null = 该模型在本桶内全部未回报。 */
+      credits: number | null;
+      /** 本桶内该模型未回报费用的请求条数（前端据此解释 `--`）。 */
+      creditsUnknownCount: number;
     }>;
     /** 该客户端命中的**真实模型数**（可能 > models.length，见上）。 */
     modelCount: number;
@@ -183,14 +217,15 @@ export interface OverviewPayload {
    * 归因与请求日志「提供商」列、byClient 完全同源（模型 id → 生效目录的 provider）。
    * `providerId/provider` 为 `null` 的桶 = 窗口内有请求的模型不在任何生效目录里
    * （老日志/目录被删），前端显示「未归属」，**不冒充任何一家**。
-   * 不变式：ΣbyProvider.credits === ΣbyClient.credits === metrics.creditsUsed。
+   * 不变式：ΣbyProvider.credits（null 当 0）=== ΣbyClient.credits === metrics.creditsUsed。
    */
   byProvider: Array<{
     providerId: string | null;
     provider: string | null;
     requests: number;
     tokens: number;
-    credits: number;
+    /** null = 该提供商名下全部请求都未回报费用（未知）→ 前端显示 `--`（与 byClient 同构）。 */
+    credits: number | null;
     /** epoch ms；该提供商名下所有模型最近一次请求时刻。null = 无数据。 */
     lastSeenAt: number | null;
   }>;
@@ -246,6 +281,8 @@ interface TotalsRow {
   credits: number;
   /** [v0.5.8] `credits IS NULL` 的行数（上游未回报积分）。 */
   creditsUnknown: number;
+  /** [2026-10-18] `model = ''` 的行数（模型解析前被本地拒绝，无模型归属）。 */
+  requestsWithoutModel: number;
   avgMs: number;
   clients: number;
   promptTokens: number;
@@ -297,7 +334,7 @@ export class OverviewService {
     //      配合 `knownCount` 区分「全部上游未回报」与「真的是 0」（见 byModel 映射处）。
     const groups = this.stmt(
         `WITH g AS (
-           SELECT client_id, model,
+           SELECT client_id, model, provider_id AS providerId,
                   COUNT(*) AS requests,
                   SUM(CASE WHEN status >= 400 THEN 1 ELSE 0 END) AS errors,
                   SUM(credits) AS creditsRaw,
@@ -310,14 +347,17 @@ export class OverviewService {
                   MAX(ts) AS lastTs,
                   MAX(key_hint) AS keyHint
              FROM requests WHERE ts >= ? AND ts < ?
-               /* [2026-10-17] 排除 model 为空的行：实测 36 条全是 429 并发拒绝 ——
-                  请求在模型解析之前就被闸挡下，model 列为空串；它们不是任何
-                  「模型」的用量，进 byModel 只会多出一行 0 token 的「未知模型」。
-                  metrics.requests 仍计入（被拒也是一次请求），仅摘要剔除。 */
-               AND model <> ''
-            GROUP BY client_id, model
+               /* [2026-10-18 修正] 这里不再过滤 model <> ''。
+                  此前过滤了，但注释写的是「metrics.requests 仍计入（被拒也是一次请求），
+                  仅摘要剔除」—— 实现与注释相反（totals 就是从这份 groups 累加的），
+                  于是 429 拒绝行既没进摘要、也没进计数：成功率虚高、
+                  且与 trend/byTool（它们没有这个过滤）对不上。
+                  现在统一：计数口径含全部行，摘要（byModel/byClient/byProvider）
+                  在映射阶段剔除空 model，并把条数暴露为 requestsWithoutModel。 */
+            GROUP BY client_id, model, provider_id
          )
-         SELECT g.client_id AS clientId, g.model, g.requests, g.errors, g.creditsRaw, g.knownCount,
+         SELECT g.client_id AS clientId, g.model, g.providerId,
+                g.requests, g.errors, g.creditsRaw, g.knownCount,
                 g.msSum,
                 g.promptTokens, g.completionTokens, g.tokens, g.cachedTokens, g.lastTs, g.keyHint,
                 ck.client AS boundName, ck.name AS keyName, ck.id AS keyExistsId,
@@ -334,6 +374,8 @@ export class OverviewService {
       .all(from, to) as Array<{
       clientId: string;
       model: string;
+      /** [v1.6.30] 该组请求**实际路由到的**提供商 id；null = 老行（未记录）或本地拒绝。 */
+      providerId: string | null;
       requests: number;
       errors: number;
       creditsRaw: number | null;
@@ -359,6 +401,7 @@ export class OverviewService {
       errors: 0,
       credits: 0,
       creditsUnknown: 0,
+      requestsWithoutModel: 0,
       avgMs: 0,
       clients: 0,
       promptTokens: 0,
@@ -371,6 +414,7 @@ export class OverviewService {
     for (const g of groups) {
       totals.requests += g.requests;
       totals.errors += g.errors;
+      if (g.model === '') totals.requestsWithoutModel += g.requests;
       totals.credits += g.creditsRaw ?? 0;
       totals.creditsUnknown += g.requests - g.knownCount;
       totals.promptTokens += g.promptTokens;
@@ -401,6 +445,9 @@ export class OverviewService {
       }
     >();
     for (const g of groups) {
+      /* 空 model（模型解析前被本地拒绝，实测全是 429 并发闸）不属于任何模型：
+         计数已在上面的 totals 里计过，这里只是不把它做成一行「未知模型」。 */
+      if (g.model === '') continue;
       const m = modelAgg.get(g.model);
       if (!m) {
         modelAgg.set(g.model, {
@@ -433,12 +480,21 @@ export class OverviewService {
     //   `client_keys` 主键是 id，一组最多配一行，不存在模型那样的行放大。
     //   [v0.5.15] 归属改「模型→目录 provider」：在 JS 里用 providerByModel 归并成客户端桶；
     //   查不到 provider 的行回落密钥绑定名。
-    const clientModelRows = groups.map((g) => ({
+    const clientModelRows = groups
+      .filter((g) => g.model !== '') // 摘要排除空 model（计数已在 totals 里）
+      .map((g) => ({
       clientId: g.clientId,
       model: g.model,
+      /* [v1.6.30] 真实路由结果。null = 迁移 018 之前的老行 —— 只有这些才回落到
+         「模型 id → 目录 provider」反解（见 providerByModel 的用法）。 */
+      providerId: g.providerId,
       requests: g.requests,
       tokens: g.tokens,
-      credits: g.creditsRaw ?? 0,
+      /* [2026-10-18] 这里不能写 `g.creditsRaw ?? 0` —— 那会把「上游未回报」永久
+         抹成 0，下游 byClient/byProvider 再也无法区分「未知」与「真的是 0」。
+         保留 null，并带 knownCount 供桶级判断（与 byModel 同构）。 */
+      credits: g.creditsRaw,
+      knownCount: g.knownCount,
       boundName: g.boundName,
       keyName: g.keyName,
       keyHint: g.keyHint,
@@ -448,17 +504,25 @@ export class OverviewService {
     // 每个模型的最近请求时刻（byProvider.lastSeenAt 用）：组内 MAX(ts) 再按模型取最大。
     const lastSeenByModel = new Map<string, number>();
     for (const g of groups) {
+      if (g.model === '') continue;
       const prev = lastSeenByModel.get(g.model);
       if (prev === undefined || g.lastTs > prev) lastSeenByModel.set(g.model, g.lastTs);
     }
 
-    /* 模型id → 提供商显示名（与 ModelsService.get() 的 provider 映射同一来源与顺序：
-       生效提供商分区顺序遍历、同 id 先到先得 —— 请求日志「提供商」列同款口径）。 */
+    /* 模型id → 提供商显示名 —— **仅用于兜底**：迁移 018 之前落库的行没有
+       `provider_id`，只能按目录反解。反解规则（生效分区遍历、同 id 先到先得 =
+       创建序）与路由顺序**不一致**，所以它只能作为历史数据的降级手段，绝不该
+       用于新行 —— 新行一律读 `requests.provider_id`（真实路由结果）。 */
     const providerName = new Map(this.providers.list().map((p) => [p.id, p.name]));
     const providerByModel = new Map<string, string>();
     for (const row of this.catalog.allAcross(this.providers.listActive().map((p) => p.id))) {
       if (!providerByModel.has(row.id)) providerByModel.set(row.id, providerName.get(row.provider_id) ?? row.provider_id);
     }
+    /** 一组的归属提供商名：真实路由结果优先；老行才回落到目录反解。 */
+    const resolveProviderName = (r: { providerId: string | null; model: string }): string | null => {
+      if (r.providerId) return providerName.get(r.providerId) ?? r.providerId;
+      return providerByModel.get(r.model) ?? null;
+    };
 
     /* 桶内**按模型**再分一层：客户端摘要的悬停提示要回答「这个客户端的量花在哪些模型上」
        （v0.5.18 用户要求）。SQL 已是 (client_id, model) 粒度，这里只是把它们累加进桶，
@@ -470,12 +534,15 @@ export class OverviewService {
         client: string;
         requests: number;
         tokens: number;
-        credits: number;
-        models: Map<string, { model: string; requests: number; tokens: number; credits: number }>;
+        /** null = 桶内**全部**请求都未回报（未知）；否则为已知部分之和。 */
+        credits: number | null;
+        /** 桶内回报过费用的请求条数（>0 才能判断 credits 不是 null）。 */
+        knownCount: number;
+        models: Map<string, { model: string; requests: number; tokens: number; credits: number | null; knownCount: number }>;
       }
     >();
     for (const row of clientModelRows) {
-      const provider = providerByModel.get(row.model);
+      const provider = resolveProviderName(row);
       // 桶键：provider 名（或回落的 client_id）。clientId 字段对前端只是 React key。
       const key = provider ?? row.clientId;
       let bucket = clientBucket.get(key);
@@ -493,30 +560,42 @@ export class OverviewService {
             }),
           requests: 0,
           tokens: 0,
-          credits: 0,
+          credits: null,
+          knownCount: 0,
           models: new Map(),
         };
         clientBucket.set(key, bucket);
       }
       bucket.requests += row.requests;
       bucket.tokens += row.tokens;
-      bucket.credits += row.credits;
+      /* 未知口径：null 只表示「这一条没回报」，不参与求和；
+         只要桶内出现过一条已知，credits 就是已知部分之和（未知当 0）。 */
+      if (row.knownCount > 0) {
+        bucket.credits = (bucket.credits ?? 0) + (row.credits ?? 0);
+        bucket.knownCount += row.knownCount;
+      }
 
       const m = bucket.models.get(row.model);
       if (m) {
         m.requests += row.requests;
         m.tokens += row.tokens;
-        m.credits += row.credits;
+        if (row.knownCount > 0) {
+          m.credits = (m.credits ?? 0) + (row.credits ?? 0);
+          m.knownCount += row.knownCount;
+        }
       } else {
         bucket.models.set(row.model, {
           model: row.model,
           requests: row.requests,
           tokens: row.tokens,
-          credits: row.credits,
+          credits: row.knownCount > 0 ? row.credits ?? 0 : null,
+          knownCount: row.knownCount,
         });
       }
     }
-    const clientRows = [...clientBucket.values()].sort((a, b) => b.credits - a.credits).slice(0, 20);
+    const clientRows = [...clientBucket.values()]
+      .sort((a, b) => (b.credits ?? 0) - (a.credits ?? 0))
+      .slice(0, 20);
 
     /* [v0.6.0] byProvider：按**目录归属的提供商**聚合用量 —— 提供商表那一行
        「请求次数 / 消耗积分 / 最后活跃」需要的是这个，而不是按客户端求和。
@@ -524,27 +603,33 @@ export class OverviewService {
        模型查不到 provider 的行归到 `null` 桶（前端显示为「未归属」），不冒充任何一家。 */
     const providerBucket = new Map<
       string | null,
-      { providerId: string | null; provider: string | null; requests: number; tokens: number; credits: number; lastSeenAt: number | null }
+      { providerId: string | null; provider: string | null; requests: number; tokens: number; credits: number | null; knownCount: number; lastSeenAt: number | null }
     >();
-    /* provider 显示名 → id 反查（bucket 要带 id，前端按 id 对行）。 */
+    /* provider 显示名 → id 反查：**只给老行兜底**用（老行只有目录反解出的名字）。
+       新行直接有 providerId，不需要这一趟往返。 */
     const idByName = new Map([...providerName.entries()].map(([id, name]) => [name, id]));
     for (const row of clientModelRows) {
-      const pName = providerByModel.get(row.model) ?? null;
-      const pId = pName ? idByName.get(pName) ?? null : null;
+      /* [v1.6.30] 优先真实路由结果；老行（无 provider_id）才按目录反解。 */
+      const pName = resolveProviderName(row);
+      const pId = row.providerId ?? (pName ? idByName.get(pName) ?? null : null);
       const key = pId;
       let bucket = providerBucket.get(key);
       if (!bucket) {
-        bucket = { providerId: pId, provider: pName, requests: 0, tokens: 0, credits: 0, lastSeenAt: null };
+        bucket = { providerId: pId, provider: pName, requests: 0, tokens: 0, credits: null, knownCount: 0, lastSeenAt: null };
         providerBucket.set(key, bucket);
       }
       bucket.requests += row.requests;
       bucket.tokens += row.tokens;
-      bucket.credits += row.credits;
+      /* 与 byClient 同构：null = 该桶全部未回报；否则为已知部分之和。 */
+      if (row.knownCount > 0) {
+        bucket.credits = (bucket.credits ?? 0) + (row.credits ?? 0);
+        bucket.knownCount += row.knownCount;
+      }
     }
     /* lastSeenAt：取「该提供商名下所有模型」的 MAX(ts)（lastSeenByModel 来自主聚合，无需再扫一遍）。 */
     for (const row of clientModelRows) {
-      const pName = providerByModel.get(row.model) ?? null;
-      const pId = pName ? idByName.get(pName) ?? null : null;
+      const pName = resolveProviderName(row);
+      const pId = row.providerId ?? (pName ? idByName.get(pName) ?? null : null);
       const bucket = providerBucket.get(pId);
       if (!bucket) continue;
       const last = lastSeenByModel.get(row.model) ?? null;
@@ -555,7 +640,9 @@ export class OverviewService {
       provider: b.provider,
       requests: b.requests,
       tokens: b.tokens,
-      credits: round2(b.credits),
+      /* null = 该提供商名下全部请求都未回报（未知，前端显示 `--`）；
+         与 byModel 的 `knownCount > 0 ? round2(...) : null` 同构。 */
+      credits: b.credits === null ? null : round2(b.credits),
       /** epoch ms；该提供商名下所有模型最近一次请求时刻。null = 无数据。 */
       lastSeenAt: b.lastSeenAt,
     }));
@@ -569,7 +656,10 @@ export class OverviewService {
        不变式 ΣbyModel(已知部分) === creditsUsed 继续成立；
        但**单行**的 credits 保留 null（前端 `--`），不被这股求和抹平。 */
     const modelSum = round2(modelRows.reduce((s, r) => s + (r.creditsRaw ?? 0), 0));
-    const clientSum = round2(clientRows.reduce((s, r) => s + r.credits, 0));
+    /* 不变式对照：未知按 0 求和（`?? 0`），与 metrics.creditsUsed 同一口径。
+       byClient 现在可能含 null 行（整桶未回报），求和时必须显式当 0 —— 否则
+       `0 + null` 会变 NaN，断言就成了假红。 */
+    const clientSum = round2(clientRows.reduce((s, r) => s + (r.credits ?? 0), 0));
 
     /* 「哪个工具发的」—— 按**原样 UA** 分组，再在 JS 里映射成工具名。
        为什么不在 SQL 里判：关键词表是**代码里的数据**（要能随时增补、要能被单测覆盖），
@@ -676,14 +766,21 @@ export class OverviewService {
        空桶补零，与 mock 的 `hourlyTrend(count, …)` 同口径。
        `today` 窗口同理：桶数 = 本地零点到当前小时（+1）。
        注意：只影响**图**；`metrics` / `byModel` 等仍由 SQL 聚合，不受此影响。 */
-    const trend = fillEmptyBuckets(rawTrend, spec, from, to, (bucket) => ({
-      bucket,
-      requests: 0,
-      credits: 0,
-      tokens: 0,
-      errors: 0,
-      models: [] as TrendModelSlice[],
-    }));
+    /* [v1.6.31] 首/末桶常只覆盖窗口的一部分（窗口按 now 滚动，不对齐整点）——
+       标出来，前端 tooltip 才不会把「半小时的桶」读成「一整个小时」。 */
+    const trend = markPartialBuckets(
+      fillEmptyBuckets(rawTrend, spec, from, to, (bucket) => ({
+        bucket,
+        requests: 0,
+        credits: 0,
+        tokens: 0,
+        errors: 0,
+        models: [] as TrendModelSlice[],
+      })),
+      spec,
+      from,
+      to,
+    );
 
     // recent：同样是「凡展示名字处都走同一解析函数」—— 取 client_id + 当前名，不是快照。
     const recent = (
@@ -789,6 +886,8 @@ export class OverviewService {
       ],
       metrics: {
         requests: totalRequests,
+        errors,
+        requestsWithoutModel: totals.requestsWithoutModel ?? 0,
         creditsUsed,
         successRate: totalRequests ? Math.round(((totalRequests - errors) / totalRequests) * 1000) / 1000 : 0,
         avgLatencyMs: Math.round(totals.avgMs ?? 0),
@@ -828,14 +927,15 @@ export class OverviewService {
           client: c.client,
           requests: c.requests,
           tokens: c.tokens,
-          credits: round2(c.credits),
+          credits: c.credits === null ? null : round2(c.credits),
           share: share(c.tokens, totals.totalTokens),
           models: all.slice(0, CLIENT_MODEL_SLICE).map((m) => ({
             model: m.model,
             displayName: displayByModel.get(m.model) ?? null,
             requests: m.requests,
             tokens: m.tokens,
-            credits: round2(m.credits),
+            credits: m.credits === null ? null : round2(m.credits),
+            creditsUnknownCount: m.requests - m.knownCount,
           })),
           modelCount: all.length,
         };

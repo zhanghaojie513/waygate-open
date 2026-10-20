@@ -86,3 +86,32 @@ describe('byProvider · 提供商维度用量归属（v0.6.0）', () => {
     expect(Array.isArray(h.clients.list(h.spec).byProvider)).toBe(true);
   });
 });
+
+/**
+ * `share` 口径（2026-10-18 修）。
+ *
+ * 缺陷背景：`/api/clients` 的 `share` 用的是**积分**占比（`credits ÷ totalCredits`），
+ * 而契约 §3.4「`share` 口径」只定义了一种 —— **token** 占比（`tokens ÷ totalTokens`），
+ * `/api/overview` 的 `byModel` / `byClient` / `byTool` 三路也都是 token。
+ * 于是同一个字段名在两处是两种量纲，谁先把 `/api/clients` 的 share 用起来谁就踩坑。
+ *
+ * 本用例刻意用「两种口径结论**相反**」的数据：只按 token 算时 A=1%、B=99%；
+ * 若退回按积分算，两者会**对调**成 A=99%、B=1% —— 任何一边改错都必然红。
+ */
+describe('share 口径 · 必须是 token 占比（与 overview 同量纲）', () => {
+  it('★ share = tokens ÷ Σtokens，不是 credits ÷ Σcredits', () => {
+    h.makeKey('k_a', 'A', 'sk-waygate-aaaa…1001');
+    h.makeKey('k_b', 'B', 'sk-waygate-bbbb…1002');
+    // A：积分高、量小；B：积分低、量大 —— 两种口径的排序正好相反
+    h.log({ clientId: 'k_a', client: 'A', clientRule: 2, keyId: 'k_a', keyHint: 'sk-waygate-aaaa…1001', model: 'm', credits: 990, totalTokens: 10 });
+    h.log({ clientId: 'k_b', client: 'B', clientRule: 2, keyId: 'k_b', keyHint: 'sk-waygate-bbbb…1002', model: 'm', credits: 10, totalTokens: 990 });
+
+    const { items } = h.clients.list(h.spec);
+    const a = items.find((i) => i.clientId === 'k_a')!;
+    const b = items.find((i) => i.clientId === 'k_b')!;
+
+    expect(a.share).toBe(0.01); // 10 / 1000 —— 按积分算会是 0.99
+    expect(b.share).toBe(0.99); // 990 / 1000 —— 按积分算会是 0.01
+    expect(Math.round((a.share + b.share) * 1000) / 1000).toBe(1);
+  });
+});

@@ -295,6 +295,8 @@ export class ProxyService {
         if (ctx) {
           ctx.modelId = disabledRow.row.id;
           ctx.modelDisplay = disabledRow.row.display_name;
+          /* 下架模型：本请求被拒、没有真实承接方 —— **不写 provider**，
+             让统计按「未归属」处理，而不是把一次没发生的路由算到某家头上。 */
         }
         throw new RelayHttpError({
           httpStatus: 403,
@@ -321,6 +323,9 @@ export class ProxyService {
     if (ctx) {
       ctx.modelId = row.id;
       ctx.modelDisplay = row.display_name;
+      /* [v1.6.30] 记录**实际路由到的**提供商 —— 归属统计必须读它，不能事后
+         按目录反解（同一 model id 可能存在于多家，反解按创建序会挑错那家）。 */
+      ctx.providerId = provider.id;
     }
     /* 密钥权限范围判定。放在 `enabled` 之后（见上面的顺序说明），
        且**必须在 ctx 回填之后** —— 这一支抛错也要让失败行带上模型，
@@ -939,7 +944,14 @@ export class ProxyService {
     }
   }
 
-  /** 失败出口：先落一行失败日志（credits=0 / first_byte_ms=NULL），再返回给 controller 回响应。 */
+  /**
+   * 失败出口：先落一行失败日志，再返回给 controller 回响应。
+   *
+   * [2026-10-18 更正] 此前注释写「credits=0」，与实际相反：这里**不传** credits，
+   * `persistFailure` 默认落 `null`（见 proxy-log.ts 的 `outcome.credits ?? null`）。
+   * `null` 才是对的 —— 上游路径上的失败「花了多少不可知」，只有**本地拒绝**
+   * （未打上游，见 logRejection）才记 `0`（那是事实）。first_byte_ms 同理为 NULL。
+   */
   private fail(ctx: StreamContext, failure: RelayHttpError, note: string): UpstreamStream {    this.log.persistFailure(
       { ...ctx, traceId: failure.traceId },
       {

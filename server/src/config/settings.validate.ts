@@ -81,7 +81,7 @@ export function validateSetting(key: string, value: unknown): SettingCheck {
       if (typeof value !== 'string' || (value !== '' && !/^[\x21-\x7e]{1,200}$/.test(value))) {
         return {
           ok: false,
-          message: 'upstream.userAgent 必须是可打印字符串（如 WorkBuddy/5.8.0），最长 200 字符；留空表示沿用入站 UA',
+          message: 'upstream.userAgent 必须是可打印字符串（如 WorkBuddy/5.8.0），最长 200 字符；留空时伪装档回落到内置默认版本（透明转发档才沿用入站 UA）',
         };
       }
       return { ok: true };

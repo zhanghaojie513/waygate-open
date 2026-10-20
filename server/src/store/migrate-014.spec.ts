@@ -55,7 +55,19 @@ function makeV13Db(): Database.Database {
       note TEXT NOT NULL DEFAULT '', remote_ip TEXT, ua TEXT,
       request_body TEXT, response_body TEXT, created_at INTEGER NOT NULL
     );
-    INSERT INTO requests_v13 SELECT * FROM requests;
+    /* 显式列名而不是通配：本用例模拟的是 **v13 的列集合**，而 schema.sql 会继续
+       演进（例如 v18 加了 provider_id）。用通配会让这条迁移测试在每次加列时
+       假红 —— 它测的是「v13→v14 迁移保住数据」，不是「当前 schema 有几列」。 */
+    INSERT INTO requests_v13
+      (id, ts, trace_id, client, client_rule, client_id, key_id, key_hint, model, model_display,
+       status, upstream_code, ms, queued_ms, first_byte_ms, prompt_tokens, completion_tokens,
+       total_tokens, cached_tokens, reasoning_tokens, credits, stream, retry_count, note,
+       remote_ip, ua, request_body, response_body, created_at)
+    SELECT id, ts, trace_id, client, client_rule, client_id, key_id, key_hint, model, model_display,
+           status, upstream_code, ms, queued_ms, first_byte_ms, prompt_tokens, completion_tokens,
+           total_tokens, cached_tokens, reasoning_tokens, credits, stream, retry_count, note,
+           remote_ip, ua, request_body, response_body, created_at
+      FROM requests;
     DROP TABLE requests;
     ALTER TABLE requests_v13 RENAME TO requests;
     CREATE INDEX idx_requests_ts ON requests(ts DESC);

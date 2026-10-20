@@ -45,6 +45,8 @@ export interface ClientItem {
 interface GroupRow {
   clientId: string;
   model: string;
+  /** [v1.6.30] 实际路由到的提供商 id；null = 老行（未记录）或本地拒绝。 */
+  providerId: string | null;
   rule: number | null;
   requests: number;
   tokens: number;
@@ -60,6 +62,10 @@ interface GroupRow {
 interface ClientAgg {
   clientId: string;
   requests: number;
+  /** [2026-10-18] share 的分母口径是 **token**（契约 §3.4「share 口径」），
+      故这里必须累计 tokens —— 此前只累计 credits 且用 credits 算 share，
+      与 overview 的同名字段是两种量纲（同一个 `share` 两处含义不同）。 */
+  tokens: number;
   credits: number;
   lastSeen: number;
   keyHint: string | null;
@@ -100,16 +106,17 @@ export class ClientsService {
        client_keys 在聚合**之后**才 JOIN（每组一行），主键 JOIN 不会放大计数。 */
     const groups = this.stmt(
       `WITH g AS (
-         SELECT client_id, model, client_rule AS rule,
+         SELECT client_id, model, client_rule AS rule, provider_id,
                 COUNT(*) AS requests,
                 COALESCE(SUM(total_tokens), 0) AS tokens,
                 COALESCE(SUM(credits), 0) AS credits,
                 MAX(ts) AS lastSeen,
                 MAX(key_hint) AS keyHint
            FROM requests WHERE ts >= ? AND ts < ?
-          GROUP BY client_id, model, client_rule
+          GROUP BY client_id, model, client_rule, provider_id
        )
-       SELECT g.client_id AS clientId, g.model, g.rule, g.requests, g.tokens, g.credits, g.lastSeen, g.keyHint,
+       SELECT g.client_id AS clientId, g.model, g.provider_id AS providerId, g.rule,
+              g.requests, g.tokens, g.credits, g.lastSeen, g.keyHint,
               ck.client AS boundName, ck.name AS keyName, ck.id AS keyExistsId
          FROM g
          LEFT JOIN client_keys ck ON ck.id = g.client_id`,
@@ -123,6 +130,7 @@ export class ClientsService {
         c = {
           clientId: g.clientId,
           requests: 0,
+          tokens: 0,
           credits: 0,
           lastSeen: 0,
           keyHint: null,
@@ -135,6 +143,7 @@ export class ClientsService {
         byClient.set(g.clientId, c);
       }
       c.requests += g.requests;
+      c.tokens += g.tokens;
       c.credits += g.credits;
       if (g.lastSeen > c.lastSeen) c.lastSeen = g.lastSeen;
       // 与原 SQL 的 MAX(r.key_hint) 同义：忽略 NULL，取字典序最大
@@ -144,7 +153,7 @@ export class ClientsService {
     }
 
     const aggs = [...byClient.values()].sort((a, b) => b.credits - a.credits);
-    const totalCredits = aggs.reduce((s, r) => s + r.credits, 0);
+    const totalTokens = aggs.reduce((s, r) => s + r.tokens, 0);
 
     const items = aggs.map((r) => {
       const rule = normalizeRule(dominantRule(r.ruleCounts));
@@ -169,7 +178,11 @@ export class ClientsService {
         boundKeyIds,
         // 兜底客户端（client_id = 'unidentified'）本身不是命名过的客户端
         named: r.clientId !== UNIDENTIFIED_ID,
-        share: share(r.credits, totalCredits),
+        /* [2026-10-18 修口径] 分母必须是 token、与 overview 的同名字段同量纲。
+           此前是 `share(r.credits, totalCredits)` —— 同一个 `share` 在
+           `/api/clients` 是积分占比、在 `/api/overview` 是 token 占比，
+           而契约 §3.4「share 口径」只定义了一种（token ÷ 本窗口 totalTokens）。 */
+        share: share(r.tokens, totalTokens),
       } satisfies ClientItem;
     });
 
@@ -201,7 +214,17 @@ export class ClientsService {
     }
     const bucket = new Map<string, { providerId: string | null; provider: string | null; requests: number; tokens: number; credits: number; lastSeen: number }>();
     for (const r of groups) {
-      const name = providerByModel.get(r.model) ?? null;
+      /* [2026-10-18] 空 model（模型解析前被本地拒绝，实测全是 429）不属于任何提供商，
+         也不该落进「未归属」桶 —— overview 的 byProvider 同样排除它。
+         两边口径必须一致，否则同一窗口下两个「提供商」视图的请求数对不上。
+         （注意：byClient 的 items 仍包含这些行 —— 它们确实来自某把密钥，
+           「这个客户端打了多少次」应当包含被拒的那几次。） */
+      if (r.model === '') continue;
+      /* [v1.6.30] 优先用真实路由结果；老行（无 provider_id）才按目录反解。
+         反解按创建序，路由按密钥绑定优先 —— 两者可能指向不同的家。 */
+      const name = r.providerId
+        ? (providerName.get(r.providerId) ?? r.providerId)
+        : (providerByModel.get(r.model) ?? null);
       const pid = name ? idByName.get(name) ?? null : null;
       const key = pid ?? '__unattributed__';
       let b = bucket.get(key);

@@ -42,6 +42,8 @@ export function CreditBanner({ metrics }: { metrics: OverviewMetrics }) {
         <div className="cb-note">
           仅统计经本服务转发的请求（取上游实扣 usage.credit；上游未回报的行积分未知，不计入合计
           {metrics.creditsUnknownCount > 0 ? `，本窗口 ${formatInt(metrics.creditsUnknownCount)} 条` : ''}）。
+          <b>未回报不等于没扣费</b> —— 部分模型（如 MiniMax 系）照常扣积分却不在响应里回报单次费用，
+          那部分只体现在「积分账本」的已消耗里。
           官方客户端直连的消耗不计入 —— 账户总消耗与余额以官方客户端为准。
         </div>
       </div>

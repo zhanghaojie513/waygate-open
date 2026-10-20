@@ -173,7 +173,10 @@ export function ProviderTable({
                   </span>
                 </td>
                 <td className="r td-mono">{p.active ? formatInt(usageByProvider.get(p.id)?.requests ?? 0) : '—'}</td>
-                <td className="r td-mono">{p.active ? formatCredits(usageByProvider.get(p.id)?.credits ?? 0) : '—'}</td>
+                {/* [2026-10-18] 不能 `?? 0`：MiniMax 系上游不回单次 credit，整桶未知时
+                    服务端给 null。显示 `--` 而不是 0.00 —— 0 会被读成「免费」，与事实相反。
+                    下面 requests 的 `?? 0` 是对的：次数是可数的，没有提供商就是 0 次。 */}
+                <td className="r td-mono">{p.active ? formatCredits(usageByProvider.get(p.id)?.credits ?? null) : '—'}</td>
                 <td className="r td-mono">
                   {p.active ? formatRelative(usageByProvider.get(p.id)?.lastSeenAt ?? null) : '—'}
                 </td>

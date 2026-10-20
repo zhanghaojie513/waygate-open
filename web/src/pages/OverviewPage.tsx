@@ -52,7 +52,10 @@ export function OverviewPage({ navigate }: { navigate: (r: Route) => void }) {
   const avgTpm = d && winMinutes ? d.metrics.totalTokens / winMinutes : null;
 
   /* [v0.5.16 用户要求] 「请求数」「已消耗积分」指标卡悬停给按提供商拆分 ——
-     与用量页指标卡同一格式；byClient 的归属口径是「模型→目录 provider」（v0.5.15）。 */
+     与用量页指标卡同一格式；byClient 的归属口径是「模型→目录 provider」（v0.5.15）。
+     [2026-10-18 修] 分母必须与 metric **同量纲**：此前 tokens 落到 requests 分支，
+     于是「Token 分布」算的是 tokens ÷ 请求数，占比能超过 100%。
+     用量页同一处三分支齐全（UsagePage.tsx），两页口径必须一致。 */
   const clientTip = (kind: 'requests' | 'credits' | 'tokens'): ReactNode => {
     if (!d || d.byClient.length === 0) return undefined;
     const rows = [...d.byClient].sort((a, b) => (b[kind] ?? 0) - (a[kind] ?? 0));
@@ -61,7 +64,7 @@ export function OverviewPage({ navigate }: { navigate: (r: Route) => void }) {
         rows={rows}
         metric={kind}
         windowLabel={WINDOW_LABEL[d.window]}
-        total={kind === 'credits' ? d.metrics.creditsUsed : d.metrics.requests}
+        total={kind === 'credits' ? d.metrics.creditsUsed : kind === 'tokens' ? d.metrics.totalTokens : d.metrics.requests}
         totalCount={rows.length}
       />
     );
@@ -135,10 +138,12 @@ export function OverviewPage({ navigate }: { navigate: (r: Route) => void }) {
                 value={formatCredits(d.metrics.creditsUsed)}
                 /* [v0.5.8] 口径铁律：这个数是**上游实扣**（usage.credit）的合计，不是估算。
                    上游没回报的行不计入合计（credits=null），故必须把「有多少行没算进来」
-                   一起说出来 —— 否则用户会把这个数当成全部消耗。 */
+                   一起说出来 —— 否则用户会把这个数当成全部消耗。
+                   [v1.6.29] 补「未回报 ≠ 没扣费」：实测 M3.1-Flash 的未订阅账户照常
+                   扣费却仍不回报 credit，只写"未回报"会被读成"免费"。 */
                 detail={
                   d.metrics.creditsUnknownCount > 0
-                    ? `上游实扣 · 另 ${formatInt(d.metrics.creditsUnknownCount)} 条上游未回报，未计入`
+                    ? `上游实扣 · 另 ${formatInt(d.metrics.creditsUnknownCount)} 条未回报，未计入（≠ 没扣费）`
                     : '上游实扣 · 全部请求均已回报'
                 }
                 tone="amber"

@@ -8,8 +8,8 @@
 [![NestJS](https://img.shields.io/badge/NestJS-12-E0234E?style=flat-square)](https://nestjs.com)
 [![SQLite](https://img.shields.io/badge/SQLite-better--sqlite3-003B57?style=flat-square)](https://github.com/WiseLibs/better-sqlite3)
 [![Node](https://img.shields.io/badge/Node-%E2%89%A522.9-3C873A?style=flat-square)](https://nodejs.org)
-[![version](https://img.shields.io/badge/version-1.6.29-4A38C0?style=flat-square)](https://github.com/zhanghaojie513/waygate-open/releases)
-[![tests](https://img.shields.io/badge/tests-765%20passed-0A7247?style=flat-square)](./server)
+[![version](https://img.shields.io/badge/version-1.6.30-4A38C0?style=flat-square)](https://github.com/zhanghaojie513/waygate-open/releases)
+[![tests](https://img.shields.io/badge/tests-806%20passed-0A7247?style=flat-square)](./server)
 
 ![途关 · Waygate](docs/img/intro.png)
 
@@ -53,6 +53,9 @@
 - **WorkBuddy 领取域**（v1.4.0；v1.6.11 起与转发统一）：签到代领 + 成长任务 + 连登兑换走**用户会话域**（OAuth，`providers/<id>.oauth`，多会话共存不互踢）——正是这条链路让 `ck_` 得以整体退役。诚实边界：任务多为「体验 XX」型，前置条件不满足就如实记 `skipped`，**绝不伪造行为去凑任务**；补登卡/抽奖等资源消耗型操作不自动化
 - **容错**：Qoder 零内容断流**自动重试一次**（对客户端无感）；上游 11128 渠道校验自动降级重试；**11128 渠道熔断**（连续 3 次「降级重试也 11128」即开闸，冷却期内未打上游、未占并发槽、未计费，毫秒级 502 + `retry-after`，阵发过去自动半开放行探测）——上游阵发期每个失败要烧 ~65s，并发槽是全局单计数，不加熔断会烧满槽饿死其他提供商；**只计渠道级信号**（内容级 11128 降级能过的不计入），避免一个客户端的请求特征变成全提供商的闸门
 - **审计不丢行**：流式请求在途期间密钥被删时，落库撞 `key_id` 外键会丢整行 —— 现自动降级 `key_id = NULL` 重试保住整行（tokens / 积分 / 状态 / 耗时照常），`client_id` / `key_hint` 快照仍在，note 标记 `key_deleted_inflight`
+- **提供商归属是记录的事实**（v1.6.30）：`requests.provider_id` 记下**本次请求实际路由到**的提供商。原因：同一模型 id 可能同时存在于两家目录（实测 MiniMax-M2.7 / M3 / M3.1-Flash-Preview 同时在 MiniMax Code 与 Code2），而「目录反解」按创建序先到先得、「路由」按密钥绑定优先 —— 两者不一致时统计会静默记到错误的那家，且无字段可查。老行留 `NULL` 并按目录反解兜底（不回填猜测）
+- **错误语义统一**（v1.6.32）：`/api/*` 的「资源不存在」一律 404 统一信封（不再 200 + `reason` 字符串）；`POST /api/providers` 与其余写方法一样返回 200（此前是 Nest 默认 201）；`/v1/usage` 鉴权失败回 **401**（此前返回 200 + error body，客户端会当成功）
+- **趋势图覆盖整个窗口**（v1.6.31）：桶序列起点**向下对齐到桶边界**、终点是当前桶，于是图覆盖区间 ⊇ 窗口区间，`Σ趋势 === 卡片数字` 成为结构性保证（1h→2 格、24h→25 格、7d→8 格、30d→31 格）。首/末桶带 `partial` 标记，tooltip 标「不足一格」
 - **控制台**：React 19 单页，明暗双主题（跟随系统/手动，侧栏底部切换；官网与控制台同套主题——棱镜场景浅色下以 `multiply` 显形、深色下以 `screen`），CSS 伪元素 tooltip 体系，同形状骨架屏；页间数据先旧后新（SWR：重进页面即刻渲染上次数据、后台刷新无缝替换，自己的写操作写穿缓存不闪旧态）；「提供商健康」只读总览
 - **性能**：路由级代码分割：官网与控制台互不加载对方代码，首屏 gzip <100K；vendor 独立 chunk 享 30d `immutable` 长缓存（发版只重下业务 chunk）；概览 5s TTL 缓存（写操作即清）、SQL 语句按文本缓存复用、凭证文件 stat 失效缓存、last_seen 节流落库——同进程转发 SSE，省下的每次查询/写库都是还给流的事件循环时间；Nginx gzip（level 5）压缩传输
 
@@ -73,11 +76,22 @@ npm install -g waygate-open
 waygate-open
 ```
 
-想看固定版本而不是跟着 `latest` 走：`npx waygate-open@1.6.29`。
+想看固定版本而不是跟着 `latest` 走：`npx waygate-open@1.6.30`。
 
 两种方式行为一致：起本地服务并**自动打开浏览器**到控制台（默认 <http://127.0.0.1:8787/console>）。
 首次启动的管理口令默认是 **`waygate`** —— 仅当只监听回环（`127.0.0.1`）时套用这个
 默认值；对外监听时改为随机生成并打印在启动日志里。登录后建议去「设置 → 管理口令」改掉。
+
+> **忘了口令怎么办**
+> 能进控制台：设置 → 管理口令 → 重置（服务端生成随机 16 位并回显一次）。
+> 进不去：删除数据目录里的口令记录后重启即可回到默认值 ——
+> ```bash
+> # 会把密钥与请求日志一并清掉，先备份
+> mv ~/.waygate/open ~/.waygate/open.bak && npx waygate-open
+> ```
+> 口令的加载优先级是「环境变量哈希 → 数据库 → `admin.hash` 文件 → 首次生成」，
+> 所以只要库里有值，注入的默认值**不会**生效 —— 启动器也只在这种「首次启动」时
+> 才告诉你默认口令。
 
 数据默认落在 `~/.waygate/open/`（库与密钥都在那里）—— 与工作目录无关，
 所以全局安装后在任意目录启动都读同一份数据。
@@ -427,4 +441,4 @@ tools/                     仓库级工具（lint 门禁、token 合并、截图
 
 ---
 
-版本约定：`1.0.0` 起 API 契约稳定（当前 `1.6.29`，见 `server/src/version.ts`；历史版本见 [Releases](https://github.com/zhanghaojie513/waygate-open/releases)）。
+版本约定：`1.0.0` 起 API 契约稳定（当前 `1.6.30`，见 `server/src/version.ts`；历史版本见 [Releases](https://github.com/zhanghaojie513/waygate-open/releases)）。

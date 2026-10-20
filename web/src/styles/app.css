@@ -150,6 +150,12 @@
   color: var(--signal-live-lt);
   border: 1px solid color-mix(in srgb, var(--signal-live) 45%, transparent);
 }
+/* [v1.6.31] 首/末桶不足一格（窗口按 now 滚动、不对齐整点）。用中性色：
+   它不是「好消息/坏消息」，只是口径说明，不该抢走「最新」那个强调色。 */
+.bar-tip .bt-tag-partial {
+  color: var(--text-faint);
+  border-color: var(--border-subtle);
+}
 .bar-tip .bt-row { display: flex; justify-content: space-between; gap: 20px; color: var(--text-tertiary); white-space: nowrap; }
 .bar-tip .bt-row i { font-style: normal; font-family: var(--font-mono); color: var(--text-secondary); }
 /* 当前口径（积分/请求切换）高亮：看图的人正盯着的那个量 */

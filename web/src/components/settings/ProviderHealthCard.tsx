@@ -22,7 +22,8 @@ import { Drawer } from '../ui/Drawer';
  *   `GET /api/providers` → 每家的 protocol / configured / active / credits（账本）/ signin（签到）
  *
  * ## 三项常驻说明（如实，不含推测）
- *   ① `requests` 表无 provider_id → 提供商归属按模型目录推断，逐条请求不记服务方；
+ *   ① [v1.6.30] `requests.provider_id` 记录**实际路由到的**提供商 → 归属是事实，
+ *      不再靠目录推断（只有本版前的历史行回落到推断）；
  *   ② MiniMax 凭证互斥 → 建议专用账号；
  *   ③ Qoder 零内容重试 → 最多 1 次、对客户端无感。
  */
@@ -94,7 +95,15 @@ export function ProviderHealthCard() {
                         {p.credits.consumed !== null ? (
                           <>
                             {' '}
-                            <Tooltip content={'已消耗 / 累计发放 —— 账户级全部历史（含官方客户端直连的用量）。\n不是本服务转发的那部分，与剩余不是同一种量。'}>
+                            <Tooltip
+                              content={
+                                '已消耗 / 累计发放 —— 账户级全部历史（含官方客户端直连的用量）。\n' +
+                                '不是本服务转发的那部分，与剩余不是同一种量。\n' +
+                                '★ 这是**唯一完整**的消耗口径：上游常在响应里不回报单次积分\n' +
+                                '（如 M3.1-Flash），那些请求在「请求日志/模型明细」里显示 --，\n' +
+                                '但账本这里照实累计 —— 对不上时以本行为准。'
+                              }
+                            >
                               <span className="credit-aside">
                                 已消耗 {formatCredits(p.credits.consumed)}
                                 {p.credits.granted !== null ? ` / 发放 ${formatCredits(p.credits.granted)}` : ''}
@@ -217,9 +226,11 @@ export function ProviderHealthCard() {
           请求日志里记 <span className="code-chip">retry_count</span> 与 <span className="code-chip">retried</span>。
         </li>
         <li>
-          <b>提供商归属的已知限制</b>：请求表不记录「这条走的是哪家」，提供商归属按
-          <b>模型 id → 目录</b>推断。因此同名的模型 id 分属两家时归属可能不准；
-          请求日志的「提供商」列也是用同一推断口径。
+          <b>提供商归属（v1.6.30 起记录事实）</b>：请求落库时会写下<b>实际路由到的</b>提供商
+          （<span className="code-chip">requests.provider_id</span>），用量统计直接读它 ——
+          同名模型 id 分属两家（如 MiniMax Code / Code2）时也各归各的。
+          只有本版之前的历史行（该列为空）才回落到「模型 id → 目录」推断，
+          请求日志的「提供商」列对历史行同样使用该推断。
         </li>
       </ul>
 

@@ -30,7 +30,13 @@ export interface LogRec {
   keyId?: string | null;
   keyHint?: string | null;
   model?: string;
-  credits?: number;
+  credits?: number | null;
+  /** 本行 tokens（默认 150）。`share` 口径测试要让它与 credits 解耦时显式传。 */
+  totalTokens?: number;
+  /** HTTP 状态（默认 200）。空 model 的本地拒绝（429）等用例需要显式指定。 */
+  status?: number;
+  /** [v1.6.30] 实际路由到的提供商 id（归属测试用）。 */
+  providerId?: string | null;
 }
 
 export function makeHarness() {
@@ -70,16 +76,19 @@ export function makeHarness() {
       keyHint: rec.keyHint ?? null,
       model: rec.model ?? 'kimi-k3',
       modelDisplay: null,
-      status: 200,
+      status: rec.status ?? 200,
       upstreamCode: null,
       ms: 100,
       queuedMs: 0,
       firstByteMs: 40,
       promptTokens: 100,
       completionTokens: 50,
-      totalTokens: 150,
+      totalTokens: rec.totalTokens ?? 150,
       cachedTokens: 0,
-      credits: rec.credits ?? 1,
+      /* 显式传 null = 上游未回报（未知）；未传 = 默认 1。
+         不能用 `rec.credits ?? 1` —— 那会把 null 也变成 1，正是本项目
+         「0/默认值 vs 未知」铁律要防的那种静默覆盖。 */
+      credits: rec.credits === undefined ? 1 : rec.credits,
       stream: true,
       retryCount: 0,
       note: '',
@@ -87,6 +96,7 @@ export function makeHarness() {
       ua: null,
       requestBody: null,
       responseBody: null,
+      providerId: rec.providerId ?? null,
     });
   };
 

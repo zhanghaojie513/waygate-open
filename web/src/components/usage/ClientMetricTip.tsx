@@ -57,18 +57,24 @@ export function ClientMetricTip({
       </div>
       <div className="client-metric-tip-list">
         {displayed.map((row, index) => {
+          /* [2026-10-18] credits 可空：整桶未回报 ⇒ null。显示 `--` 而不是 0
+             （0 会被读成「免费」，与事实相反）；占比仍按 0 参与，未知不占份额。 */
+          const raw = row[metric];
           const value = valueOf(row, metric);
           const ratio = safeTotal > 0 ? value / safeTotal : 0;
+          const unknown = raw === null;
           return (
             <div className="client-metric-tip-row" key={row.clientId ?? row.client ?? index}>
               <div className="client-metric-tip-row-top">
                 <span className="client-metric-tip-rank">{String(index + 1).padStart(2, '0')}</span>
                 <span className="client-metric-tip-name">{row.client ?? '未归属'}</span>
-                <b>{formatValue(value, metric)} <em>{formatUnit(metric)}</em></b>
+                <b>
+                  {unknown ? '--' : formatValue(value, metric)} <em>{unknown ? '未回报' : formatUnit(metric)}</em>
+                </b>
               </div>
               <div className="client-metric-tip-row-bottom">
                 <span className="client-metric-tip-track"><i style={{ width: `${Math.max(0, Math.min(100, ratio * 100))}%` }} /></span>
-                <span>{formatPercent(ratio)}</span>
+                <span>{unknown ? '—' : formatPercent(ratio)}</span>
               </div>
             </div>
           );

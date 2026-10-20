@@ -5,7 +5,7 @@
 -- 驿站 · Relay v0.4.29 — SQLite Schema
 -- 引擎：better-sqlite3 13.0.3（同步 API，无 ORM）
 -- 文件位置：data/relay.db
--- 迁移版本：PRAGMA user_version = 17
+-- 迁移版本：PRAGMA user_version = 18
 --
 -- 迁移规则（手写迁移，不用 ORM / 不用迁移框架）：
 --   1. 本文件是 v1 的**完整建表 + 种子数据**，只在空库上跑一次。
@@ -21,7 +21,7 @@
 PRAGMA journal_mode = WAL;
 PRAGMA synchronous  = NORMAL;
 PRAGMA foreign_keys = ON;
-PRAGMA user_version = 17;
+PRAGMA user_version = 18;
 
 -- -----------------------------------------------------------------------------
 -- 1. requests —— 请求日志，权威数据源
@@ -76,6 +76,13 @@ CREATE TABLE IF NOT EXISTS requests (
   request_body       TEXT,                          -- 仅 logs.recordRequestBody=true 时写
   response_body      TEXT,                          -- 仅 logs.recordResponseBody=true 时写
   created_at         INTEGER NOT NULL,              -- epoch 毫秒，落库时刻
+  provider_id        TEXT,                          -- [v1.6.30] 本次请求**实际路由到**的提供商 id。
+                                                    --   NULL = 本列引入前的老行，或模型解析前即被本地拒绝。
+                                                    --   ★ 为什么存事实而不是事后反解：同一模型 id 可能同时存在于
+                                                    --     两家目录（MiniMax-M2.7 / M3 / M3.1 实测如此），
+                                                    --     目录反解按「创建序先到先得」，而路由按「密钥绑定优先」——
+                                                    --     两者不一致时统计会静默记到错误的那家，且无字段可查。
+                                                    --   ★ 不加外键：提供商删除后历史用量仍应显示；归属是当时的事实快照。
 
   FOREIGN KEY (key_id) REFERENCES client_keys(id) ON DELETE SET NULL
 );

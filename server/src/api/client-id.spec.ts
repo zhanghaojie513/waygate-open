@@ -174,7 +174,9 @@ describe('概览口径断言（回归网）', () => {
 
     expect(ov.metrics.creditsUsed).toBe(10);
     expect(ov.byModel.reduce((s, m) => s + (m.credits ?? 0), 0)).toBe(10);
-    expect(ov.byClient.reduce((s, c) => s + c.credits, 0)).toBe(10);
+    /* byClient 的 credits 现在可空（整桶未回报 ⇒ null）：合计按「未知当 0」求和，
+       与 metrics.creditsUsed 同口径（2026-10-18）。 */
+    expect(ov.byClient.reduce((s, c) => s + (c.credits ?? 0), 0)).toBe(10);
     expect(warn).not.toHaveBeenCalled();
     warn.mockRestore();
   });

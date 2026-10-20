@@ -33,6 +33,10 @@ export interface RequestLogInput {
   note: string;
   remoteIp: string | null;
   ua: string | null;
+  /** [v1.6.30] 本次请求**实际路由到的**提供商 id。
+   *  null = 模型解析前就被本地拒绝（无归属），或旧调用方未提供。
+   *  归属统计优先读它；只有它是 null 的老行才回落到「目录反解」。 */
+  providerId?: string | null;
   requestBody: string | null;
   responseBody: string | null;
 }
@@ -119,12 +123,12 @@ export class RequestsRepository {
          (ts, trace_id, client_id, client, client_rule, key_id, key_hint, model, model_display, status,
           upstream_code, ms, queued_ms, first_byte_ms, prompt_tokens, completion_tokens,
           total_tokens, cached_tokens, reasoning_tokens, credits, stream, retry_count, note, remote_ip, ua, request_body,
-          response_body, created_at)
+          response_body, created_at, provider_id)
        VALUES
          (@ts, @traceId, @clientId, @client, @clientRule, @keyId, @keyHint, @model, @modelDisplay, @status,
           @upstreamCode, @ms, @queuedMs, @firstByteMs, @promptTokens, @completionTokens,
           @totalTokens, @cachedTokens, @reasoningTokens, @credits, @stream, @retryCount, @note, @remoteIp, @ua, @requestBody,
-          @responseBody, @createdAt)`,
+          @responseBody, @createdAt, @providerId)`,
     );
     this.byIdStmt = db.prepare('SELECT * FROM requests WHERE id = ?');
     this.deleteAllStmt = db.prepare('DELETE FROM requests');
@@ -152,6 +156,9 @@ export class RequestsRepository {
     try {
       info = this.insertStmt.run({
         ...row,
+        /* better-sqlite3 不接受 undefined 作为绑定值（会抛 "Invalid value"），
+           而 providerId 是可选字段 —— 未提供时必须显式落 null。 */
+        providerId: row.providerId ?? null,
         reasoningTokens: row.reasoningTokens ?? 0,
         stream: row.stream ? 1 : 0,
         createdAt: Date.now(),
@@ -168,6 +175,7 @@ export class RequestsRepository {
       effectiveKeyId = null;
       info = this.insertStmt.run({
         ...row,
+        providerId: row.providerId ?? null,
         keyId: null,
         keyHint: row.keyHint ?? null,
         note: [row.note, ORPHANED_KEY_NOTE].filter(Boolean).join(','),

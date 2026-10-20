@@ -18,6 +18,16 @@ export interface StreamContext {
   /** 解析出的模型 id；**解析成功之前为空串**（失败行不编造模型）。 */
   modelId: string;
   modelDisplay: string;
+  /**
+   * [v1.6.30] 本次请求**实际路由到的**提供商 id（`resolveRoute` 命中时回填）。
+   *
+   * 为什么必须落库而不是事后反解：同一模型 id 可能同时存在于多家目录里
+   * （生产实测 `MiniMax-M2.7` / `M3` / `M3.1-Flash-Preview` 同时在 Code 与 Code2）。
+   * 反解只能按创建序挑一个，而路由是按「密钥绑定优先」挑的 —— 两者不一致时，
+   * 「提供商用量」的归属就与实际承接方不同。落库记的是**事实**。
+   * 空串 = 未路由（本地拒绝）或旧调用方未提供。
+   */
+  providerId: string;
   notes: string[];
   keyContext: KeyContext | undefined;
   remoteIp: string | null;
@@ -74,6 +84,7 @@ export function beginContext(meta: RequestMeta): StreamContext {
     started: Date.now(),
     modelId: '',
     modelDisplay: '',
+    providerId: '',
     notes: [],
     keyContext: meta.keyContext,
     remoteIp: meta.remoteIp,
@@ -191,6 +202,7 @@ export class ProxyLogger {
         keyHint: ctx.keyContext?.keyHint ?? null,
         model: outcome.acc.model || ctx.modelId,
         modelDisplay: ctx.modelDisplay,
+        providerId: ctx.providerId || null,
         status: outcome.status,
         upstreamCode: outcome.upstreamCode,
         ms: Date.now() - ctx.started,
@@ -240,6 +252,7 @@ export class ProxyLogger {
         keyHint: ctx.keyContext?.keyHint ?? null,
         model: outcome.model ?? ctx.modelId,
         modelDisplay: (outcome.modelDisplay ?? ctx.modelDisplay) || null,
+        providerId: ctx.providerId || null,
         status: outcome.status,
         upstreamCode: outcome.upstreamCode,
         ms: Date.now() - ctx.started,

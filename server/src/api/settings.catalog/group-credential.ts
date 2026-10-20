@@ -53,7 +53,7 @@ export function credentialGroup(settings: RelaySettings, runtime: RuntimeInfo): 
         label: 'WorkBuddy UA 基准值',
         value: settings.upstream.userAgent,
         type: 'text',
-        why: '【仅对 WorkBuddy（openai 协议）生效】出站 User-Agent 的基准值，会展开成官方桌面端三段式（WorkBuddy/<ver> WorkBuddy/<ver> CLI/<cli>）。官方客户端升版后改这里即可跟上，无需改代码发版。MiniMax Code 固定发 MiniMaxCode、Qoder CN 固定发 qodercli/<ver>，均不受本项影响。留空则沿用入站 UA。',
+        why: '【仅对 WorkBuddy（openai 协议）生效】出站 User-Agent 的基准值，会展开成官方桌面端三段式（WorkBuddy/<ver> WorkBuddy/<ver> CLI/<cli>）。官方客户端升版后改这里即可跟上，无需改代码发版。MiniMax Code 固定发 MiniMaxCode、Qoder CN 固定发 qodercli/<ver>，均不受本项影响。留空时：伪装档（spoofUA=开，默认）回落到内置默认版本并覆盖入站 UA；透明转发档（spoofUA=关）才沿用入站 UA。',
         readonly: false,
         requiresRestart: false,
       },

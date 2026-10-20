@@ -17,7 +17,6 @@ import { WbOauthService } from '../proxy/openai-upstream/wb-oauth.service';
 import { WbClaimService } from '../proxy/openai-upstream/wb-claim.service';
 import { QoderActivityService } from '../proxy/qoder-upstream/qoder-activity.service';
 import { MinimaxTokenService } from '../proxy/anthropic-upstream/minimax-token.service';
-import { CredentialImportService } from './credential-import.service';
 import { DeviceImportService } from './device-import.service';
 import { ProvidersRepository } from '../store/repositories/providers.repo';
 import { ok } from '../common/errors';
@@ -33,7 +32,6 @@ export class ProvidersController {
     private readonly wbClaimSvc: WbClaimService,
     private readonly qoderActivitySvc: QoderActivityService,
     private readonly repo: ProvidersRepository,
-    private readonly credentialImport: CredentialImportService,
     private readonly minimaxTokens: MinimaxTokenService,
     private readonly deviceImport: DeviceImportService,
   ) {}
@@ -44,6 +42,7 @@ export class ProvidersController {
   }
 
   @Post()
+  @HttpCode(200) // Nest 默认 201；本仓所有写方法统一 200（见 console.controller.ts 头注）
   create(@Body() body: Record<string, unknown>): unknown {
     return ok(this.providers.create(body));
   }
@@ -65,8 +64,11 @@ export class ProvidersController {
   @Get(':id/signin')
   @HttpCode(200)
   async signinPanel(@Param('id') id: string): Promise<unknown> {
-    const row = this.repo.findById(id);
-    if (!row) return ok({ available: false, reason: 'provider_not_found' });
+    /* [2026-10-18] 提供商不存在是**资源错误**，走统一 404 信封（与 mustFind 一致）。
+       此前返回 200 + {available:false, reason:'provider_not_found'} —— 调用方无法
+       用状态码判断成败，只能解析 reason 字符串。其余 `available:false`
+       （未授权 / 暂无数据）是**业务结果**，仍保留 200 + 结构化 payload。 */
+    const row = this.repo.findById(id) ?? this.providers.mustFindOrThrow(id);
     if (row.cred_kind === 'oauth_minimax') {
       try {
         const panel = await this.signinSvc.panel(row);
@@ -151,8 +153,7 @@ export class ProvidersController {
   @Get(':id/credits')
   @HttpCode(200)
   async credits(@Param('id') id: string): Promise<unknown> {
-    const row = this.repo.findById(id);
-    if (!row) return ok({ available: false, reason: 'provider_not_found' });
+    const row = this.repo.findById(id) ?? this.providers.mustFindOrThrow(id);
     if (row.protocol !== 'qoder') return ok({ available: false, reason: 'not_qoder', message: '积分概况目前仅 Qoder CN 提供。' });
     try {
       return ok({ available: true, ...(await this.qoderActivitySvc.credits(row)) });
@@ -176,26 +177,15 @@ export class ProvidersController {
     }
   }
 
-  /**
-   * [v1.6.5] 从**服务端所在机器**的客户端登录态一键导入 MiniMax / Qoder 凭证。
-   *
-   * 同机部署 → 真·一键；分离部署（relay 在服务器、客户端在本机）→ 服务端读不到，
-   * 返回 `outcome: 'unavailable'`，前端降级提示「在本机跑 import-credential-push.mjs」。
-   * 判定不看配置、直接看客户端登录态文件在不在（不做猜测）。
-   */
-  @Post(':id/import-local')
-  @HttpCode(200)
-  async importLocal(@Param('id') id: string): Promise<unknown> {
-    const row = this.repo.findById(id);
-    if (!row) return ok({ ok: false, outcome: 'error', message: '提供商不存在。' });
-    const result = await this.credentialImport.importFromLocal(id, row.protocol as 'openai' | 'anthropic' | 'qoder');
-    /* 真导入了 → 作废 MiniMax 缓存的 access token（否则出站仍用旧令牌，看起来"没生效"）。 */
-    if (result.ok && row.protocol === 'anthropic') this.minimaxTokens.invalidate(id);
-    return ok(result);
-  }
+  /* [v1.6.15] `POST /api/providers/:id/import-local` 已移除（用户口径）。
+     它读的是**relay 服务端所在机器**的客户端登录态 —— 线上 relay 跑在服务器上，
+     客户端在你本机，服务端永远读不到，只会恒定回 `unavailable`。
+     那个能力属于「relay 与客户端同机」的本地启动场景（开源版 waygate-open 保留）。
+     relay-station（线上/自托管服务器形态）的凭证入口统一为「重新导入授权」
+     （官方设备授权，见下方 import-device/*）。 */
 
   /**
-   * [v1.6.11] 设备授权导入 ①：申请授权，返回浏览器要打开的地址。
+   * [v1.6.12] 设备授权导入 ①：申请授权，返回浏览器要打开的地址。
    *
    * 三种客户端各有自己的授权机制（见 device-import.service 文件头表格）。
    * 私有状态（device_code / code_verifier / state）**只存服务端**，不回传浏览器。
@@ -209,7 +199,7 @@ export class ProvidersController {
   }
 
   /**
-   * [v1.6.11] 设备授权导入 ②：轮询取票。
+   * [v1.6.12] 设备授权导入 ②：轮询取票。
    * `status='pending'` = 用户还没完成授权（前端继续轮询）；`done` = 已落盘凭证。
    */
   @Post(':id/import-device/poll')
@@ -223,7 +213,7 @@ export class ProvidersController {
     return ok(result);
   }
 
-  /** [v1.6.11] 取消进行中的授权（前端关闭弹窗时调用）。 */
+  /** [v1.6.12] 取消进行中的授权（前端关闭弹窗时调用）。 */
   @Post(':id/import-device/cancel')
   @HttpCode(200)
   importDeviceCancel(@Param('id') id: string): unknown {

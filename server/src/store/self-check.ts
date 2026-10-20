@@ -8,6 +8,8 @@ export const EXPECTED_COLUMNS: Record<string, string[]> = {
     'prompt_tokens', 'completion_tokens', 'total_tokens', 'cached_tokens', 'reasoning_tokens',
     'credits', 'stream',
     'retry_count', 'note', 'remote_ip', 'ua', 'request_body', 'response_body', 'created_at',
+    /* [v1.6.30 迁移 018] 实际路由到的提供商 id —— 归属统计读它，不再事后按目录反解。 */
+    'provider_id',
   ],
   aggregates: [
     'bucket', 'dim', 'dim_value', 'requests', 'errors', 'credits',

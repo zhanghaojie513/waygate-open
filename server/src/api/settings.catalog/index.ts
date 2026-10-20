@@ -1,11 +1,13 @@
 /**
  * 设置页的元数据（api-contract §3.8）。
  *
- * 这里是**唯一**把「25 项设置」的 label / type / why / readonly / requiresRestart
- * 写下来的地方。之所以放后端而不是前端常量：
+ * 这里是**唯一**把「每个设置项」的 label / type / why / readonly / requiresRestart
+ * 写下来的地方（当前 **8 组 / 27 项**，明细见下方 `buildSettingGroups`）。
+ * 之所以放后端而不是前端常量：
  *   1. `why`（每项为什么存在）是产品语气的核心，散在前端会跟后端校验规则漂移
- *   2. 契约要求 `PUT` 是**全量替换**，服务端必须知道哪些 key 是合法的可写项
- *      —— 这正是 `EDITABLE_KEYS`，必须与实际校验逻辑同源
+ *   2. 服务端必须知道哪些 key 是合法的可写项 —— 这正是 `EDITABLE_KEYS`，
+ *      必须与实际校验逻辑同源（`PUT` 是**逐项应用**：只写提交上来的 key，
+ *      漏传不重置为默认值，见 `config.service.ts` 的 `applyUpdates`）
  *
  * 三组特殊项：
  *   - `credential.*`  → readonly，值由运行态计算（上游访问密钥来源/状态）

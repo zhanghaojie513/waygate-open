@@ -11,7 +11,7 @@
  * 会让两件不相干的事共享构造签名。独立成类，装配与测试都干净。
  */
 
-import { Controller, Get, Inject, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Inject, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { ClientKeyGuard, SkipKeyPolicy, type RequestWithKeyContext } from '../auth/key.guard';
 import {
   ClientKeysRepository,
@@ -32,17 +32,20 @@ export class KeyUsageController {
     const ctx = req.keyContext!;
     const row = this.keys.findById(ctx.keyId);
     /* 守卫刚验过这把密钥，这里理论上不会 miss —— 但「守卫通过到控制器执行」之间
-       密钥可能被并发删除。如实回 401（对下游来说等价于「密钥没了」）。 */
+       密钥可能被并发删除。对下游来说等价于「密钥没了」。
+       [2026-10-18 修] 此前直接 `return { object:'error', ... }` —— HTTP 状态仍是 **200**，
+       注释写着「如实回 401」却没做到，客户端拿到 200 + error body 会当成成功。
+       改为抛 RelayHttpError，由全局过滤器回 401（与其它鉴权失败路径一致）。 */
     if (!row) {
-      return {
-        object: 'error',
+      /* 与 KeyGuard.reject() 同一形态（OpenAI 形状的 401），下游拿到的错误体一致。 */
+      throw new UnauthorizedException({
         error: {
-          message: 'Invalid API key provided.',
+          message: 'Invalid API key provided. 请检查密钥是否有效、是否被停用或已过期。',
           type: 'invalid_request_error',
           code: 'invalid_api_key',
           param: null,
         },
-      };
+      });
     }
     const usage = this.keys.usageForKey(ctx.keyId);
     const remain = (quota: number | null, used: number): number | null =>

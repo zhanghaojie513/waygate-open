@@ -289,7 +289,7 @@ describe('失败请求必须落库 · AC-F01..F08', () => {
 
     const ov = h.overview.build(resolveWindow('24h'));
     const sumModel = ov.byModel.reduce((s, m) => s + (m.credits ?? 0), 0);
-    const sumClient = ov.byClient.reduce((s, c) => s + c.credits, 0);
+    const sumClient = ov.byClient.reduce((s, c) => s + (c.credits ?? 0), 0);
 
     expect(ov.metrics.requests).toBe(3); // 证伪项：失败行必须真的进了库
     /* [v0.5.8] 上游路径失败 ⇒ 费用**未知**（null），不再写 0。

@@ -113,10 +113,22 @@ export function share(part: number, total: number): number {
  * 24h 窗口里若有几小时没流量，图上就少几根柱 —— 而图表要求**等距时间轴**
  * （每根柱代表固定时长），否则柱宽随数据量漂移、同一窗口两次刷新还可能不同。
  *
- * 口径与 mock 的 `hourlyTrend(count, nowMs, …)` 一致：
- *   · hour 桶：从 `to` 对齐到整点，向前生成 `count` 个连续桶；
- *     `today` 取「本地零点 → 当前小时」的桶数（日历日语义，跨夜清零）。
- *   · day 桶：从 `to` 当天起向前 `count` 个连续日。
+ * [v1.6.31 修] **起点向下对齐到桶边界**，不再「从末尾往前数固定格数」。
+ *
+ * 旧实现以 `to` 对齐整点后往前数 `ms/HOUR` 格（24h → 恰好 24 格），而窗口起点
+ * 是 `now - 24h`（**不对齐**）。于是窗口最老的残桶被整桶丢掉：
+ *   now=15:30 时窗口 = [昨日 15:30, 今日 15:30]，图却从昨日 **16:00** 起 →
+ *   昨日 15:30–16:00 的请求既不在图上、也不在任何柱子里。
+ * 实测量级：某一时刻 24h 窗口 766 条请求图上只体现 700 条（差 12%），
+ * 而卡片写的是 766 —— 用户对不上账。
+ *
+ * 现在桶序列覆盖 ⟨⊇⟩ 窗口区间，窗口内每一行都落进某个桶，
+ * `Σtrend === metrics` 恒成立。柱数因此随窗口变化（24h → 25 格）——
+ * 图的职责是覆盖窗口，不是凑一个整数。
+ *
+ * 首/末桶可能代表不足一格的时间：这是**如实**的（它们就是窗口在那一格里
+ * 覆盖到的部分），前端 tooltip 会显示真实区间。
+ *
  * 桶标签格式与 SQL 的 `strftime('%Y-%m-%dT%H' / '%Y-%m-%d', 'localtime')` 逐字一致，
  * 保证与真实数据行能对上（对不上的桶视为空）。
  *
@@ -135,21 +147,52 @@ export function fillEmptyBuckets<T extends { bucket: string }>(
       ? `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}`
       : `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
-  /* 桶序列：以 `to - 1ms` 所在的桶为最后一格，向前推。 */
-  const stamps: string[] = [];
+  /* 起点**向下对齐**到桶边界、终点当前桶 —— 两者都从窗口区间推出来，
+     所以序列必然覆盖 [from, to)。 */
+  const start = new Date(from);
+  const end = new Date(to - 1);
   if (spec.bucket === 'hour') {
-    const end = new Date(to - 1);
+    start.setMinutes(0, 0, 0);
     end.setMinutes(0, 0, 0);
-    /* today：桶数 = 本地零点 → 当前小时（含），与 windowRange 的日历日语义一致。 */
-    const start = spec.key === 'today' ? new Date(from) : new Date(end.getTime() - (spec.ms / HOUR - 1) * HOUR);
-    for (let t = start.getTime(); t <= end.getTime(); t += HOUR) stamps.push(label(new Date(t)));
   } else {
-    const end = new Date(to - 1);
+    start.setHours(0, 0, 0, 0);
     end.setHours(0, 0, 0, 0);
-    const days = Math.round(spec.ms / DAY);
-    for (let i = days - 1; i >= 0; i -= 1) stamps.push(label(new Date(end.getTime() - i * DAY)));
   }
+  const step = spec.bucket === 'hour' ? HOUR : DAY;
+
+  const stamps: string[] = [];
+  for (let t = start.getTime(); t <= end.getTime(); t += step) stamps.push(label(new Date(t)));
 
   const byKey = new Map(rows.map((r) => [r.bucket, r]));
   return stamps.map((b) => byKey.get(b) ?? makeEmpty(b));
+}
+
+/**
+ * [v1.6.31] 给趋势桶标注「是否只覆盖窗口的一部分」。
+ *
+ * 首桶与末桶可能各是半个/几分钟的小时（窗口按 `now` 滚动，不对齐整点）。
+ * 数字本身是**真实**的（窗口内的行都算进去了），但如果界面上把首桶也读成
+ * 「一整个小时」，就会把它和中间那些满桶混为一谈 —— 例如看起来「首小时流量很低」。
+ * 前端据此在 tooltip 里注明「本段不足 1 小时/1 天」。
+ *
+ * 判定用桶的真实时间跨度：`[桶起点, 桶起点 + step)` 与窗口 `[from, to)` 的交集
+ * 是否短于 step。
+ */
+export function markPartialBuckets<T extends { bucket: string }>(
+  rows: T[],
+  spec: WindowSpec,
+  from: number,
+  to: number,
+): Array<T & { partial: boolean }> {
+  const step = spec.bucket === 'hour' ? HOUR : DAY;
+  const bucketStart = (bucket: string): number => {
+    /* 标签是本地时区的 `YYYY-MM-DDTHH` / `YYYY-MM-DD`，直接交给 Date 解析
+       （不带时区后缀时按本地时区解释，与生成侧一致）。 */
+    return new Date(bucket.includes('T') ? `${bucket}:00:00` : `${bucket}T00:00:00`).getTime();
+  };
+  return rows.map((r) => {
+    const s = bucketStart(r.bucket);
+    const covered = Math.min(s + step, to) - Math.max(s, from);
+    return { ...r, partial: covered < step - 1 }; // 1ms 容差：窗口末端是 now+1
+  });
 }

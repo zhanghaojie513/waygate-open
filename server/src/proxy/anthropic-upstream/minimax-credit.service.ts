@@ -15,6 +15,8 @@
  * ## 口径
  * · `remaining` / `consumed` / `granted` = 各笔**求和**（跨批次合并是正确语义：
  *   消耗会先从快过期的批次扣）。
+ * · **必须翻页**：接口默认只回 20 条，即便 `total_count` 更大（v1.6.29 修的漏算，
+ *   实测 21 笔账户的已消耗因此少 400）。
  * · `nextExpireAt` = 最近一笔的过期时刻（积分 30 天有效，这是「不用就没了」的提醒）。
  * · 拿不到的字段一律 `null` —— 不推算、不用 granted−remaining 反推 consumed
  *   （rounding 会引入假精度），与 quota-block 同一纪律。
@@ -29,6 +31,11 @@ import { ProvidersRepository, type ProviderRow } from '../../store/repositories/
 import { MinimaxTokenService } from './minimax-token.service';
 
 const CREDIT_DETAILS_URL = 'https://agent.minimax.cn/minimax-cloud/api/v1/credit/details';
+/**
+ * 分页大小。上游默认页大小是 **20**（且不会因为 total_count 更大而多给），
+ * 这里显式要 100 并配合 `refreshOne` 的循环翻页 —— 见那里的说明。
+ */
+const CREDIT_PAGE_SIZE = 100;
 const POLL_INTERVAL_MS = 5 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 20_000;
 /** 超过这个时长没刷新成功就标 stale（两个轮询周期）。 */
@@ -141,28 +148,79 @@ export class MinimaxCreditService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /** 拉一家的账本（也可单独调用，例如刚签完到想让数字立刻更新）。 */
+  /**
+   * 拉一家的账本（也可单独调用，例如刚签完到想让数字立刻更新）。
+   *
+   * ## ★ 必须分页（v1.6.29 修）
+   * 上游 `credit/details` **默认只返回 20 条**，即便 `total_count` 更大 ——
+   * 实测（2026-10-17，真实 M Plan 账户，21 笔发放）：
+   *   · 不带参数          → details=20, total_count=21, Σconsumed=5833.31
+   *   · `page_size=100`   → details=21, total_count=21, Σconsumed=6233.31
+   * 差的那一笔是「发放 400 / 已消耗 400」的老批次，导致**已消耗与累计发放各少 400**
+   * （剩余不受影响，因为那笔 remaining=0）。
+   *
+   * ## ★ page 参数无效，必须防「原地踏步」（v1.6.31 补）
+   * 22 笔账户实测（2026-10-20）：`page=1/2/3` × `page_size=10` 三次返回**逐字节相同**
+   * 的页（首末 granted_at_ms 全等）—— 上游只认 `page_size`，`page` 完全被忽略。
+   * 若账户笔数将来超过 page_size 的上游上限，第 2 页会返回与第 1 页相同的内容：
+   * 不识别这一点，`all` 会装进两份同样的记录、条数校验"通过"、**求和静默翻倍** ——
+   * 比抛错严重得多。这里按「整页签名与上一页相同」判定原地踏步并停，
+   * 停后由条数校验如实抛错（保留旧值 + stale，绝不给一个翻倍/偏小的数）。
+   *
+   * 翻页失败/条数对不上时同样**如实抛错**（宁可显示旧值与 stale）。
+   */
   async refreshOne(provider: ProviderRow): Promise<CreditSnapshot> {
     const token = await this.tokens.accessToken(provider);
-    const res = await fetch(CREDIT_DETAILS_URL, {
-      method: 'GET',
-      headers: { authorization: `Bearer ${token}`, accept: 'application/json' },
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    });
-    if (!res.ok) throw new Error(`账本接口 HTTP ${res.status}`);
-    const body = (await res.json()) as {
-      base_resp?: { status_code?: number; status_msg?: string };
-      details?: unknown;
-      total_count?: unknown;
-    };
-    const code = body.base_resp?.status_code;
-    if (typeof code === 'number' && code !== 0) {
-      throw new Error(body.base_resp?.status_msg ?? `上游业务码 ${code}`);
+
+    const all: unknown[] = [];
+    let totalCount: number | null = null;
+    let prevPageSig: string | null = null;
+    /* 上限只是防御（防止上游返回异常 total_count 导致无限循环），
+       正常账户的发放笔数远小于此。 */
+    const MAX_PAGES = 50;
+    for (let page = 1; page <= MAX_PAGES; page++) {
+      const url = `${CREDIT_DETAILS_URL}?page=${page}&page_size=${CREDIT_PAGE_SIZE}`;
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: { authorization: `Bearer ${token}`, accept: 'application/json' },
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+      if (!res.ok) throw new Error(`账本接口 HTTP ${res.status}`);
+      const body = (await res.json()) as {
+        base_resp?: { status_code?: number; status_msg?: string };
+        details?: unknown;
+        total_count?: unknown;
+      };
+      const code = body.base_resp?.status_code;
+      if (typeof code === 'number' && code !== 0) {
+        throw new Error(body.base_resp?.status_msg ?? `上游业务码 ${code}`);
+      }
+      if (!Array.isArray(body.details)) throw new Error('账本响应缺少 details 数组。');
+
+      if (typeof body.total_count === 'number') totalCount = body.total_count;
+
+      /* 原地踏步判定：整页与上一页逐字节相同 = 上游在忽略 page 参数（实测行为）。
+         必须在 push 之前判 —— 判晚了同一页会进 all 两遍。 */
+      const sig = JSON.stringify(body.details);
+      if (sig === prevPageSig) break;
+      prevPageSig = sig;
+
+      all.push(...body.details);
+
+      /* 停止条件：本页不满一页（到底了）、或已收齐 total_count、或本页为空。 */
+      if (body.details.length === 0) break;
+      if (body.details.length < CREDIT_PAGE_SIZE) break;
+      if (totalCount !== null && all.length >= totalCount) break;
     }
-    if (!Array.isArray(body.details)) throw new Error('账本响应缺少 details 数组。');
+
+    /* 条数对不上 → 抛错（调用方会保留旧值并标 stale）。
+       静默接受一个"看起来合理但偏小"的求和，正是本次 bug 的形态。 */
+    if (totalCount !== null && all.length < totalCount) {
+      throw new Error(`账本分页不完整：total_count=${totalCount}，实取 ${all.length} 条`);
+    }
 
     const grants: CreditGrant[] = [];
-    for (const raw of body.details) {
+    for (const raw of all) {
       if (!raw || typeof raw !== 'object') continue;
       const d = raw as Record<string, unknown>;
       const granted = toAmount(d.granted_amount);

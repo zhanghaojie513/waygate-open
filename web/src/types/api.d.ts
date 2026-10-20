@@ -91,6 +91,12 @@ export interface TrendPoint {
    * tooltip 用 —— 回答「这个时段的 token 花在哪些模型上」；完整明细在按模型表。
    */
   models: Array<{ model: string; tokens: number }>;
+  /**
+   * [v1.6.31] 本桶是否只覆盖窗口的**一部分**（首/末桶常态——窗口按 `now` 滚动，
+   * 不对齐整点）。数字仍是真实的（只统计窗口内的行），但不足一整格：
+   * tooltip 据此注明，避免把「半小时的桶」读成「一整个小时」。
+   */
+  partial?: boolean;
 }
 
 export interface BreakdownItem {
@@ -206,8 +212,10 @@ export interface OverviewData {
   byModel: BreakdownItem[];
   byClient: BreakdownItem[];
   /** [2026-10-17] 按提供商归因（模型 id → 目录 provider；providerId=null 为目录外）。
-   * 与 byClient 是两个正交维度：这是「流量最终由哪家承接」，byClient 是「哪把密钥进来的」。 */
-  byProvider: Array<{ providerId: string | null; provider: string | null; requests: number; tokens: number; credits: number; lastSeenAt: string | null }>;
+   * 与 byClient 是两个正交维度：这是「流量最终由哪家承接」，byClient 是「哪把密钥进来的」。
+   * [2026-10-18] `credits` 可空：该提供商名下**全部**请求都未回报费用时为 `null`（未知），
+   * 前端显示 `--`；只要有一条回报过就是已知部分之和。与 byModel 同口径。 */
+  byProvider: Array<{ providerId: string | null; provider: string | null; requests: number; tokens: number; credits: number | null; lastSeenAt: string | null }>;
   /** [2026-10-08] 按「请求来自哪个工具」聚合（从 `ua` 现解析）。见 `ToolBreakdownItem`。 */
   byTool: ToolBreakdownItem[];
   /**
@@ -328,9 +336,11 @@ export interface ClientKeyRow {
   maxIps: number | null;
   /** [v0.4.35] Token 配额（累计 total_tokens 上限），null = 不限。 */
   tokenQuota: number | null;
-  /** [v0.4.35] 累计用量（仅设了限额的密钥返回）：不同来源 IP 数 / 累计 tokens。 */
-  usedIps: number;
-  usedTokens: number;
+  /** [v0.4.35] 累计用量（仅设了限额的密钥返回）：不同来源 IP 数 / 累计 tokens。
+   *  [2026-10-18] `null` = **未计算**（该密钥没设限额，服务端不为展示而查全量聚合）；
+   *  与「用过 0 次」是两回事。前端只在 maxIps/tokenQuota 非 null 时渲染这两项。 */
+  usedIps: number | null;
+  usedTokens: number | null;
   enabled: boolean;
   expiresAt: string | null;
   createdAt: string;

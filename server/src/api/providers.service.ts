@@ -511,6 +511,15 @@ export class ProvidersService implements OnApplicationBootstrap {
     };
   }
 
+  /**
+   * 取提供商行；不存在则抛 **404 统一信封**（`code: provider_not_found`）。
+   * 公开给 controller 复用：凡「资源不存在」都必须走这一条，不要各自返回
+   * 200 + `reason: 'provider_not_found'` —— 那样调用方只能猜字符串。
+   */
+  mustFindOrThrow(id: string): ProviderRow {
+    return this.mustFind(id);
+  }
+
   private mustFind(id: string): ProviderRow {
     const row = this.repo.findById(id);
     if (!row) {

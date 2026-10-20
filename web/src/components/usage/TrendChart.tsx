@@ -227,6 +227,10 @@ export function TrendChart({
                 >
                   <div className="bt-head">
                     <b>{formatBucket(tip.bucket)}</b>
+                    {/* [v1.6.31] 首/末桶常只覆盖窗口的一部分（窗口按 now 滚动，
+                        不对齐整点）。数字是真实的，但不足一整格 —— 不标出来，
+                        读者会以为「这一小时/这一天流量怎么这么低」。 */}
+                    {tip.partial ? <span className="bt-tag bt-tag-partial">不足一格</span> : null}
                     {active === points.length - 1 ? <span className="bt-tag">最新</span> : null}
                   </div>
                   <div className={`bt-row${metric === 'tokens' ? ' hot' : ''}`}>

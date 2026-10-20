@@ -424,3 +424,39 @@ describe('凭证形状', () => {
     });
   });
 });
+
+/**
+ * [2026-10-18] 「提供商不存在」必须是**资源错误**（404 统一信封），
+ * 不能是 200 + `{available:false, reason:'provider_not_found'}`。
+ *
+ * 此前 controller 里两处（signin / credits）各写了一遍 `ok({available:false,...})`，
+ * 调用方无法用状态码判断成败，只能猜 reason 字符串；而同文件的 mustFind 早已
+ * 抛标准 404 —— 同一个类里两种错误表达方式。
+ */
+describe('mustFindOrThrow · 资源不存在走统一 404 信封', () => {
+  beforeEach(() => {
+    /* ⚠️ 不要写 `svc = makeService()` —— makeService 内部已给模块级 svc 赋值，
+       它返回的是 { config, resyncCalls, probes, prefs }。接返回值会把 svc 覆盖成
+       那个对象，于是所有方法都 "is not a function"（本测试第一版就这么错的）。 */
+    makeService();
+  });
+
+  it('★ 不存在的 id → 抛 404 + code=provider_not_found + apiCode=NOT_FOUND', () => {
+    /* 用 try/catch 取实例再断言：RelayHttpError 的这些字段挂在实例上，
+       `toThrowError(objectContaining)` 对 Error 子类只比对 message。 */
+    let err: unknown;
+    try {
+      svc.mustFindOrThrow('p_not_exist');
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(Error);
+    expect(err).toMatchObject({ httpStatus: 404, code: 'provider_not_found', apiCode: 40401 });
+  });
+
+  it('存在的 id → 原样返回该行（不抛）', () => {
+    // 直接经 repo 造一行（service 的种子逻辑在 bootstrap，单测里不跑）
+    repo.create({ id: DEFAULT_PROVIDER_ID, name: 'WorkBuddy', baseUrl: 'https://copilot.tencent.com', active: true });
+    expect(svc.mustFindOrThrow(DEFAULT_PROVIDER_ID).id).toBe(DEFAULT_PROVIDER_ID);
+  });
+});

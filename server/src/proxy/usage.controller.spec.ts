@@ -109,13 +109,23 @@ describe('GET /v1/usage · 形状', () => {
     expect(res.usage.tokens).toEqual({ used: 800, quota: 500, remaining: 0 });
   });
 
-  it('守卫通过后密钥被并发删除：返回 OpenAI 形状的错误对象（不抛裸异常）', () => {
+  it('守卫通过后密钥被并发删除：抛 401（OpenAI 形状），不返回 200 + error body', () => {
     seedKey({});
-    const res = controller.usage({
-      headers: {},
-      keyContext: { keyId: 'k_gone', keyHint: 'hint', client: null, clients: [], scope: { type: 'all' } },
-    }) as Record<string, any>;
-    expect(res.error.code).toBe('invalid_api_key');
+    /* [2026-10-18 修] 此前直接 return 一个 error 对象 —— HTTP 状态仍是 200，
+       客户端拿到 200 会当成功。改为抛 UnauthorizedException（与 KeyGuard.reject 同形态），
+       由全局过滤器回 401。本用例原本只断言 error.code，现在同时钉住**状态码**。 */
+    let err: any;
+    try {
+      controller.usage({
+        headers: {},
+        keyContext: { keyId: 'k_gone', keyHint: 'hint', client: null, clients: [], scope: { type: 'all' } },
+      });
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeDefined();
+    expect(err.getStatus()).toBe(401);
+    expect(err.getResponse().error.code).toBe('invalid_api_key');
   });
 });
 

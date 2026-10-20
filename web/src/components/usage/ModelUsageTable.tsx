@@ -48,13 +48,16 @@ export function ModelUsageTable({ items, windowLabel }: { items: BreakdownItem[]
                       放在模型名旁边而不是单独一列：它是**这一行模型的属性**，不是可比较的度量。 */}
                   {m.tag ? <span className="mu-tag">{m.tag}</span> : null}
                   {m.multiplier == null ? (
-                    /* 倍率未知的行必须标注 —— 这一页把积分按模型摊开给人看，
-                       正是「估算最容易被当成事实」的地方。多一个中性倍率估算进来的行，
-                       不加标就会被读成和别的行一样准。
+                    /* 倍率未知的行必须标注 —— 它是这一行**目录元数据**缺失的信号。
+                       [2026-10-18 更正] 原先这里写「该行积分按中性倍率估算」：
+                       那是 v0.5.8 之前的本地兜底公式行为，**公式已整段移除**。
+                       现在积分一律取上游实扣（`usage.credit`），未回报即 `--`，
+                       所以「倍率未知」只影响**倍率/均价**这类派生列的解读，
+                       不代表积分不可信 —— 积分可不可信只看它是不是 `null`。
                        这里刻意用 `==` 而不是 `===`：`BreakdownItem.multiplier` 是可选的，
                        显式 null 与键缺失（undefined）都必须落进这一支 —— 只判 null 的话，
                        键一缺就静默不标，恰好放过「最该被标注的那一行」。eslint 已配 `{ null: 'ignore' }`，`== null` 合规。 */
-                    <Tooltip content="接口与本地快照都缺此模型倍率 —— 该行积分按中性倍率估算，不是上游真实计费">
+                    <Tooltip content="目录（接口与本地快照）里都没有这个模型的倍率 —— 只影响本行派生列的解读，不影响积分口径：积分一律取上游实扣，上游未回报时该行显示 --，本服务不估算">
                       <span className="mu-unknown">倍率未知</span>
                     </Tooltip>
                   ) : null}
@@ -67,13 +70,17 @@ export function ModelUsageTable({ items, windowLabel }: { items: BreakdownItem[]
                 <td className="r td-mono">{formatPercent(m.share)}</td>
                 <td className="r td-mono">
                   {/* [v0.6.4] 全未回报 → `--` + 说明（不显示 0 —— 0 会被读成免费，与事实相反）。
-                      MiniMax 系：上游 usage 无 credit 字段，真实消耗只在账本卡片里。 */}
+                      [v1.6.29] 必须点明「未回报 ≠ 没扣费」。实测（2026-10-20）：
+                      M3.1-Flash 的**未订阅**账户照常扣费（单次 15.78），但上游照样
+                      不在 usage 里回报 credit。原文案只说"未回报"，会被读成"免费"。 */}
                   {m.credits === null ? (
                     <Tooltip
                       content={
-                        m.creditsUnknownCount
-                          ? `本窗口 ${formatInt(m.creditsUnknownCount)} 条请求上游均未回报单次费用（该上游只在账本给累计值）。真实消耗见上方「积分账本」。`
-                          : '上游未回报单次费用。真实消耗见上方「积分账本」。'
+                        (m.creditsUnknownCount
+                          ? `本窗口 ${formatInt(m.creditsUnknownCount)} 条请求上游未回报单次费用。`
+                          : '上游未回报单次费用。') +
+                        '\n未回报 ≠ 没扣费：该模型在账户账本里可能照常扣。' +
+                        '\n真实消耗以「积分账本」的已消耗为准（独立数据源）。'
                       }
                     >
                       <span className="cred-unknown">--</span>
@@ -95,7 +102,8 @@ export function ModelUsageTable({ items, windowLabel }: { items: BreakdownItem[]
         平均单次 = Token 消耗 ÷ 请求次数。接口不提供按模型的耗时，「较昨日」与「本计费周期」也无对应字段 ——
         这三样一律留空而不是补一个看着合理的数。
         <br />
-        标着<b>「倍率未知」</b>的行，是 /v3/config 接口与本地快照都没有的模型：<b>该行积分是按中性倍率估算的，不是上游真实计费</b>。
+        标着<b>「倍率未知」</b>的行，是上游接口与本地快照都没有倍率记录的模型 —— 它只说明<b>目录元数据缺失</b>；
+        <b>积分口径不受影响</b>：一律取上游实扣，上游未回报时显示 <code>--</code>（本服务不估算）。
       </div>
     </>
   );

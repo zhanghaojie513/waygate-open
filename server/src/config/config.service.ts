@@ -196,7 +196,12 @@ export class RelayConfigService implements OnModuleInit {
     return this.version;
   }
 
-  /** 全量替换式更新（前端总是先 GET 再 PUT）。danger 组不参与。 */
+  /**
+   * 更新设置项。**实际语义是逐项应用**：只写 `entries` 里出现的 key，未提交的保持原值
+   * —— 不是「全量替换」，漏传一项**不会**把它重置为默认值。
+   * 协议约定仍是「前端先 GET 再 PUT 全量」，故正常路径上两者不可区分；
+   * 「全量替换」是历史命名，不要据此推断漏传等于重置。danger 组不参与。
+   */
   applyUpdates(entries: Array<{ key: string; value: unknown }>): {
     applied: number;
     requiresRestart: boolean;

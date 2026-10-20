@@ -38,9 +38,13 @@ export interface KeyListItem {
   maxIps: number | null;
   /** [v0.4.35] Token 配额，null = 不限。 */
   tokenQuota: number | null;
-  /** [v0.4.35] 累计用量（白名单/配额的可视化对照）：不同来源 IP 数 + 累计 tokens。 */
-  usedIps: number;
-  usedTokens: number;
+  /**
+   * 累计用量（白名单/配额的可视化对照）：不同来源 IP 数 + 累计 tokens。
+   * **null = 未计算**（该密钥没设 maxIps/tokenQuota，服务端不为展示而查全量聚合）。
+   * 与「用过 0 次」是两回事 —— 0 是事实，null 是没查。
+   */
+  usedIps: number | null;
+  usedTokens: number | null;
   enabled: boolean;
   expiresAt: string | null;
   createdAt: string;
@@ -99,9 +103,12 @@ export class KeysService {
   /** DB 行 → API 形状（list / patch 共用，形状只此一处）。 */
   private render(row: ClientKeyRow, since: number = Date.now() - DAY): KeyListItem {
     /* [v0.4.35] 用量只在设了限额时才查 —— 没限额的密钥显示它没有意义，
-       还给每个无限制密钥白搭两条聚合查询。 */
+       还给每个无限制密钥白搭两条聚合查询。
+       [2026-10-18] 未计算时返回 **null** 而不是 0：0 会被读成「一次都没用过」，
+       与「没查」是两回事（本项目的「0 不是未知」铁律）。前端本就只在
+       maxIps/tokenQuota 非 null 时渲染这两个字段，改 null 不破界面。 */
     const limited = row.max_ips !== null || row.token_quota !== null;
-    const usage = limited ? this.keys.usageForKey(row.id) : { distinctIps: 0, tokensUsed: 0 };
+    const usage = limited ? this.keys.usageForKey(row.id) : null;
     return {
       id: row.id,
       name: row.name,
@@ -112,8 +119,8 @@ export class KeysService {
       ipWhitelist: parseIpWhitelist(row.ip_whitelist),
       maxIps: row.max_ips,
       tokenQuota: row.token_quota,
-      usedIps: limited ? usage.distinctIps : 0,
-      usedTokens: limited ? usage.tokensUsed : 0,
+      usedIps: usage ? usage.distinctIps : null,
+      usedTokens: usage ? usage.tokensUsed : null,
       enabled: row.enabled === 1,
       expiresAt: row.expires_at === null ? null : toIso(row.expires_at),
       createdAt: toIso(row.created_at),

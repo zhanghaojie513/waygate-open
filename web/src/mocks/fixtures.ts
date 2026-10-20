@@ -403,10 +403,15 @@ function buildTrend(): TrendPoint[] {
 
      window   桶粒度   桶数
      today    hour     本地零点到现在（1..24）
-     1h       hour     1
-     24h      hour     24
-     7d       day      7
-     30d      day      30
+     1h       hour     2
+     24h      hour     25
+     7d       day      8
+     30d      day      31
+
+   [v1.6.31] 桶数不再是「窗口时长 ÷ 桶粒度」：服务端把桶序列的**起点向下对齐**
+   到桶边界（`floor(from)`）再排到当前桶，图的覆盖区间 ⟨⊇⟩ 窗口区间，
+   于是 `Σtrend.requests === metrics.requests` 成为结构性保证。
+   代价是首/末桶各只覆盖窗口的一部分 —— 这由 `partial` 字段如实标出。
 
    硬规则不变（`assertOverviewConsistent`）：五路合计**逐分相等**。
    靠的是精确整数分账（`apportion`，最大余数法），不是各自 round ——
@@ -458,10 +463,38 @@ function hourBucket(ms: number): string {
 }
 
 /**
- * 把「今天」这一天的请求/积分/失败拆成 `count` 个小时桶，末桶 = 当前小时。
- * 桶数由窗口决定（today = 已过小时数、24h = 24、1h = 1），数值按 `HOUR_WEIGHTS` 分账。
+ * 窗口 → `[from, to)` 毫秒区间 —— **镜像服务端** `server/src/api/window.ts` 的 `windowRange`。
+ *
+ * Mock 要能如实标出「不足一格」的桶，就得有与服务端**同一个**窗口区间；
+ * 否则两边的首/末桶判定会分叉（这正是本项目 mock 门禁在防的那类漂移）。
  */
-function hourlyTrend(count: number, nowMs: number, day: TrendPoint): TrendPoint[] {
+function mockWindowRange(win: MockWindow, nowMs: number): { from: number; to: number } {
+  if (win === 'today') {
+    const d = new Date(nowMs);
+    const from = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    return { from, to: nowMs + 1 };
+  }
+  const ms = win === '1h' ? HOUR_MS : win === '24h' ? 24 * HOUR_MS : win === '7d' ? 7 * 86_400_000 : 30 * 86_400_000;
+  return { from: nowMs - ms, to: nowMs + 1 };
+}
+
+/**
+ * 该桶是否只覆盖窗口的一部分（**镜像服务端** `markPartialBuckets`）。
+ *
+ * 判定：桶的真实时间跨度 `[桶起点, 桶起点 + step)` 与窗口 `[from, to)` 的交集
+ * 短于 step。服务端 1ms 容差（窗口末端是 `now + 1`），这里照抄。
+ */
+function markPartial(bucket: string, step: number, from: number, to: number): boolean {
+  const s = new Date(bucket.includes('T') ? `${bucket}:00:00` : `${bucket}T00:00:00`).getTime();
+  const covered = Math.min(s + step, to) - Math.max(s, from);
+  return covered < step - 1;
+}
+
+/**
+ * 把「今天」这一天的请求/积分/失败拆成 `count` 个小时桶，末桶 = 当前小时。
+ * 桶数由窗口决定（today = 已过小时数、24h = 25、1h = 2），数值按 `HOUR_WEIGHTS` 分账。
+ */
+function hourlyTrend(count: number, nowMs: number, day: TrendPoint, partials?: boolean[]): TrendPoint[] {
   const endMs = new Date(nowMs).setMinutes(0, 0, 0);
   const stamps = Array.from({ length: count }, (_, i) => endMs - (count - 1 - i) * HOUR_MS);
   const weights = stamps.map((ms) => HOUR_WEIGHTS[new Date(ms).getHours()]);
@@ -479,6 +512,9 @@ function hourlyTrend(count: number, nowMs: number, day: TrendPoint): TrendPoint[
     /* 失败数不能超过该桶的请求数（分账按权重摊，权重小的桶可能摊到 1 次失败但 0 次请求）。 */
     errors: Math.min(reqs[i], errs[i]),
     models: modelSlicesFor(toks[i]),
+    /* [v1.6.31] 首/末桶常只覆盖窗口的一部分（窗口按 now 滚动、不对齐整点）。
+       数字是真的，但不足一整格 —— 前端 tooltip 据此注明「不足一格」。 */
+    partial: partials?.[i] ?? false,
   }));
 }
 
@@ -487,16 +523,49 @@ function hourlyTrend(count: number, nowMs: number, day: TrendPoint): TrendPoint[
  *
  * 数值只依赖"第几个桶"（沿用 `trendPoint` 的伪时间纪律），与"今天是哪天"无关；
  * 只有小时桶的**标签**跟着时钟走。
+ *
+ * [v1.6.31] 桶序列与服务端 `fillEmptyBuckets` 同语义：从窗口起点**向下对齐**到
+ * 桶边界，到当前桶为止 —— 所以 24h 是 25 格、1h 是 2 格（不是时长 ÷ 1 小时）。
+ * 旧 mock 也是"从末尾往前数 count 格"，与服务端一起错；两边同步修，才不会让
+ * `dev:mock` 与真实行为悄悄分叉（本项目已有一道 mock 文案门禁在防这类漂移）。
  */
 export function buildWindowTrend(win: MockWindow, nowMs: number = Date.now()): TrendPoint[] {
   const daily = buildTrend();
-  if (win === '30d') return daily;
-  if (win === '7d') return daily.slice(-7);
+  const { from, to } = mockWindowRange(win, nowMs);
+  /* 日桶窗口（7d/30d）：桶序列同样**向下对齐**到窗口起点那一天的零点，
+     排到当前日 —— 7d → 8 格、30d → 31 格（与服务端 `fillEmptyBuckets` 同语义）。 */
+  if (win === '30d' || win === '7d') {
+    const start = new Date(from);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(to - 1);
+    end.setHours(0, 0, 0, 0);
+    const stamps: number[] = [];
+    for (let t = start.getTime(); t <= end.getTime(); t += 86_400_000) stamps.push(t);
+    /* 取 daily 序列里桶标签对得上的那些（daily 是 30 天的日桶，标签 = YYYY-MM-DD）。 */
+    const byLabel = new Map(daily.map((p) => [p.bucket, p]));
+    return stamps.map((ms) => {
+      const d = new Date(ms);
+      const p = (n: number) => String(n).padStart(2, '0');
+      const label = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+      const base = byLabel.get(label);
+      const partial = markPartial(label, 86_400_000, from, to);
+      if (!base) {
+        return { bucket: label, requests: 0, tokens: 0, credits: 0, errors: 0, models: [], partial };
+      }
+      return { ...base, partial };
+    });
+  }
   const today = daily[daily.length - 1]; // daysAgo = 0
-  if (win === '24h') return hourlyTrend(24, nowMs, today);
-  if (win === '1h') return hourlyTrend(1, nowMs, today);
+  /* 小时桶窗口：首/末桶常只覆盖窗口的一部分，如实标出。 */
+  const count = win === '24h' ? 25 : win === '1h' ? 2 : new Date(nowMs).getHours() + 1;
+  const endMs = new Date(nowMs).setMinutes(0, 0, 0);
+  const startMs = endMs - (count - 1) * HOUR_MS;
+  const partials = Array.from({ length: count }, (_, i) => {
+    const s = startMs + i * HOUR_MS;
+    return markPartial(hourBucket(s), HOUR_MS, from, to);
+  });
   /* today：本地零点到现在 —— 桶数 = 当前小时 + 1（与服务端 windowRange 的日历日语义一致）。 */
-  return hourlyTrend(new Date(nowMs).getHours() + 1, nowMs, today);
+  return hourlyTrend(count, nowMs, today, partials);
 }
 
 /**
@@ -646,6 +715,39 @@ export function makeOverview(win: MockWindow = 'today', nowMs: number = Date.now
       share: 0,
     };
   }).sort((a, b) => b.credits - a.credits);
+
+  /* [v1.6.29] 追加一行**上游不回报积分**的真实形态（M3.1-Flash）。
+     为什么 mock 里要放它：这个状态下界面的说辞（`--` + 「未回报 ≠ 没扣费」）
+     正是本次改动的核心，但此前 mock 里没有任何一行 `credits === null`，
+     那条提示在 mock 走查里**根本看不到**（生产有 97 条）。
+     · credits = null（与生产一致：上游 usage 无 credit 字段）
+     · creditsUnknownCount > 0（让 tooltip 说得出"本窗口 N 条"）
+     · 不计入 Σcredits —— 求和不变量用 `?? 0`，与生产同构
+     ⚠️ 请求数与 tokens 必须**从 donor 行整体搬移**（两项同步减），
+        否则 `ΣbyModel.tokens === metrics.totalTokens` 与 `Σshare === 1` 会破。
+        第一次写时只搬了 requests 没搬 tokens，被下方自检当场抓出（Σshare=1.0118）。 */
+  {
+    const donor = byModel[0]; // 已按 credits 降序，取最大那行
+    const movedReqs = Math.max(1, Math.round(donor.requests * 0.04));
+    const movedTokens = Math.round((donor.tokens ?? 0) * 0.04);
+    donor.requests -= movedReqs;
+    donor.tokens = (donor.tokens ?? 0) - movedTokens; // 同步搬移，保总量
+    byModel.push({
+      model: 'MiniMax-M3.1-Flash',
+      displayName: 'M3.1-Flash',
+      clientId: null,
+      client: null,
+      requests: movedReqs,
+      tokens: movedTokens,
+      credits: null, // ★ 上游未回报（不是 0）
+      creditsUnknownCount: movedReqs,
+      multiplier: null,
+      tag: '限时免费',
+      share: 0,
+    });
+    /* 未知积分行排在最后（排序键用 ?? -1，与「无数据靠后」的语义一致）。 */
+    byModel.sort((a, b) => (b.credits ?? -1) - (a.credits ?? -1));
+  }
 
   /* 工具：同一份请求数的**第三种切法**，请求数与积分都要与上面两路合计相等。 */
   const toolReqs = apportion(requests, TOOL_MIX.map((t) => t.weight));
@@ -878,9 +980,14 @@ export function assertOverviewConsistent(d: OverviewData): void {
 
      ⚠️ 只在**样本足够**时检查（`MIN_SAMPLE`）。小时窗口每行只有几次请求，
      那时"单次均耗"是 1~2 次请求的平均，噪声比倍率之间的差还大 ——
-     拿它当纪律就是掷骰子。小窗口仍要守的是上面那几条**逐分相等**，那些全窗口强制。 */
-  if (d.byModel.every((r) => r.requests >= MIN_SAMPLE)) {
-    const rates = d.byModel
+     拿它当纪律就是掷骰子。小窗口仍要守的是上面那几条**逐分相等**，那些全窗口强制。
+
+     [v1.6.29] `credits === null` 的行**不参与**这条检查：那是「上游未回报」，
+     其"单次均耗"根本不存在（`(null ?? 0)/n = 0`），拿 0 去比会误报
+     「M3.1-Flash 单次 0.00 未高于 GLM-5.3」——它没有可比的量，不是"更便宜"。 */
+  const rated = d.byModel.filter((r) => r.credits !== null);
+  if (rated.every((r) => r.requests >= MIN_SAMPLE)) {
+    const rates = rated
       .map((r) => ({
         name: r.displayName ?? r.model ?? '未知',
         mult: r.multiplier ?? NEUTRAL_MULTIPLIER,
@@ -1028,12 +1135,17 @@ export function makeKeys(): ClientKeyRow[] {
   const now = Date.now();
   /* [v0.4.35] 策略字段默认值 —— 大多数 mock 密钥不限，个别行自己覆盖（演示用量展示）。 */
   const defaults = { ipWhitelist: [] as string[], maxIps: null as number | null, tokenQuota: null as number | null, usedIps: 0, usedTokens: 0 };
+  /* [2026-10-18 与生产对齐] `clients` 是**绑定提供商**的有序列表，值自 v1.6.26 起是
+     提供商 **id**（不是名字，更不是客户端名）。此前 mock 塞的是 'Claude Code' 这类
+     客户端名，于是 `dev:mock` 的「修改密钥」把它们当孤儿绑定、列表列显示的含义也错了
+     —— 这些图会进 README，读者会以为绑定的是 IDE。
+     `client` 仍保留「这把密钥归属哪个客户端」的快照名，两者不是一回事。 */
   const rows: ClientKeyRow[] = [
-    { ...defaults, id: 'k_8f21', name: 'Claude Code · 本机', hint: 'sk-waygate-4f9c…7a2e', scope: { type: 'all' }, client: 'Claude Code', clients: ['Claude Code'], enabled: true, expiresAt: null, createdAt: new Date(now - 13 * 86_400_000).toISOString(), lastSeenAt: new Date(now - 40_000).toISOString(), requests24h: 760 },
-    { ...defaults, maxIps: 3, tokenQuota: 2_000_000, usedIps: 2, usedTokens: 1_234_567, id: 'k_1b83', name: 'Cherry Studio', hint: 'sk-waygate-1b83…c40f', scope: { type: 'all' }, client: 'Cherry Studio', clients: ['Cherry Studio'], enabled: true, expiresAt: null, createdAt: new Date(now - 11 * 86_400_000).toISOString(), lastSeenAt: new Date(now - 90_000).toISOString(), requests24h: 324 },
-    { ...defaults, id: 'k_9d02', name: 'Cursor · 笔记本', hint: 'sk-waygate-9d02…3ee1', scope: { type: 'family', value: 'kimi' }, client: 'Cursor', clients: ['Cursor', 'Claude Code'], enabled: true, expiresAt: null, createdAt: new Date(now - 9 * 86_400_000).toISOString(), lastSeenAt: new Date(now - 3 * 3600_000).toISOString(), requests24h: 154 },
-    { ...defaults, id: 'k_c3a5', name: 'Cron Job · 定时任务', hint: 'sk-waygate-c3a5…91d7', scope: { type: 'family', value: 'deepseek' }, client: 'Cron Job', clients: ['Cron Job'], enabled: true, expiresAt: null, createdAt: new Date(now - 8 * 86_400_000).toISOString(), lastSeenAt: new Date(now - 300_000).toISOString(), requests24h: 78 },
-    { ...defaults, ipWhitelist: ['192.168.1.0/24'], id: 'k_77c1', name: '手机端（临时）', hint: 'sk-waygate-77c1…b8f0', scope: { type: 'all' }, client: '手机端（临时）', clients: ['手机端（临时）'], enabled: false, expiresAt: null, createdAt: new Date(now - 30 * 86_400_000).toISOString(), lastSeenAt: new Date(now - 3 * 86_400_000).toISOString(), requests24h: 0 },
+    { ...defaults, id: 'k_8f21', name: 'Claude Code · 本机', hint: 'sk-waygate-4f9c…7a2e', scope: { type: 'all' }, client: 'Claude Code', clients: ['p_default00'], enabled: true, expiresAt: null, createdAt: new Date(now - 13 * 86_400_000).toISOString(), lastSeenAt: new Date(now - 40_000).toISOString(), requests24h: 760 },
+    { ...defaults, maxIps: 3, tokenQuota: 2_000_000, usedIps: 2, usedTokens: 1_234_567, id: 'k_1b83', name: 'Cherry Studio', hint: 'sk-waygate-1b83…c40f', scope: { type: 'all' }, client: 'Cherry Studio', clients: ['p_mmx002'], enabled: true, expiresAt: null, createdAt: new Date(now - 11 * 86_400_000).toISOString(), lastSeenAt: new Date(now - 90_000).toISOString(), requests24h: 324 },
+    { ...defaults, id: 'k_9d02', name: 'Cursor · 笔记本', hint: 'sk-waygate-9d02…3ee1', scope: { type: 'family', value: 'kimi' }, client: 'Cursor', clients: ['p_qoder01', 'p_default00'], enabled: true, expiresAt: null, createdAt: new Date(now - 9 * 86_400_000).toISOString(), lastSeenAt: new Date(now - 3 * 3600_000).toISOString(), requests24h: 154 },
+    { ...defaults, id: 'k_c3a5', name: 'Cron Job · 定时任务', hint: 'sk-waygate-c3a5…91d7', scope: { type: 'family', value: 'deepseek' }, client: 'Cron Job', clients: ['p_default00'], enabled: true, expiresAt: null, createdAt: new Date(now - 8 * 86_400_000).toISOString(), lastSeenAt: new Date(now - 300_000).toISOString(), requests24h: 78 },
+    { ...defaults, ipWhitelist: ['192.168.1.0/24'], id: 'k_77c1', name: '手机端（临时）', hint: 'sk-waygate-77c1…b8f0', scope: { type: 'all' }, client: '手机端（临时）', clients: ['p_mmx002'], enabled: false, expiresAt: null, createdAt: new Date(now - 30 * 86_400_000).toISOString(), lastSeenAt: new Date(now - 3 * 86_400_000).toISOString(), requests24h: 0 },
     { ...defaults, id: 'k_2e6b', name: '测试脚本 · 本地', hint: 'sk-waygate-2e6b…0a13', scope: { type: 'tag', value: '夜间折扣' }, client: null, clients: [], enabled: true, expiresAt: new Date(now - 2 * 86_400_000).toISOString(), createdAt: new Date(now - 40 * 86_400_000).toISOString(), lastSeenAt: new Date(now - 12 * 86_400_000).toISOString(), requests24h: 0 },
     { ...defaults, id: 'k_5d7f', name: '家人共享 · 只读', hint: 'sk-waygate-5d7f…22c8', scope: { type: 'models', value: ['glm-5.3', 'kimi-k2.7'] }, client: null, clients: [], enabled: false, expiresAt: null, createdAt: new Date(now - 20 * 86_400_000).toISOString(), lastSeenAt: new Date(now - 5 * 86_400_000).toISOString(), requests24h: 0 },
   ];
@@ -1063,12 +1175,12 @@ export function makeSettings(): SettingsData {
         id: 'credential',
         label: '提供商策略',
         items: [
-          { key: 'credential.source', label: '活动提供商', value: 'ck_x••••3f7a', type: 'text', why: '当前生效提供商的凭证掩码。各家凭证形态不同：WorkBuddy 是 ck_ 开头的 API 密钥、MiniMax Code 是 refresh token（mmort_）或 M Plan 平台 key、Qoder CN 是身份 JSON。逐家查看/修改请到「提供商管理 → 提供商」。', readonly: true, requiresRestart: false },
-          { key: 'credential.status', label: '凭证状态', value: '有效', type: 'badge', why: '活动提供商的凭证是否已配置（「有效」= 文件存在且非空）。只读运行态，只反映「填了没有」，不解析凭证到期时间 —— 各家续期方式不同：MiniMax 自动刷新 refresh token、Qoder 需重新导入、WorkBuddy 为静态密钥。', readonly: true, requiresRestart: false },
-          { key: 'upstream.baseUrl', label: '提供商地址', value: '（按家维护于「提供商管理 → 提供商」）', type: 'text', why: '【只读】多提供商后，出站转发、目录拉取、额度探测都读各自提供商的 base_url；本项仅作说明位。改地址请到「提供商管理 → 提供商 → 修改」。', readonly: true, requiresRestart: false },
-          { key: 'upstream.userAgent', label: 'WorkBuddy UA 基准值', value: 'WorkBuddy/5.8.0', type: 'text', why: '【仅对 WorkBuddy（openai 协议）生效】出站 User-Agent 的基准值，会展开成官方桌面端三段式。官方客户端升版后改这里即可跟上。MiniMax Code 固定发 MiniMaxCode、Qoder CN 固定发 qodercli/<ver>，不受本项影响。留空则沿用入站 UA。', readonly: false, requiresRestart: false },
-          { key: 'upstream.spoofUA', label: '请求头伪装（WorkBuddy）', value: true, type: 'switch', why: '【仅对 WorkBuddy（openai 协议）生效】开启时把出站请求伪装成官方 WorkBuddy 桌面端：UA 展开为三段式，并注入用量归因头族，个人中心「使用端」才归因到 WorkBuddy。MiniMax Code 走标准 Anthropic SDK 头、Qoder CN 走 COSY 签名头，本开关对它们无效果。', readonly: false, requiresRestart: false },
-          { key: 'upstream.promptRewrite', label: 'system 提示改写', value: 'template', type: 'select', options: [{ value: 'template', label: '模板行改写（默认·推荐）' }, { value: 'neutral', label: '中性提示全量替换（激进）' }, { value: 'off', label: '关闭' }], why: '转发前对 system 正文做改写，三家提供商都会应用。改写要解决的主要是 WorkBuddy 的 11128 渠道校验（按 system 模板指纹拦截 Claude Code 系客户端）；MiniMax Code / Qoder CN 无此校验。「模板行改写」语义等价地改标签行，被拒时自动降级重试一次；「中性替换」整段换掉；「关闭」即不改写。改后立即生效。', readonly: false, requiresRestart: false },
+          { key: 'credential.source', label: '活动提供商', value: 'ck_x••••3f7a', type: 'text', why: '当前生效提供商的凭证摘要（各家形态不同：WorkBuddy = 官方 OAuth 授权的账号前缀、MiniMax Code = 登录态 refresh token、Qoder CN = 身份 JSON）。逐家查看 / 重新导入请到「提供商管理 → 重新导入授权」。', readonly: true, requiresRestart: false },
+          { key: 'credential.status', label: '凭证状态', value: '有效', type: 'badge', why: '活动提供商的凭证是否已导入（「有效」= 已通过官方授权导入）。只读运行态，只反映「导了没有」，不解析到期时间 —— 各家续期方式不同：MiniMax 自动刷新 refresh token、WorkBuddy / Qoder 需重新导入授权。', readonly: true, requiresRestart: false },
+          { key: 'upstream.baseUrl', label: '提供商地址', value: '（按家维护于「提供商管理 → 提供商」）', type: 'text', why: '【只读】多提供商后，出站转发、目录拉取、额度探测都读各自提供商的 base_url；本项曾是可改的全局地址，现仅作说明位。改地址请到「提供商管理 → 配置」。', readonly: true, requiresRestart: false },
+          { key: 'upstream.userAgent', label: 'WorkBuddy UA 基准值', value: 'WorkBuddy/5.8.0', type: 'text', why: '【仅对 WorkBuddy（openai 协议）生效】出站 User-Agent 的基准值，会展开成官方桌面端三段式（WorkBuddy/<ver> WorkBuddy/<ver> CLI/<cli>）。官方客户端升版后改这里即可跟上，无需改代码发版。MiniMax Code 固定发 MiniMaxCode、Qoder CN 固定发 qodercli/<ver>，均不受本项影响。留空时：伪装档（spoofUA=开，默认）回落到内置默认版本并覆盖入站 UA；透明转发档（spoofUA=关）才沿用入站 UA。', readonly: false, requiresRestart: false },
+          { key: 'upstream.spoofUA', label: '请求头伪装（WorkBuddy）', value: true, type: 'switch', why: '【仅对 WorkBuddy（openai 协议）生效】开启时把出站请求伪装成官方 WorkBuddy 桌面端：UA 展开为三段式，并注入用量归因头族（X-Product / X-IDE-* / X-Agent-Purpose / X-Agent-Intent 等），个人中心「使用端」才归因到 WorkBuddy。MiniMax Code 走标准 Anthropic SDK 头、Qoder CN 走 COSY 签名头，本开关对它们无效果。', readonly: false, requiresRestart: false },
+          { key: 'upstream.promptRewrite', label: 'system 提示改写', value: 'template', type: 'select', options: [{ value: 'template', label: '模板行改写（默认·推荐）' }, { value: 'neutral', label: '中性提示全量替换（激进）' }, { value: 'off', label: '关闭' }], why: '转发前对 system 正文做改写，三家提供商都会应用。改写要解决的主要是 WorkBuddy 的 11128 渠道校验（按 system 模板指纹拦截 Claude Code 系客户端）；MiniMax Code / Qoder CN 无此校验。「模板行改写」语义等价地改标签行（模型读法不变、指纹失效），被拒时自动降级重试一次；「中性替换」整段换掉（会改变模型行为，应急用）；「关闭」即不改写。改后立即生效。', readonly: false, requiresRestart: false },
         ],
       },
       {
@@ -1085,7 +1197,7 @@ export function makeSettings(): SettingsData {
         id: 'signin',
         label: '每日签到',
         items: [
-          { key: 'signin.workBuddyEnabled', label: 'WorkBuddy 签到状态同步', value: true, type: 'switch', why: '每日 08:05 后自动查询 WorkBuddy（openai 协议）提供商的签到状态（只读，你在官方客户端/网页领取后本服务如实显示今日已签与连签天数）。上游不允许 API 密钥代领签到（403 实证），代领需 OAuth 登录态——是独立议题。MiniMax Code 的签到由 relay 恒开代签（其凭证链要求如此）。', readonly: false, requiresRestart: false },
+          { key: 'signin.workBuddyEnabled', label: 'WorkBuddy 签到状态同步', value: true, type: 'switch', why: '每日 08:05 后自动为 WorkBuddy（openai 协议）提供商签到领积分（100/天 + 连签加成），凭证用已导入的授权，对客户端无影响。关闭只停自动，提供商管理页的手动签到按钮不受影响。MiniMax Code 的签到恒开（其凭证链要求由 relay 代签，客户端不再登录）。', readonly: false, requiresRestart: false },
         ],
       },
       {
