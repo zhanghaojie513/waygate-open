@@ -18,6 +18,8 @@ import { ModelProbeService, PROBE_INTERVAL_MS } from '../catalog/probe';
 import { CatalogSyncService, CATALOG_PROBE_INTERVAL_MS } from '../catalog/catalog-sync';
 import { QuotaSourceService } from '../proxy/quota/quota-source.service';
 import { CredentialImportService } from './credential-import.service';
+import { ProviderBackupService } from './provider-backup.service';
+import { ProviderImpactService } from './provider-impact.service';
 import { DeviceImportService } from './device-import.service';
 
 /**
@@ -74,6 +76,9 @@ import { DeviceImportService } from './device-import.service';
     CredentialImportService,
     // [v1.6.11] 设备授权导入（控制台「导入」按钮）：选客户端 → 跳授权页 → 回来即已导入。
     DeviceImportService,
+    // [v1.7.1] 删除前留档 + 影响面联查（不可逆动作的证据；两个只读/只增的服务）。
+    ProviderBackupService,
+    ProviderImpactService,
   ],
 })
 export class ApiModule {}

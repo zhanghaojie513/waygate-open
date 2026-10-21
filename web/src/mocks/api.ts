@@ -23,6 +23,8 @@ import type {
   ModelEnabledResult,
   OverviewData,
   ProviderItem,
+  ProviderImpact,
+  ProviderBackupItem,
   PutSettingsResult,
   RequestDetail,
   RequestLogRow,
@@ -132,12 +134,28 @@ export const mockApi = {
     return makeRequestDetail(id);
   },
 
+  /**
+   * 按提供商返回**它自己的**清单（与生产 `models.get(providerId)` 同语义）。
+   *
+   * [v1.7.2 修] 此前除 custom 特例外**忽略 provider 参数**、恒返回全量 CATALOG：
+   * 于是点开任一家的抽屉都看到别家的模型，而表头的模型数（来自 provider 行）
+   * 又是按家算的 —— 数字与列表对不上。生产是**按家过滤**的，mock 必须同构，
+   * 否则 `dev:mock` 走查（以及基于它重截的控制台截图）会看到真实环境不存在的画面。
+   */
   async catalog(provider?: string): Promise<CatalogData> {
     await sleep(150);
-    /* [v1.7.0] custom 示例家**动态生成**清单 —— 手动补的模型 reload 后立即可见
-       （其余家的清单仍是 switchMockCatalog 切换时的快照，旧语义不动）。 */
     if (provider === 'p_custom01') switchMockCatalog('p_custom01');
-    return CATALOG;
+    /* 无 provider = 全量并集（请求日志页 / 新建密钥弹窗要的就是这个）。 */
+    if (!provider) return CATALOG;
+    /* 按 providerId 过滤；mock 的 id 与生产不一定同名，故再用**提供商名**兜一层
+       （模型的 `provider` 字段就是显示名）。两层都匹配不上才返回空 —— 那说明
+       该家确实没有清单，与生产语义一致。 */
+    const pid = provider;
+    const name = providerStore.find((p) => p.id === pid)?.name;
+    const models = CATALOG.models.filter(
+      (m) => m.providerId === pid || (name !== undefined && m.provider === name),
+    );
+    return { ...CATALOG, models };
   },
 
   /**
@@ -569,15 +587,62 @@ export const mockApi = {
     });
   },
 
-  deleteProvider(id: string): Promise<{ deleted: string }> {
+  /** [v1.7.1] 删除返回留档文件名 —— 与真机同语义（Mock 里恒成功，演示「能退」）。 */
+  deleteProvider(id: string): Promise<{ deleted: string; backup: string | null }> {
     return sleep(300).then(() => {
       const t = providerStore.find((p) => p.id === id);
       if (!t) throw new ApiError(`提供商 ${id} 不存在`, 40401, 404);
       if (t.active) throw new ApiError('不能删除当前生效的提供商 —— 先切换到另一个，再删除这个。', 40002, 400);
       if (providerStore.length <= 1) throw new ApiError('至少保留一个提供商。', 40002, 400);
       providerStore = providerStore.filter((p) => p.id !== id);
-      return { deleted: id };
+      const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+      return { deleted: id, backup: `provider-${id}-${stamp}.json` };
     });
+  },
+
+  /**
+   * [v1.7.1] 影响面 Mock —— 与真机四段同构：绑定链 / 模型范围 / 近期流量 / 不可逆清单。
+   * 数据从 providerStore 与 mock 的密钥清单里凑，**不编造数字**（重启即失效的演示值也一样）。
+   */
+  providerImpact(id: string, hours = 24): Promise<ProviderImpact> {
+    return sleep(200).then(() => {
+      const t = providerStore.find((p) => p.id === id);
+      if (!t) throw new ApiError(`提供商 ${id} 不存在`, 40401, 404);
+      const boundKeys = keyStore
+        .map((k, i) => ({ k, i }))
+        .filter(({ k }) => (k.clients ?? []).includes(id))
+        .map(({ k }) => ({
+          id: k.id, name: k.name, keyHint: k.hint,
+          rank: (k.clients ?? []).indexOf(id), legacyByName: false,
+        }))
+        .sort((a, b) => a.rank - b.rank);
+      const ts = hours === 24 ? 412 : 88;
+      return {
+        providerId: id,
+        providerName: t.name,
+        active: t.active,
+        modelCount: t.modelCount,
+        modelEnabled: t.modelEnabled,
+        boundKeys,
+        scopedKeys: [],
+        recent: { requests: ts, tokens: ts * 1400 },
+        irreversible: t.protocol === 'openai'
+          ? ['WorkBuddy 的 OAuth 授权（providers/<id>.oauth）—— 无法从本机重建，删后需重新走一遍官方授权',
+             `该家登记的 ${t.modelCount} 个模型（含启停偏好）`,
+             '过去经该家转发的请求量会失去归属（历史行保留，provider_id 指向已删的 id）']
+          : t.protocol === 'anthropic'
+            ? ['MiniMax 的 refresh token（providers/<id>.key）—— 一次性轮换，删后需重新登录',
+               '缓存的 access token（providers/<id>.access）',
+               `该家登记的 ${t.modelCount} 个模型（含启停偏好）`,
+               '过去经该家转发的请求量会失去归属（历史行保留，provider_id 指向已删的 id）']
+            : [`该提供商的凭证文件`, `该家登记的 ${t.modelCount} 个模型（含启停偏好）`],
+      };
+    });
+  },
+
+  /** [v1.7.1] 留档列表 Mock（只给元数据）。 */
+  providerBackups(): Promise<{ items: ProviderBackupItem[] }> {
+    return sleep(150).then(() => ({ items: mockBackups }));
   },
 };
 
@@ -656,6 +721,11 @@ let providerStore: ProviderItem[] = [
   /* [v1.7.0] 自定义提供商示例（OpenAI 兼容 + 静态 key）：演示「新增自定义」建出来的形态 ——
      没有签到/账本/OAuth（健康卡那几列全是 —），凭证是 key 掩码，chatPath=null（智能默认）。 */
   { id: 'p_custom01', name: 'DeepSeek（示例）', baseUrl: 'https://api.deepseek.com', credentialMask: 'sk-c••••9x2f', configured: true, active: false, protocol: 'custom', chatPath: null, credKind: 'static', modelCount: 2, modelEnabled: 2, signin: { checkedOn: null, streak: null, lastPoints: null }, wbOAuth: { configured: false, uidMask: null, expiresAt: null }, wbCredits: null, qoderCredits: null, wbSignin: { checkedOn: null, streak: null, lastPoints: null }, credits: null },
+];
+
+/** [v1.7.1] 留档列表演示数据（真实形态：文件名带 id 与时间戳，只给元数据）。 */
+const mockBackups: ProviderBackupItem[] = [
+  { file: 'provider-p_mmx002-20261018-093012.json', providerId: 'p_mmx002', providerName: 'MiniMax Code', takenAt: '2026-10-18T09:30:12.000Z', hasCredential: true },
 ];
 
 /** 默认目录的**深拷贝**留底 —— 切换提供商后要能切回来。 */

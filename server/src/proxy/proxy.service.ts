@@ -472,6 +472,8 @@ export class ProxyService {
        （中性 system 注入）是 WorkBuddy 指纹对抗的手段，对通用 OpenAI 端点只会
        污染用户的对话。先路由、按方言决定改不改，三家内置路径行为不变。 */
     const routed = this.resolveRoute(body.model, ctx.keyContext?.clients ?? null, ctx);
+    /* [v1.7.2] 路由解析完成时刻 —— 这一段（目录查找 + 同名消歧 + 权限判定）是我方开销的一部分。 */
+    ctx.marks = { ...ctx.marks, routed: Date.now() };
     if (routed.provider.protocol === 'custom') {
       return await this.doCallCustom(ctx, body, cfg, slot, routed.provider, routed.id);
     }
@@ -536,6 +538,9 @@ export class ProxyService {
      *    一律在 30s 被我们自己掐断（生产实测 30009ms 必死，note=stream_abort）。
      *    重试（11133/降级）共用同一 guard：首字时限跨尝试累计，不会因重试白得新额度。 */
     const guard = createReadGuard(cfg.limits.firstByteTimeoutMs || 30_000);
+    /* [v1.7.2] 首次发往上游的时刻 —— 此前的全部是我方开销
+       （路由 + 目录 + 凭证获取，后者在 WorkBuddy token 到期时会走一次 refresh 往返）。 */
+    ctx.marks = { ...ctx.marks, sent: Date.now() };
     const send = () =>
       upstreamFetch(url, {
         method: 'POST',
@@ -745,6 +750,8 @@ export class ProxyService {
     const payload = JSON.stringify(toAnthropicRequest(rewrittenBody));
 
     const guard = createReadGuard(cfg.limits.firstByteTimeoutMs || 30_000);
+    /* [v1.7.2] 首次发往上游（anthropic 方言）：此前全部是我方开销。 */
+    ctx.marks = { ...ctx.marks, sent: Date.now() };
     let res: Response;
     try {
       res = await upstreamFetch(url, { method: 'POST', headers, body: payload, signal: guard.signal });
@@ -840,6 +847,8 @@ export class ProxyService {
     const payload = JSON.stringify(body);
 
     const guard = createReadGuard(cfg.limits.firstByteTimeoutMs || 30_000);
+    /* [v1.7.2] 首次发往上游（custom 方言）：此前全部是我方开销（含读 key 文件）。 */
+    ctx.marks = { ...ctx.marks, sent: Date.now() };
     let res: Response;
     try {
       res = await upstreamFetch(url, { method: 'POST', headers, body: payload, signal: guard.signal });
@@ -941,6 +950,9 @@ export class ProxyService {
           拿到就正常流式（首字延迟 = 上游首字延迟，铁律 2 不破）；零内容才重发。
        ── 上限：最多 1 次（自用场景，避免上游真故障时把延迟翻倍）。 */
     const MAX_QODER_RETRY = 1;
+    /* [v1.7.2] 首次发往上游（qoder 方言）：只记**第一次** —— 重试是上游侧行为，
+       记在重试前会把「我方准备时间」算成含重试等待（那属于 retry 损耗，不是自开销）。 */
+    ctx.marks = { ...ctx.marks, sent: Date.now() };
     let guard = createReadGuard(cfg.limits.firstByteTimeoutMs || 30_000);
     let upstreamBody: ReadableStream<Uint8Array> | null = null;
     let lastErr: unknown = null;

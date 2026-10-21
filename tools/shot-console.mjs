@@ -53,7 +53,12 @@ function run(url, out, steps) {
       [join(ROOT, 'tools', 'ui-shot.mjs'), url, out, JSON.stringify(steps)],
       {
         stdio: 'inherit',
-        env: { ...process.env, UI_SHOT_W: '1440', UI_SHOT_H: '900', UI_SHOT_SCALE: '1', UI_SHOT_FULL: '1' },
+        /* [v1.7.3] 固定 1440×1000 截图：README 是 2 列并排表格，六张图必须**同高**。
+           此前用 UI_SHOT_FULL（按内容撑开），实测产出 900/1067/1257/1619/2076 五种高度，
+           左右两张并排时参差不齐。1000 是能容纳「概览 + 设置」主体内容、同时不把
+           用量页趋势图切掉的高度（最大自然高度 2076 是 30 天窗口的完整长图，
+           并排表格里不需要那么长 —— 截到主体即可，细节在控制台里看）。 */
+        env: { ...process.env, UI_SHOT_W: '1440', UI_SHOT_H: '1000', UI_SHOT_SCALE: '1', UI_SHOT_FIXED_H: '1000' },
       },
     );
     child.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`ui-shot 退出码 ${code}（${out}）`))));

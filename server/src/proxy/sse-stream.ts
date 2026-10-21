@@ -210,7 +210,11 @@ export async function* readUpstreamSse(
         endedNaturally = true;
         break;
       }
-      if (firstByteMs === null) firstByteMs = Date.now() - ctx.started;
+      if (firstByteMs === null) {
+        firstByteMs = Date.now() - ctx.started;
+        /* [v1.7.2] 首字节时刻（绝对时间戳）—— 落库时与 marks.sent 相减得出上游等待。 */
+        ctx.marks = { ...ctx.marks, firstByte: Date.now() };
+      }
       guard?.onBytes(); // 连接层活动：只续看门狗，不解首字超时
       buffer += decoder.decode(read.value, { stream: true });
 

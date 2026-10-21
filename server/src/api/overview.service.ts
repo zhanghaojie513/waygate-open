@@ -94,6 +94,20 @@ export interface OverviewPayload {
     creditsUsed: number;
     successRate: number;
     avgLatencyMs: number;
+    /**
+     * [v1.7.2] 首字节 P95（毫秒）。**只统计测到首字节的行**（`first_byte_ms IS NOT NULL`）；
+     * 样本为 0 时为 `null`（未知），不是 0 —— 与积分那条口径同源。
+     * 口径：从**鉴权完成**到首字节（含我方路由/凭证 + 上游排队），见 schema.sql。
+     */
+    firstByteP95: number | null;
+    /**
+     * [v1.7.2] 我方开销均值（毫秒）= mean(auth_ms + prep_ms)，只统计两段都测到的行。
+     * `null` = 没有可用样本（迁移前的老行全无此数据），不是 0。
+     * 这是回答「我们慢不慢」的直接指标 —— 与上游快慢无关。
+     */
+    selfMsAvg: number | null;
+    /** [v1.7.2] 上游等待均值（`upstream_wait_ms`），只统计测到的行；`null` = 无样本。 */
+    upstreamWaitMsAvg: number | null;
     activeClients: number;
     /** 本窗口输入（prompt）tokens 合计。 */
     promptTokens: number;
@@ -857,6 +871,12 @@ export class OverviewService {
         .get(now - CHANNEL_REJECT_WINDOW_MS, now, 11128) as { n: number }
     ).n;
 
+    /* [v1.7.2] 延迟分段（我方开销 / 上游等待 / 首字节 P95）。
+       为什么单独查 requests 而不是用 aggregates：聚合表只有 `total_ms` 累计值，
+       分位数无法从累计量还原。窗口内行数在自用工具量级（数千到数万），裸扫可接受；
+       索引 idx_requests_ts 已经把范围收窄到窗口。 */
+    const latency = this.latencyStats(from, now);
+
     return {
       window: spec.key,
       generatedAt: toIso(now),
@@ -891,6 +911,12 @@ export class OverviewService {
         creditsUsed,
         successRate: totalRequests ? Math.round(((totalRequests - errors) / totalRequests) * 1000) / 1000 : 0,
         avgLatencyMs: Math.round(totals.avgMs ?? 0),
+        /* [v1.7.2] 延迟分段。P95 与均值都**只统计测到的行**；无样本 → null（不是 0）。
+           现算一次（走 requests 表的裸查询，量级是窗口内的行数）—— 聚合表存的是累计
+           总和与条数，分位数无法从累计量还原。 */
+        firstByteP95: latency.firstByteP95,
+        selfMsAvg: latency.selfMsAvg,
+        upstreamWaitMsAvg: latency.upstreamWaitMsAvg,
         activeClients: totals.clients ?? 0,
         promptTokens: totals.promptTokens ?? 0,
         completionTokens: totals.completionTokens ?? 0,
@@ -953,6 +979,57 @@ export class OverviewService {
           ? '已消耗积分仅统计经本服务转发的请求，取上游实扣 usage.credit；上游未回报的行积分未知，不计入合计（条数见 creditsUnknownCount）。官方客户端直连不计入。剩余积分来自上游额度接口（按 quota.pollSeconds 轮询，见 quota 块）。'
           : '已消耗积分仅统计经本服务转发的请求，取上游实扣 usage.credit；上游未回报的行积分未知，不计入合计（条数见 creditsUnknownCount）。官方客户端直连不计入，账户总消耗以官方客户端为准。剩余积分当前不可用（原因见 quota 块），不做估算。',
       },
+    };
+  }
+
+  /**
+   * [v1.7.2] 延迟分段统计（我方开销 / 上游等待 / 首字节 P95）。
+   *
+   * ## 为什么不用 aggregates 表
+   * 聚合表只存 `total_ms` 的**累计和**与条数 —— 分位数无法从累计量还原。P95 必须
+   * 看到分布，所以直接扫窗口内的 `requests` 行（`idx_requests_ts` 已把范围收窄）。
+   *
+   * ## 口径（与积分那条「未知 ≠ 0」同源）
+   * - 各段**只统计有三段数据的行**：`auth_ms`/`prep_ms` 缺一就不计入我方开销
+   *   （把缺失那半当 0 会系统性低估）；
+   * - 样本为 0 → 返回 `null`（未知），**不是 0**；
+   * - P95 用 `OFFSET floor(n*0.95)` 取秩 —— 数据量级（自用工具）下与插值法差异可忽略，
+   *   而不插值的好处是**返回的一定是真实测量值**（不会算出 213.7ms 这种表里不存在的数）。
+   */
+  private latencyStats(from: number, to: number): {
+    firstByteP95: number | null;
+    selfMsAvg: number | null;
+    upstreamWaitMsAvg: number | null;
+  } {
+    const agg = this.stmt(
+      `SELECT
+         COUNT(*) FILTER (WHERE first_byte_ms IS NOT NULL)                     AS fbN,
+         COUNT(*) FILTER (WHERE auth_ms IS NOT NULL AND prep_ms IS NOT NULL)   AS selfN,
+         AVG(CASE WHEN auth_ms IS NOT NULL AND prep_ms IS NOT NULL
+                  THEN auth_ms + prep_ms END)                                 AS selfAvg,
+         COUNT(*) FILTER (WHERE upstream_wait_ms IS NOT NULL)                  AS waitN,
+         AVG(upstream_wait_ms)                                                 AS waitAvg
+       FROM requests WHERE ts >= ? AND ts < ?`,
+    ).get(from, to) as {
+      fbN: number; selfN: number; selfAvg: number | null; waitN: number; waitAvg: number | null;
+    };
+
+    let firstByteP95: number | null = null;
+    if (agg.fbN > 0) {
+      /* 秩 = floor(n × 0.95)，夹在 [0, n-1]（n=1 时取第 0 个）。 */
+      const offset = Math.min(agg.fbN - 1, Math.max(0, Math.floor(agg.fbN * 0.95)));
+      const row = this.stmt(
+        `SELECT first_byte_ms AS v FROM requests
+          WHERE ts >= ? AND ts < ? AND first_byte_ms IS NOT NULL
+          ORDER BY first_byte_ms ASC LIMIT 1 OFFSET ?`,
+      ).get(from, to, offset) as { v: number } | undefined;
+      firstByteP95 = row ? row.v : null;
+    }
+
+    return {
+      firstByteP95,
+      selfMsAvg: agg.selfN > 0 && agg.selfAvg !== null ? Math.round(agg.selfAvg) : null,
+      upstreamWaitMsAvg: agg.waitN > 0 && agg.waitAvg !== null ? Math.round(agg.waitAvg) : null,
     };
   }
 }

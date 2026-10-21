@@ -25,6 +25,7 @@ import type { FastifyReply } from 'fastify';
 import { RelayHttpError } from '../../common/errors';
 import { clientIpOf } from '../../common/client-ip';
 import { beginContext } from '../proxy-log';
+import { arrivedAtOf, bodyReadyAtOf } from '../arrival-clock';
 import { ProxyService } from '../proxy.service';
 import { AnthropicExceptionFilter } from './anthropic.filter';
 import { AnthropicKeyGuard } from './anthropic-key.guard';
@@ -56,6 +57,10 @@ export class AnthropicController {
       ua: this.header(req, 'user-agent'),
       originalStream: body?.stream === true,
     });
+    /* [v1.7.2] 鉴权耗时起点（与 /v1/chat/completions 同一口径，见 proxy.controller 同处注释）。 */
+    ctx.marks = { ...ctx.marks, authed: Date.now() };
+    ctx.arrivedAt = arrivedAtOf(req);
+    ctx.bodyReadyAt = bodyReadyAtOf(req);
 
     try {
       const openai = toOpenAIChatBody(body);

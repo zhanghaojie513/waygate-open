@@ -5,7 +5,7 @@
 -- 驿站 · Relay v0.4.29 — SQLite Schema
 -- 引擎：better-sqlite3 13.0.3（同步 API，无 ORM）
 -- 文件位置：data/relay.db
--- 迁移版本：PRAGMA user_version = 19
+-- 迁移版本：PRAGMA user_version = 21
 --
 -- 迁移规则（手写迁移，不用 ORM / 不用迁移框架）：
 --   1. 本文件是 v1 的**完整建表 + 种子数据**，只在空库上跑一次。
@@ -21,7 +21,7 @@
 PRAGMA journal_mode = WAL;
 PRAGMA synchronous  = NORMAL;
 PRAGMA foreign_keys = ON;
-PRAGMA user_version = 19;
+PRAGMA user_version = 21;
 
 -- -----------------------------------------------------------------------------
 -- 1. requests —— 请求日志，权威数据源
@@ -52,6 +52,23 @@ CREATE TABLE IF NOT EXISTS requests (
   ms                 INTEGER NOT NULL DEFAULT 0,    -- 总耗时（入队 -> 流结束）
   queued_ms          INTEGER NOT NULL DEFAULT 0,    -- [注意] 本版并发闸**直接 429 不排队**，故此列恒 0（保留以备将来引入排队）
   first_byte_ms      INTEGER,                       -- 首字耗时；NULL = 未收到任何 chunk
+                                                    --   [v1.7.3 口径修正] 起点是**body 解析完成**，
+                                                    --   不是「发往上游」，也不是「请求进门」。
+                                                    --   旧注释写「从发出请求到首字节」是错的（已更正）。
+  /* [v1.7.2 / v1.7.3] 首字延迟的归因分段 —— 回答「慢在我方还是上游」。
+     全部可空：NULL = 未记录（老行）；**绝不用 0 冒充**（与 credits 可空同一纪律，
+     0 是「同毫秒完成」的真实值，与「没测到」不同）。
+       ingress_ms       请求进门 → body 就绪（客户端上传 + 解析等待，属**客户端侧**成本）
+       auth_ms          body 就绪 → 鉴权完成（KeyGuard：密钥 / IP 策略 / 配额）
+       prep_ms          鉴权完成 → 首次发往上游（路由解析 + 目录查找 + 凭证 + 组包）
+       upstream_wait_ms 首次发往上游 → 首字节（纯上游侧：排队 + 思考）
+     ⇒ 我方开销 = auth_ms + prep_ms（派生量，**不落库**：落冗余列只会不一致）。
+     ⚠️ auth_ms 的口径在 v1.7.3 变过：020→v1.7.2 之间的行含上传时间，
+        那批行 ingress_ms 为 NULL，可据此识别。 */
+  ingress_ms         INTEGER,
+  auth_ms            INTEGER,
+  prep_ms            INTEGER,
+  upstream_wait_ms   INTEGER,
   prompt_tokens      INTEGER NOT NULL DEFAULT 0,
   completion_tokens  INTEGER NOT NULL DEFAULT 0,
   total_tokens       INTEGER NOT NULL DEFAULT 0,

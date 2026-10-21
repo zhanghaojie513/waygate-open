@@ -8,6 +8,7 @@ import { ApiExceptionFilter } from './api/api.filter';
 import { RelayConfigService } from './config/config.service';
 import { resolveListen } from './config/listen';
 import { resolveWebDist } from './common/assets';
+import { installArrivalClock } from './proxy/arrival-clock';
 
 /**
  * 进程入口。
@@ -122,6 +123,11 @@ async function bootstrap(): Promise<void> {
     });
     logger.log(`控制台已同源托管：${webDist}`);
   }
+
+  /* [v1.7.2] 进门时刻钩子：`ctx.started` 在 controller 里、即**鉴权之后**；
+     想量出鉴权本身的开销，起点必须在 guard 之前 —— 这里是唯一位置。
+     只写一个时间戳，不读 body、不做 I/O，对请求结果零影响。 */
+  installArrivalClock(app.getHttpAdapter().getInstance());
 
   await app.listen(port, host);
 

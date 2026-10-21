@@ -68,6 +68,22 @@ function sourceOf(id: string): CatalogModel['source'] {
  * （生产实测：M3.1-Flash 有 254 条走 Code2，界面全显示成 Code）。
  * 这里让 mock 与生产走同一条路径，改动才验得出来。
  */
+/**
+ * 提供商 id → 显示名（**供目录行反查**，必须与 `api.ts` 的 providerStore 一致）。
+ *
+ * 为什么不直接读 providerStore：它定义在 api.ts，而 api.ts 反过来 import 本文件 ——
+ * 反向依赖会造成循环初始化（模块加载期 providerStore 还是 undefined）。
+ * 这张表是**同源镜像**：改名字时两处一起改（`compare-mock-settings` 那道门禁
+ * 覆盖的是设置文案，管不到这里，所以在两处都写了注释指认对方）。
+ */
+const MOCK_PROVIDER_NAME: Record<string, string> = {
+  p_default00: 'WorkBuddy',
+  p_qoder01: 'Qoder CN',
+  p_mmx002: 'MiniMax Code',
+  p_mm2c02: 'MiniMax Code2',
+  p_custom01: 'DeepSeek（示例）',
+};
+
 const MOCK_MODEL_PROVIDER_ID: Record<string, string> = {
   'kimi-k3': 'p_default00',
   'kimi-k3-1': 'p_default00',
@@ -88,17 +104,24 @@ export const CATALOG: CatalogData = {
   // 这里也必须为 true —— 否则同一份 mock 数据自相矛盾，
   // 会让开发者在 Mock 下看到一个真实环境不可能出现的组合。
   upstreamReachable: true,
-  models: MODEL_SEED.map((m) => ({
-    ...m,
-    family: m.id.split('-')[0],
-    source: sourceOf(m.id),
-    provider: m.id.startsWith('MiniMax-') || m.id.startsWith('minimax-') ? 'MiniMax Code' : 'WorkBuddy',
-    /* [v1.6.33] 带 providerId：请求日志用它把 `requests.providerId` 翻成显示名。 */
-    providerId: MOCK_MODEL_PROVIDER_ID[m.id] ?? 'p_default00',
-    verified: m.id === 'glm-5.1' || m.id === 'hy3' ? 0 : 1,
-    enabled: true,
-    lastVerifiedAt: new Date(Date.now() - 2 * 3600_000).toISOString(),
-  })),
+  models: MODEL_SEED.map((m) => {
+    /* [v1.7.2 修] `provider` 名必须从 **providerId 反查**，不能用 id 前缀猜。
+       旧写法是「非 MiniMax 前缀 ⇒ WorkBuddy」，把 DeepSeek / GLM / Hy 全标成了
+       WorkBuddy —— 界面上按提供商过滤时一个都滤不掉（点开 WorkBuddy 的抽屉，
+       看到的是全部 19 个模型），而表头的模型数又是按家算的 —— 数字与列表对不上。
+       生产是按 `provider_id` 过滤的，mock 必须同构。 */
+    const providerId = MOCK_MODEL_PROVIDER_ID[m.id] ?? 'p_default00';
+    return {
+      ...m,
+      family: m.id.split('-')[0],
+      source: sourceOf(m.id),
+      provider: MOCK_PROVIDER_NAME[providerId] ?? 'WorkBuddy',
+      providerId,
+      verified: m.id === 'glm-5.1' || m.id === 'hy3' ? 0 : 1,
+      enabled: true,
+      lastVerifiedAt: new Date(Date.now() - 2 * 3600_000).toISOString(),
+    };
+  }),
 };
 
 /**
@@ -261,8 +284,19 @@ export function makeRequestRow(i: number): RequestLogRow {
     status,
     upstreamCode,
     ms: failed ? 310 + ((i * 53) % 900) : 640 + ((i * 67) % 2400),
-    queuedMs: i % 9 === 0 ? 2400 : 0,
+    /* [v1.7.2] 恒 0 —— 与真机同一条事实：并发闸是「超限直接 429、不排队」，
+       schema 里这一列恒 0。旧 mock 每 9 行造一次 2400ms 排队，会让人以为
+       这个功能存在（详情页那句「排队 2.4s」读起来像真的），属会误导的演示值。 */
+    queuedMs: 0,
     firstByteMs: failed && status !== 429 ? null : 220 + ((i * 29) % 700),
+    /* [v1.7.2] 分段计时演示值：鉴权 1–5ms、准备 3–40ms（每 7 行来一次「偏高」，
+       演示 token refresh 那种情形）；失败行没有首字节 → upstreamWaitMs 为 null。
+       —— 与真机一致：这些是**测量值**，缺就是 null，不是 0。 */
+    /* [v1.7.2] 进门 → body 就绪：mock 里给个小的（真实长会话可达数十秒）。 */
+    ingressMs: i % 11 === 0 ? 1800 : 6 + (i % 20),
+    authMs: 1 + (i % 5),
+    prepMs: i % 7 === 0 ? 60 + (i % 90) : 3 + (i % 38),
+    upstreamWaitMs: failed && status !== 429 ? null : 220 + ((i * 29) % 700),
     promptTokens,
     completionTokens,
     // [v0.2.0] 输出里的思考 tokens（含在 completionTokens 内）。失败行 0；部分成功行有思考。
@@ -899,6 +933,12 @@ export function makeOverview(win: MockWindow = 'today', nowMs: number = Date.now
       creditsUsed: creditsCenti / 100,
       successRate: requests > 0 ? Math.round(((requests - errors) / requests) * 1000) / 1000 : 1,
       avgLatencyMs: 1840,
+      /* [v1.7.2] 延迟分段演示值：我方开销 12ms（很小，正常）、上游等待 420ms、
+         首字节 P95 940ms。刻意让「我方」明显小于上游 —— 这才是真实形态，
+         也避免误导演示成「网关很慢」。 */
+      firstByteP95: 940,
+      selfMsAvg: 12,
+      upstreamWaitMsAvg: 420,
       activeClients: byClient.filter((r) => r.requests > 0).length,
       promptTokens,
       completionTokens,

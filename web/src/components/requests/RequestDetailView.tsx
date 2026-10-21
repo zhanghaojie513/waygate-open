@@ -2,6 +2,7 @@ import { ChevronDown, ChevronUp, ListTree } from 'lucide-react';
 import { Tooltip } from '../ui/Tooltip';
 import type { RequestDetail, RequestLogRow } from '../../types/api';
 import { formatDateTime, formatDuration, formatInt, formatCredits, noteLabel, noteLabels, upstreamHint, statusTone } from '../../lib/format';
+import { TimingBreakdown } from './TimingBreakdown';
 
 const TONE_COLOR = {
   live: 'var(--signal-live)',
@@ -147,9 +148,13 @@ export function RequestDetailView({
         <span className="v">
           {queued ? `排队 ${formatDuration(row.queuedMs)} · ` : '不排队（并发超限直接 429） · '}
           上游 {formatDuration(upstream)} ·{' '}
-          {row.firstByteMs === null ? '无首字' : `首字 ${formatDuration(row.firstByteMs)}`}
+          {row.firstByteMs === null ? '无首字' : `首字 ${formatDuration(row.firstByteMs)}（自鉴权后起）`}
         </span>
       </div>
+
+      {/* [v1.7.2] 「时间去哪了」：把总耗时拆成我方开销 / 上游等待 / 流式输出三段。
+          三列都可空 —— 缺就是「未知」，显示 --，绝不拿 0 冒充。 */}
+      <TimingBreakdown row={row} />
       <div className="detail-row">
         <span className="k">tokens</span>
         <span className="v">

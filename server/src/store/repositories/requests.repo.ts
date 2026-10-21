@@ -19,6 +19,11 @@ export interface RequestLogInput {
   ms: number;
   queuedMs: number;
   firstByteMs: number | null;
+  /** [v1.7.2] 分段计时（null = 未知）。见 proxy-log.ts splitTiming。 */
+  authMs?: number | null;
+  ingressMs?: number | null;
+  prepMs?: number | null;
+  upstreamWaitMs?: number | null;
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
@@ -57,6 +62,11 @@ export interface RequestRow {
   ms: number;
   queued_ms: number;
   first_byte_ms: number | null;
+  /** [v1.7.2] 分段计时；老行 NULL。 */
+  auth_ms: number | null;
+  ingress_ms: number | null;
+  prep_ms: number | null;
+  upstream_wait_ms: number | null;
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
@@ -126,12 +136,14 @@ export class RequestsRepository {
     this.insertStmt = db.prepare(
       `INSERT INTO requests
          (ts, trace_id, client_id, client, client_rule, key_id, key_hint, model, model_display, status,
-          upstream_code, ms, queued_ms, first_byte_ms, prompt_tokens, completion_tokens,
+          upstream_code, ms, queued_ms, first_byte_ms, auth_ms, ingress_ms, prep_ms, upstream_wait_ms,
+          prompt_tokens, completion_tokens,
           total_tokens, cached_tokens, reasoning_tokens, credits, stream, retry_count, note, remote_ip, ua, request_body,
           response_body, created_at, provider_id)
        VALUES
          (@ts, @traceId, @clientId, @client, @clientRule, @keyId, @keyHint, @model, @modelDisplay, @status,
-          @upstreamCode, @ms, @queuedMs, @firstByteMs, @promptTokens, @completionTokens,
+          @upstreamCode, @ms, @queuedMs, @firstByteMs, @authMs, @ingressMs, @prepMs, @upstreamWaitMs,
+          @promptTokens, @completionTokens,
           @totalTokens, @cachedTokens, @reasoningTokens, @credits, @stream, @retryCount, @note, @remoteIp, @ua, @requestBody,
           @responseBody, @createdAt, @providerId)`,
     );
@@ -158,12 +170,22 @@ export class RequestsRepository {
   private writeLog(row: RequestLogInput): { id: number; effectiveKeyId: string | null } {
     let info;
     let effectiveKeyId = row.keyId;
+    /* [v1.7.2] 三个分段计时列是可选的，但 better-sqlite3 **不接受 undefined**
+       （会抛 "Invalid value"）—— 未提供时必须显式落 null（= 未知）。
+       与 providerId / reasoningTokens 同一处置，收敛成一个函数避免两处漏写。 */
+    const bindTiming = (r: typeof row) => ({
+      authMs: r.authMs ?? null,
+      ingressMs: r.ingressMs ?? null,
+      prepMs: r.prepMs ?? null,
+      upstreamWaitMs: r.upstreamWaitMs ?? null,
+    });
     try {
       info = this.insertStmt.run({
         ...row,
         /* better-sqlite3 不接受 undefined 作为绑定值（会抛 "Invalid value"），
            而 providerId 是可选字段 —— 未提供时必须显式落 null。 */
         providerId: row.providerId ?? null,
+        ...bindTiming(row),
         reasoningTokens: row.reasoningTokens ?? 0,
         stream: row.stream ? 1 : 0,
         createdAt: Date.now(),
@@ -181,6 +203,7 @@ export class RequestsRepository {
       info = this.insertStmt.run({
         ...row,
         providerId: row.providerId ?? null,
+        ...bindTiming(row),
         keyId: null,
         keyHint: row.keyHint ?? null,
         note: [row.note, ORPHANED_KEY_NOTE].filter(Boolean).join(','),

@@ -56,13 +56,91 @@ export interface StreamContext {
   responseBody?: string | null;
   /** [v0.2.0] 同一请求的上游重发次数（11133 幂等重试 / 11128 降级重试各计一次）。 */
   retries: number;
+  /**
+   * [v1.7.2] 分段计时（epoch ms，与 `started` 同基准）。缺项 = 该段未知（不填 0 冒充）。
+   *
+   * ⚠️ **只能整体替换、不能原地改**：`fail()` / `logRejection()` 对 ctx 做 `{ ...ctx }`
+   * 浅拷贝来共享 `persistGuard`；若 `marks` 原地赋值，浅拷贝后两条路径指向**同一个对象**，
+   * 失败路径的回填会污染原 ctx（与 v1.6.28 那条「共享引用是特性」是同一枚硬币的两面）。
+   * 用法一律 `ctx.marks = { ...ctx.marks, sent: Date.now() }`。
+   */
+  marks: TimingMarks;
+  /**
+   * [v1.7.2] 请求**进门**时刻（`onRequest` 钩子写的）。
+   * ⚠️ 它早于 **body 解析** —— 大 body（长会话 + 图片 base64）时这里含客户端上传时间。
+   * 所以它**不是**「我方开销」的起点，只用于算 `ingress_ms`。
+   */
+  arrivedAt?: number;
+  /**
+   * [v1.7.2] body 解析完成时刻（`preHandler` 钩子，早于 guard）—— **我方开销的真正起点**。
+   * `undefined` = 没装钩子（测试直构）→ `auth_ms` 落 NULL。
+   */
+  bodyReadyAt?: number;
   /** 并发槽位，由调用方在流结束后 release。 */
   release: () => void;
+}
+
+/** [v1.7.2] 四个分段点位（含义见 store/schema.sql 的同名列注释）。 */
+export interface TimingMarks {
+  /** 鉴权完成（`ClientKeyGuard` 通过）。 */
+  authed?: number;
+  /** 路由解析完成（`resolveRoute` 命中，拿到 provider + 目录行）。 */
+  routed?: number;
+  /** 首次发往上游（`upstreamFetch` 调用前，四个方言各一处）。 */
+  sent?: number;
+  /** 收到第一个 chunk（sse-stream）。 */
+  firstByte?: number;
 }
 
 /** 「本请求是否已落库」的共享标记（见 StreamContext.persistGuard）。 */
 export interface PersistGuard {
   done: boolean;
+}
+
+/** [v1.7.2] 分段计时的落库值（三列，全部可空 —— 缺项即"未知"）。 */
+export interface TimingSplit {
+  authMs: number | null;
+  prepMs: number | null;
+  upstreamWaitMs: number | null;
+  /** [v1.7.2] 进门 → body 就绪（客户端上传 + 解析等待）。**不是**我方开销。 */
+  ingressMs: number | null;
+}
+
+/**
+ * [v1.7.2] 由时间戳算出四段时长（纯函数，可单测）。
+ *
+ * ```
+ * 进门 ─ingressMs─▶ body 就绪 ─authMs─▶ 鉴权完成 ─prepMs─▶ 首次发往上游 ─upstreamWaitMs─▶ 首字节
+ *      └ 客户端上传 ┘        └────────── 我方开销 = authMs + prepMs ──────────┘  └ 纯上游侧 ┘
+ * ```
+ *
+ * 为什么 `ingressMs` 必须与 `authMs` 分开（生产实测教训，发版当天发现）：
+ * 第一版把「进门」当作我方开销的起点，结果生产上 `auth_ms` 出现 2238 / 6744 / 9660ms
+ * 且逐次递增 —— 因为 `onRequest` 早于 **body 解析**，而 agent 的 body 常有几十 MB
+ * （长会话 + 图片 base64）。那段时间是**客户端在上传**，不是我们在鉴权。
+ * 把它算进「我方」会让归因彻底失真（恰恰是这次要解决的问题的反面）。
+ *
+ * 口径纪律（与 `credits` 的「未知不压成 0」同源）：
+ *   · 任一端点缺失 → 该段返回 `null`（未知），**绝不拿 0 顶替**。0ms 是一个
+ *     可被误读为"很快"的真实测量值，而"没测到"不是。
+ *   · 时钟回拨/异常（算出负数）→ 也返回 `null`：负数不是测量值，是故障。
+ *   · `bodyReadyAt` 缺失（测试直构/未装钩子）→ `authMs` 为 null，但 `prepMs` 与
+ *     `upstreamWaitMs` 仍可算（起点是 `marks.authed`，不依赖钩子）。
+ */
+export function splitTiming(marks: TimingMarks, arrivedAt?: number, bodyReadyAt?: number): TimingSplit {
+  const diff = (from?: number, to?: number): number | null => {
+    if (typeof from !== 'number' || typeof to !== 'number') return null;
+    const d = to - from;
+    return d >= 0 ? d : null;
+  };
+  return {
+    /* ★ 我方开销的起点是 **body 就绪**，不是进门。 */
+    authMs: diff(bodyReadyAt, marks.authed),
+    prepMs: diff(marks.authed, marks.sent),
+    upstreamWaitMs: diff(marks.sent, marks.firstByte),
+    /* 客户端侧：进门 → body 就绪（上传 + 解析等待）。单独成列，不混进「我方」。 */
+    ingressMs: diff(arrivedAt, bodyReadyAt),
+  };
 }
 
 /** 构造落库上下文所需的最小请求元信息（controller 拿到请求即可填）。 */
@@ -94,6 +172,7 @@ export function beginContext(meta: RequestMeta): StreamContext {
     requestBody: null,
     responseBody: null,
     retries: 0,
+    marks: {},
     release: () => {},
   };
 }
@@ -163,7 +242,7 @@ export class ProxyLogger {
     this.logger.warn(message);
   }
 
-    /** 一次客户端请求 = 一行；重试只加 retryCount（本版未做自动重试，恒 0）。 */
+  /** 一次客户端请求 = 一行；重试只加 retryCount（本版未做自动重试，恒 0）。 */
   async persist(ctx: StreamContext, outcome: PersistOutcome): Promise<void> {
     // ★ 幂等：同一请求任何路径都不重复落行（task#37）。
     //   `?.` 是防御性写法 —— 容忍 `as StreamContext` 绕过类型的对象字面量（如部分测试）；
@@ -208,6 +287,9 @@ export class ProxyLogger {
         ms: Date.now() - ctx.started,
         queuedMs: 0,
         firstByteMs: outcome.firstByteMs,
+        /* [v1.7.2] 分段计时：缺项落 NULL（不填 0 冒充）。`ctx.marks` 可能只有部分端点
+           （失败行没有 firstByte），splitTiming 逐段判 missing。 */
+        ...splitTiming(ctx.marks ?? {}, ctx.arrivedAt, ctx.bodyReadyAt),
         promptTokens: prompt,
         completionTokens: completion,
         totalTokens: total,
@@ -258,6 +340,9 @@ export class ProxyLogger {
         ms: Date.now() - ctx.started,
         queuedMs: 0,
         firstByteMs: null,
+        /* [v1.7.2] 失败行同样记分段：鉴权与路由的开销真实发生过（失败不抹掉证据）。
+           `upstreamWaitMs` 通常为 null（没走到首字节），`authMs`/`prepMs` 有意义。 */
+        ...splitTiming(ctx.marks ?? {}, ctx.arrivedAt, ctx.bodyReadyAt),
         promptTokens: 0,
         completionTokens: 0,
         totalTokens: 0,

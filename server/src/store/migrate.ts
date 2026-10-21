@@ -2,7 +2,7 @@ import { readAsset } from '../common/assets';
 import type { Db } from './db';
 
 /** 代码期望的 schema 版本，与 schema.sql 的 `PRAGMA user_version` 一致。 */
-export const EXPECTED_USER_VERSION = 19;
+export const EXPECTED_USER_VERSION = 21;
 
 export function readUserVersion(db: Db): number {
   const row = db.pragma('user_version', { simple: true }) as unknown;

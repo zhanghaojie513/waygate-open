@@ -20,6 +20,8 @@ import type { ProviderSigninPanel,
   ModelEnabledResult,
   OverviewData,
   ProviderItem,
+  ProviderImpact,
+  ProviderBackupItem,
   GrowthRunResult,
   GrowthPanelResult,
   ProviderUsageRow,
@@ -429,11 +431,27 @@ export const api = {
     });
   },
 
-  deleteProvider(id: string): Promise<{ deleted: string }> {
+  /** [v1.7.1] 删除返回留档文件名（null = 留档失败，删除仍已执行）—— 用来告诉用户「能退」。 */
+  deleteProvider(id: string): Promise<{ deleted: string; backup: string | null }> {
     if (MOCKS_ENABLED) return mockApi.deleteProvider(id);
-    return apiRequestGuarded<{ deleted: string }>(`/api/providers/${encodeURIComponent(id)}`, {
-      method: 'DELETE',
-    });
+    return apiRequestGuarded<{ deleted: string; backup: string | null }>(
+      `/api/providers/${encodeURIComponent(id)}`,
+      { method: 'DELETE' },
+    );
+  },
+
+  /** [v1.7.1] 提供商影响面（停用/删除前看「会碰到谁」）。 */
+  providerImpact(id: string, hours?: number): Promise<ProviderImpact> {
+    if (MOCKS_ENABLED) return mockApi.providerImpact(id, hours);
+    return apiRequestGuarded<ProviderImpact>(
+      `/api/providers/${encodeURIComponent(id)}/impact${hours ? `?hours=${hours}` : ''}`,
+    );
+  },
+
+  /** [v1.7.1] 留档列表（只含元数据，不含凭证内容）。 */
+  providerBackups(): Promise<{ items: ProviderBackupItem[] }> {
+    if (MOCKS_ENABLED) return mockApi.providerBackups();
+    return apiRequestGuarded<{ items: ProviderBackupItem[] }>('/api/providers/backups');
   },
 };
 // @zbiti-ai:f:227:9c20484c

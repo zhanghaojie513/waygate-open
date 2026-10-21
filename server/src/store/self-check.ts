@@ -10,6 +10,8 @@ export const EXPECTED_COLUMNS: Record<string, string[]> = {
     'retry_count', 'note', 'remote_ip', 'ua', 'request_body', 'response_body', 'created_at',
     /* [v1.6.30 迁移 018] 实际路由到的提供商 id —— 归属统计读它，不再事后按目录反解。 */
     'provider_id',
+    /* [v1.7.2 迁移 020] 分段计时（我方开销 vs 上游等待）—— 三列全可空，NULL = 未知。 */
+    'auth_ms', 'ingress_ms', 'prep_ms', 'upstream_wait_ms',
   ],
   aggregates: [
     'bucket', 'dim', 'dim_value', 'requests', 'errors', 'credits',

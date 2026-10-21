@@ -1993,3 +1993,64 @@ svg.ua-ico.none { color: var(--text-ghost); }
 .ledger-caveat[open] > summary::before { content: '▾ '; }
 .ledger-caveat > summary:hover { color: var(--text-muted); }
 .ledger-caveat[open] > summary { margin-bottom: 6px; }
+
+/* --------------------------------------------------------------------------
+ * [v1.7.1] 提供商影响面区块（删除弹窗 / 配置抽屉共用）
+ *
+ * 四段按依赖强度递减：绑定密钥 → 范围点名 → 近期流量 → 不可逆清单。
+ * 「可能受影响」用琥珀（warn），确认的依赖用主文字色 —— 与整个控制台
+ * 同一条视觉纪律：颜色表示把握，不是表示重要。
+ * -------------------------------------------------------------------------- */
+.impact-block { display: flex; flex-direction: column; gap: 12px; margin-top: 14px; }
+/* 弹窗与抽屉都很窄：标题与摘要**竖排**。横向 space-between 会把「影响面」挤成
+   两行、而摘要在右侧硬撑（实测截图里正是这个形态）。 */
+.impact-head { display: flex; flex-direction: column; gap: 3px; }
+.impact-head b { font-size: 12.5px; color: var(--text-primary); font-weight: 600; white-space: nowrap; }
+.impact-sub { font-size: 11.5px; color: var(--text-faint); font-variant-numeric: tabular-nums; line-height: 17px; }
+.impact-note { font-size: 11.5px; line-height: 18px; color: var(--text-muted); }
+.impact-ok { color: var(--ok-green, var(--text-muted)); }
+.impact-group { display: flex; flex-direction: column; gap: 6px; }
+.impact-label { font-size: 11.5px; color: var(--text-secondary); font-weight: 600; }
+.impact-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px;
+  font-size: 12px; line-height: 18px; color: var(--text-secondary); }
+.impact-lose li { color: var(--text-muted); }
+.impact-tag { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 6px;
+  font-size: 10.5px; line-height: 16px; color: var(--text-faint);
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent); }
+.impact-tag-warn { color: var(--warn-amber);
+  background: color-mix(in srgb, var(--warn-amber) 12%, transparent); }
+
+/* --------------------------------------------------------------------------
+ * [v1.7.2] 「时间去哪了」分解（请求详情抽屉）+ 列表里的「我方」字样
+ *
+ * 三段配色按语义：我方=紫（我们自己的成本）、上游等待=青（对方）、流式=蓝（传输）。
+ * 数字一律 tabular-nums —— 三行数字要能竖着对齐扫读。
+ * -------------------------------------------------------------------------- */
+.timing-split { align-items: flex-start; }
+/* [v1.7.2] 「时间去哪了」是唯一一个**多行**的 detail-row —— 必须解除父级的
+   固定高度与 nowrap，否则图例会压到上一行（实测截图里「流式输出」直接盖住 tokens）。 */
+.detail-row.timing-split { height: auto; align-items: flex-start; padding: 4px 0; }
+.detail-row.timing-split .v { white-space: normal; overflow: visible; text-overflow: clip; }
+.timing-rows { display: flex; flex-direction: column; gap: 7px; width: 100%; }
+.timing-bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden;
+  background: color-mix(in srgb, var(--text-primary) 7%, transparent); }
+.timing-seg { display: block; height: 100%; }
+.seg-self { background: var(--brand-400); }
+.seg-upstream { background: var(--accent-cyan); }
+.seg-stream { background: var(--accent-blue); opacity: .55; }
+.timing-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 11.5px;
+  color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+/* 每个图例项整体不可断行 —— 否则「我方 61ms」会被拆成两行（实测截图里正是这样）。
+   放不下时由 flex-wrap 整项换行，而不是把一项的字拆开。 */
+.timing-item { display: inline-flex; align-items: baseline; gap: 5px; white-space: nowrap; }
+.timing-item em { font-style: normal; color: var(--text-faint); font-size: 11px; }
+.timing-hint { color: var(--warn-amber) !important; }
+.timing-warn { color: var(--warn-amber); }
+.timing-item .dot { width: 7px; height: 7px; border-radius: 2px; display: inline-block; }
+.dot-self { background: var(--brand-400); }
+.dot-upstream { background: var(--accent-cyan); }
+.dot-stream { background: var(--accent-blue); opacity: .55; }
+/* [v1.7.2] 客户端上行段（第 4 段）：中性灰 —— 它既不是我方也不是上游，是传输。 */
+.seg-ingress { background: color-mix(in srgb, var(--text-primary) 28%, transparent); }
+.dot-ingress { background: color-mix(in srgb, var(--text-primary) 28%, transparent); }
+.timing-hint-item { color: var(--text-muted); }

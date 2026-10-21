@@ -30,6 +30,12 @@ const VH = Number(process.env.UI_SHOT_H ?? 1080);
 const SCALE = Number(process.env.UI_SHOT_SCALE ?? 2);
 /** 整页截图（含滚动区）：README 里概览/用量页下半截要靠它，否则会被切掉。 */
 const FULL = process.env.UI_SHOT_FULL === '1';
+/**
+ * [v1.7.3] 固定高度截图：README 的「控制台一览」是 2 列并排表格，
+ * 同一行左右两张图必须等高，否则版面参差（实测 900 / 1067 / 1257 / 1619 / 2076 五种高度）。
+ * 设了它就忽略 FULL 的「按内容高度撑开」行为，统一按这个高度拍。
+ */
+const FIXED_H = process.env.UI_SHOT_FIXED_H ? Number(process.env.UI_SHOT_FIXED_H) : null;
 
 async function main() {
   const profile = mkdtempSync(join(tmpdir(), 'cdp-profile-'));
@@ -171,8 +177,14 @@ async function main() {
   }
 
   /* 整页截图：先把 CSS 视口高度设成内容高度，captureScreenshot 才能多出这么多
-     （captureBeyondViewport 单独用不够 —— 它按当前视口尺寸截，仍会切掉下方内容）。 */
-  if (FULL) {
+     （captureBeyondViewport 单独用不够 —— 它按当前视口尺寸截，仍会切掉下方内容）。
+     [v1.7.3] FIXED_H 优先：README 并排表格要求六张图同高 —— 此时**不**按内容撑开。 */
+  if (FIXED_H !== null) {
+    await send('Emulation.setDeviceMetricsOverride', {
+      width: VW, height: FIXED_H, deviceScaleFactor: SCALE, mobile: false,
+    });
+    await delay(400); // 等重排稳定再拍
+  } else if (FULL) {
     const contentH = await evalJs(
       'Math.max(document.documentElement.scrollHeight, document.body.scrollHeight)',
     );
@@ -186,7 +198,8 @@ async function main() {
 
   const shot = await send('Page.captureScreenshot', {
     format: 'png',
-    ...(FULL ? { captureBeyondViewport: true } : {}),
+    /* 固定高度模式**不**越界捕获 —— 那会按内容高度截，反而破坏统一尺寸。 */
+    ...(FULL && FIXED_H === null ? { captureBeyondViewport: true } : {}),
   });
   writeFileSync(outPath, Buffer.from(shot.data, 'base64'));
   console.log(`saved ${outPath}`);

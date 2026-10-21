@@ -56,6 +56,18 @@ export interface OverviewMetrics {
   creditsUsed: number;
   successRate: number;
   avgLatencyMs: number;
+  /**
+   * [v1.7.2] 首字节 P95（毫秒，只统计测到首字节的行；口径：鉴权完成 → 首字节）。
+   * `null` = 窗口内没有可用样本（**不是 0**）—— 前端显示 `--`。
+   */
+  firstByteP95: number | null;
+  /**
+   * [v1.7.2] 我方开销均值 = mean(auth_ms + prep_ms)，只统计两段都测到的行。
+   * `null` = 无样本。这是「我们慢不慢」的直接指标，与上游快慢无关。
+   */
+  selfMsAvg: number | null;
+  /** [v1.7.2] 上游等待均值（首次发往上游 → 首字节）；`null` = 无样本。 */
+  upstreamWaitMsAvg: number | null;
   activeClients: number;
   /** 本窗口输入（prompt）tokens 合计（task#62，替换不可得的订阅积分）。 */
   promptTokens: number;
@@ -255,6 +267,22 @@ export interface RequestLogRow {
   ms: number;
   queuedMs: number;
   firstByteMs: number | null;
+  /**
+   * [v1.7.2] 分段计时（毫秒，全部可空 = 未知）。
+   *
+   * ```
+   * 进门 ──authMs──▶ 鉴权完成 ──prepMs──▶ 首次发往上游 ──upstreamWaitMs──▶ 首字节
+   *        └────── 我方开销 ──────┘                          └─ 纯上游侧 ─┘
+   * ```
+   * 老行 / 失败行 / 未打点分支为 `null` —— 渲染 `--`，**不要当 0 处理**
+   * （0 是"同毫秒完成"的真实测量值，与"没测到"不同）。
+   */
+  /** [v1.7.2] 进门 → body 就绪（客户端上传 + 解析等待）。**不是**我方开销 ——
+   *  大 body（长会话/图片）时它会是几十秒，但那是客户端在传，不是我们慢。 */
+  ingressMs: number | null;
+  authMs: number | null;
+  prepMs: number | null;
+  upstreamWaitMs: number | null;
   promptTokens: number;
   completionTokens: number;
   /** [v0.2.0] 输出里的思考 tokens（含在 completionTokens 内；旧行/未回报为 0）。 */
@@ -645,6 +673,36 @@ export interface GrowthRunResult {
   redeems?: Array<{ tier: string; ok: boolean; detail: string }>;
   creditsGained?: number;
   message?: string;
+}
+
+/**
+ * [v1.7.1] 提供商**影响面** —— 「动这家会碰到谁」（`GET /api/providers/:id/impact`）。
+ *
+ * 为什么单列一个形状：这一组数字回答的是「停用/删除的后果」，与 `ProviderItem`
+ * （这家长什么样）不是同一类问题。绑定按 id 精确 + 名字兜底（与路由层同源）；
+ * `scopedKeys` 是**可能**受影响（模型范围点名了这家的模型），不是独家。
+ */
+export interface ProviderImpact {
+  providerId: string;
+  providerName: string;
+  active: boolean;
+  modelCount: number;
+  modelEnabled: number;
+  boundKeys: Array<{ id: string; name: string; keyHint: string; rank: number; legacyByName: boolean }>;
+  scopedKeys: Array<{ id: string; name: string; modelIds: string[] }>;
+  /** 过去 N 小时经这家转发的请求 / token（`provider_id` 事实列；无归属的老行不计）。 */
+  recent: { requests: number; tokens: number };
+  /** 删除后会失去什么（分协议如实列，可直接展示）。 */
+  irreversible: string[];
+}
+
+/** [v1.7.1] 删除留档的元数据（**不含凭证内容** —— 服务端只回这些）。 */
+export interface ProviderBackupItem {
+  file: string;
+  providerId: string;
+  providerName: string;
+  takenAt: string;
+  hasCredential: boolean;
 }
 
 export interface ProviderItem {

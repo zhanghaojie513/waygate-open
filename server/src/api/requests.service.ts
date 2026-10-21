@@ -39,6 +39,12 @@ export interface RequestListItem {
   ms: number;
   queuedMs: number;
   firstByteMs: number | null;
+  /** [v1.7.2] 分段计时；null = 未知（老行/失败行/未打点）。我方开销 = authMs + prepMs。 */
+  authMs: number | null;
+  /** [v1.7.2] 进门 → body 就绪（客户端上传 + 解析等待）。**不是**我方开销。 */
+  ingressMs: number | null;
+  prepMs: number | null;
+  upstreamWaitMs: number | null;
   promptTokens: number;
   completionTokens: number;
   /** [v0.2.0] 输出里的思考 tokens（含在 completionTokens 内；旧行/未回报为 0）。 */
@@ -104,6 +110,10 @@ interface RawRow {
   ms: number;
   queued_ms: number;
   first_byte_ms: number | null;
+  auth_ms: number | null;
+  ingress_ms: number | null;
+  prep_ms: number | null;
+  upstream_wait_ms: number | null;
   prompt_tokens: number;
   completion_tokens: number;
   reasoning_tokens: number;
@@ -250,7 +260,7 @@ export class RequestQueryService {
     const fetched = this
       .stmt(
         `SELECT r.id, r.ts, r.client, r.client_rule, r.client_id, r.key_id, r.key_hint,
-                r.model, r.model_display, r.provider_id, r.status, r.upstream_code, r.ms, r.queued_ms, r.first_byte_ms,
+                r.model, r.model_display, r.provider_id, r.status, r.upstream_code, r.ms, r.queued_ms, r.first_byte_ms, r.auth_ms, r.ingress_ms, r.prep_ms, r.upstream_wait_ms,
                 r.prompt_tokens, r.completion_tokens, r.reasoning_tokens, r.cached_tokens, r.total_tokens, r.credits, r.stream,
                 r.retry_count, r.note, r.remote_ip, r.ua,
                 ck.client AS bound_name, ck.name AS key_name, ck.id AS key_exists_id
@@ -306,7 +316,7 @@ export class RequestQueryService {
     const row = this
       .stmt(
         `SELECT r.id, r.ts, r.client, r.client_rule, r.client_id, r.key_id, r.key_hint,
-                r.model, r.model_display, r.provider_id, r.status, r.upstream_code, r.ms, r.queued_ms, r.first_byte_ms,
+                r.model, r.model_display, r.provider_id, r.status, r.upstream_code, r.ms, r.queued_ms, r.first_byte_ms, r.auth_ms, r.ingress_ms, r.prep_ms, r.upstream_wait_ms,
                 r.prompt_tokens, r.completion_tokens, r.reasoning_tokens, r.cached_tokens, r.total_tokens, r.credits, r.stream,
                 r.retry_count, r.note, r.remote_ip, r.ua, r.request_body, r.response_body,
                 ck.client AS bound_name, ck.name AS key_name, ck.id AS key_exists_id
@@ -368,6 +378,10 @@ export class RequestQueryService {
       ms: r.ms,
       queuedMs: r.queued_ms,
       firstByteMs: r.first_byte_ms,
+      authMs: r.auth_ms,
+      ingressMs: r.ingress_ms,
+      prepMs: r.prep_ms,
+      upstreamWaitMs: r.upstream_wait_ms,
       promptTokens: r.prompt_tokens,
       completionTokens: r.completion_tokens,
       reasoningTokens: r.reasoning_tokens,

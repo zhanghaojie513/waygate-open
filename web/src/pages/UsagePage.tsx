@@ -18,7 +18,7 @@ import { ClientModelTip } from '../components/usage/ClientModelTip';
 import { ClientMetricTip } from '../components/usage/ClientMetricTip';
 import { ModelUsageTable } from '../components/usage/ModelUsageTable';
 import { QuotaSourceCard } from '../components/usage/QuotaSourceCard';
-import { formatCredits, formatInt, formatPercent, formatRelative, formatTokens } from '../lib/format';
+import { formatCredits, formatDuration, formatInt, formatPercent, formatRelative, formatTokens } from '../lib/format';
 import { WINDOW_OPTIONS, WINDOW_LABEL } from '../lib/console';
 
 /** 默认窗口「今日」（2026-10-09 用户口径：打开就看"今天到目前为止花了多少"）。
@@ -160,6 +160,33 @@ export function UsagePage() {
                         tipPos: 'down',
                       },
                     ] as const)),
+                /* [v1.7.2] 延迟分段：只在有样本时出现（老库全是 NULL 时不占位）。
+                   「我方」是回答「我们慢不慢」的直接指标 —— 与上游快慢无关。 */
+                ...(d.metrics.selfMsAvg !== null
+                  ? ([
+                      {
+                        label: '我方开销',
+                        value: formatDuration(d.metrics.selfMsAvg),
+                        detail:
+                          d.metrics.upstreamWaitMsAvg !== null
+                            ? `上游等待 ${formatDuration(d.metrics.upstreamWaitMsAvg)}（均值）`
+                            : '鉴权 + 路由/凭证准备',
+                        tip: '我方开销 = 鉴权 + 路由解析 + 凭证获取（均值，只统计测到的行）。\n准备段含 WorkBuddy token 刷新时属正常偏高。\n这是「我们慢不慢」，与上游快慢无关。',
+                        tipPos: 'down',
+                      },
+                    ] as const)
+                  : []),
+                ...(d.metrics.firstByteP95 !== null
+                  ? ([
+                      {
+                        label: '首字节 P95',
+                        value: formatDuration(d.metrics.firstByteP95),
+                        detail: '鉴权后 → 首个 chunk（含上游排队）',
+                        tip: '首字节耗时的 95 分位（只统计测到首字节的行）。\n口径：从鉴权完成起算，含本网关路由/凭证 + 上游排队与思考。\n样本为 0 时不显示 —— 未知不等于 0。',
+                        tipPos: 'down',
+                      },
+                    ] as const)
+                  : []),
               ]}
             />
 

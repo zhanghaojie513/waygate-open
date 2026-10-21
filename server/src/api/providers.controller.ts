@@ -8,7 +8,7 @@
  * 激活是 PUT —— 语义是「把生效提供商设定为这个」，与 `PUT /api/settings/credential` 同一约定。
  */
 
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { SessionGuard } from './auth/session.guard';
 import { ProvidersService } from './providers.service';
 import { MinimaxSigninService } from '../proxy/anthropic-upstream/minimax-signin.service';
@@ -18,6 +18,8 @@ import { WbClaimService } from '../proxy/openai-upstream/wb-claim.service';
 import { QoderActivityService } from '../proxy/qoder-upstream/qoder-activity.service';
 import { MinimaxTokenService } from '../proxy/anthropic-upstream/minimax-token.service';
 import { DeviceImportService } from './device-import.service';
+import { ProviderImpactService } from './provider-impact.service';
+import { ProviderBackupService } from './provider-backup.service';
 import { ProvidersRepository } from '../store/repositories/providers.repo';
 import { ok } from '../common/errors';
 
@@ -34,6 +36,9 @@ export class ProvidersController {
     private readonly repo: ProvidersRepository,
     private readonly minimaxTokens: MinimaxTokenService,
     private readonly deviceImport: DeviceImportService,
+    /* [v1.7.1] 影响面与留档（只读端点用）。 */
+    private readonly impactSvc: ProviderImpactService,
+    private readonly backup: ProviderBackupService,
   ) {}
 
   @Get()
@@ -283,10 +288,27 @@ export class ProvidersController {
     return ok(this.providers.test(id, body?.credential, body?.model));
   }
 
+  /**
+   * [v1.7.1] 删除前的影响面 —— 「动这家会碰到谁」（只读）。
+   * 联查：密钥绑定（含名字兜底的历史绑定）、模型范围点名、过去 24h 实际流量、
+   * 以及删除后会失去什么（分协议如实列）。删除弹窗与配置抽屉都读它。
+   */
+  @Get(':id/impact')
+  impact(@Param('id') id: string, @Query('hours') hours?: string): unknown {
+    const h = Number.parseInt(hours ?? '', 10);
+    return ok(this.impactSvc.impact(id, Number.isFinite(h) && h > 0 && h <= 720 ? h : 24));
+  }
+
+  /** [v1.7.1] 留档列表（只给元数据，**不含凭证内容** —— 可安全出现在 UI）。 */
+  @Get('backups')
+  backups(): unknown {
+    return ok({ items: this.backup.list() });
+  }
+
   @Delete(':id')
   @HttpCode(200)
   remove(@Param('id') id: string): unknown {
-    this.providers.remove(id);
-    return ok({ deleted: id });
+    /* [v1.7.1] 返回留档文件名（备份失败为 null）—— 删除弹窗据此告诉用户「能退」。 */
+    return ok(this.providers.remove(id));
   }
 }

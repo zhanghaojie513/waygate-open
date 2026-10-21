@@ -56,6 +56,7 @@ import { QuotaSourceService } from '../proxy/quota/quota-source.service';
 import { QoderActivityService, type QoderLedgerBlock } from '../proxy/qoder-upstream/qoder-activity.service';
 import { ModelProbeService } from '../catalog/probe';
 import { buildCustomChatUrl } from '../proxy/upstream-url';
+import { ProviderBackupService } from './provider-backup.service';
 
 /** 默认行的 id 固定成可读的名字 —— 迁移种子与排障日志里都要能认出它。 */
 export const DEFAULT_PROVIDER_ID = 'p_default00';
@@ -161,6 +162,8 @@ export class ProvidersService implements OnApplicationBootstrap {
     @Optional() private readonly qoderActivity?: QoderActivityService,
     /* [v1.6.5] MiniMax 令牌服务：换 refresh token 时作废缓存 access token。@Optional 同上。 */
     @Optional() private readonly minimaxTokens?: MinimaxTokenService,
+    /* [v1.7.1] 删除前留档（行 + 目录 + 偏好 + 凭证文件原文 → backup/*.json）。 */
+    @Optional() private readonly backup?: ProviderBackupService,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -351,8 +354,12 @@ export class ProvidersService implements OnApplicationBootstrap {
    *   - 最后一个不可删 —— 服务至少要有一个上游可指。
    *   - 删除**生效**那家 → 自动激活下一家 + 清空重建模型目录（旧目录属于被删那家）。
    *   - 删除非生效那家 → 只删它自己（偏好 + 凭证文件），不动目录（目录属于生效那家）。
+   *
+   * [v1.7.1] **删除前先留档**：行 + 目录分区 + 偏好 + 三个凭证文件原文打进
+   * `backup/provider-<id>-<ts>.json`（0600）。理由见 provider-backup.service.ts 头注 ——
+   * `.oauth` / qoder 身份 JSON 无法从本机重建，MiniMax refresh token 是一次性的。
    */
-  remove(id: string): void {
+  remove(id: string): { deleted: string; backup: string | null } {
     const row = this.mustFind(id);
     if (this.repo.count() <= 1) {
       throw this.bad('至少保留一个提供商。');
@@ -362,6 +369,15 @@ export class ProvidersService implements OnApplicationBootstrap {
     if (row.active && this.repo.listActive().filter((p) => p.id !== id).length === 0) {
       throw this.bad('至少保留一个生效中的提供商 —— 先启用另一家再删除这家。');
     }
+    /* 留档必须在删之前：删完就读不到目录分区与偏好了。失败不阻断删除（见服务头注）。 */
+    const backup = this.backup
+      ? this.backup.snapshot({
+          provider: row,
+          models: this.catalog?.all(id) ?? [],
+          prefs: this.prefs.load(id),
+          providersDir: this.providersDir,
+        })
+      : '';
     this.repo.delete(id);
     /* 目录分区一并清（多生效下其他家的清单不动）。 */
     this.catalog?.clearProvider(id);
@@ -377,7 +393,10 @@ export class ProvidersService implements OnApplicationBootstrap {
         this.logger.warn(`删除凭证文件 ${suffix} 失败（提供商已删，文件遗留无危害）：${(err as Error).message}`);
       }
     }
-    this.logger.log(`删除提供商 ${row.name}（${row.id}）`);
+    this.logger.log(
+      `删除提供商 ${row.name}（${row.id}）${backup ? `，已留档 ${backup}` : '（留档失败）'}`,
+    );
+    return { deleted: id, backup: backup || null };
   }
 
   /**

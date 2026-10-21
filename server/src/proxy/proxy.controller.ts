@@ -17,6 +17,7 @@ import { ProxyService } from './proxy.service';
 import { ModelCatalogRepository } from '../store/repositories/model-catalog.repo';
 import { ProvidersRepository } from '../store/repositories/providers.repo';
 import { beginContext } from './proxy-log';
+import { arrivedAtOf, bodyReadyAtOf } from './arrival-clock';
 import { VERSION } from '../version';
 import type { ChatRequestBody } from './types';
 
@@ -64,6 +65,12 @@ export class ProxyController {
       ua: this.header(req, 'user-agent'),
       originalStream: (body as ChatRequestBody | undefined)?.stream === true,
     });
+    /* [v1.7.2] 鉴权耗时 = 现在（controller 已进入 = guard 已通过）− 进门时刻。
+       进门时刻由 main.ts 装的 onRequest 钩子写入；测试直构 controller 时没有它 →
+       `arrivedAt` 为 undefined → `auth_ms` 落库 NULL（未知），不填 0 冒充。 */
+    ctx.marks = { ...ctx.marks, authed: Date.now() };
+    ctx.arrivedAt = arrivedAtOf(req);
+    ctx.bodyReadyAt = bodyReadyAtOf(req);
     try {
       this.proxy.assertBodyShape(body);
       const upstream = await this.proxy.callUpstream(ctx, req.headers, body);

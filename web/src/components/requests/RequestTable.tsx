@@ -97,6 +97,9 @@ export function RequestTable({
             const tone = statusTone(r.status, r.note);
             const notes = noteLabels(r.note);
             const uaName = r.modelDisplay || r.model;
+            /* [v1.7.2] 我方开销需要两段都测到才算得出（只知其一就把另一半当 0 会低估）；
+               缺一段 → null → 显示 `--`（未知），不是 0。 */
+            const selfMs = r.authMs !== null && r.prepMs !== null ? r.authMs + r.prepMs : null;
             return (
               <tr
                 key={r.id}
@@ -212,18 +215,34 @@ export function RequestTable({
                 </td>
 
                 {/* [v1.6.8] 耗时改两行（首字 / 耗时），与「请求详情」的三段口径一致；
-                    首字为 NULL（失败行 / 未收到任何 chunk）时显示「无首字」。 */}
+                    首字为 NULL（失败行 / 未收到任何 chunk）时显示「无首字」。
+                    [v1.7.2] 第二行「耗时」后面追一个「我方」—— 表已有 10 列，再开一列
+                    会挤压「模型 / 提供商」；而「我方开销」与总耗时是同一件事的两面，
+                    放一起扫读最快。null = 未知（老行/失败行），显示 `--` 而不是 0。 */}
                 <td className="r td-mono">
                   <div>
-                    <Tooltip content={'首字耗时 —— 从发出请求到收到第一个内容块的等待\n（含上游排队与思考时间；失败行没有首字）'}>
+                    <Tooltip content={'首字耗时 —— 从鉴权完成到收到第一个内容块的等待\n（含本网关的路由/凭证处理，以及上游排队与思考时间；不含鉴权本身；失败行没有首字）'}>
                       <span className="cell-sub">
                         {r.firstByteMs === null ? '无首字' : `首字 ${formatDuration(r.firstByteMs)}`}
                       </span>
                     </Tooltip>
                   </div>
                   <div>
-                    <Tooltip content={'总耗时 —— 从发出请求到流结束'}>
+                    <Tooltip content={'总耗时 —— 从鉴权完成到流结束（不含客户端上传 body 的时间）'}> 
                       <span>耗时 {formatDuration(r.ms)}</span>
+                    </Tooltip>
+                  </div>
+                  <div>
+                    <Tooltip
+                      content={
+                        r.authMs === null || r.prepMs === null
+                          ? '我方开销 —— 本行没测到（迁移前的老行或失败行），显示 -- 而不是 0'
+                          : `我方开销 = 鉴权 ${formatDuration(r.authMs)} + 准备 ${formatDuration(r.prepMs)}\n（准备段含路由解析与凭证获取；WorkBuddy token 刷新也在这一段）`
+                      }
+                    >
+                      <span className={selfMs !== null && selfMs >= 50 ? 'cell-sub timing-warn' : 'cell-sub'}>
+                        {selfMs === null ? '我方 --' : `我方 ${formatDuration(selfMs)}`}
+                      </span>
                     </Tooltip>
                   </div>
                 </td>

@@ -13,6 +13,7 @@ import { ProviderTable } from './ProviderTable';
 import { ClientsSkeleton } from '../ui/PageSkeleton';
 import { ImportClientModal } from './ImportClientModal';
 import { CustomProviderModal } from './CustomProviderModal';
+import { ProviderImpactBlock } from './ProviderImpactBlock';
 import { UpstreamModels } from './UpstreamModels';
 import type { CatalogMsg } from './UpstreamModels';
 import { Tooltip } from '../ui/Tooltip';
@@ -37,9 +38,16 @@ import { useToast } from '../ui/Toast';
 export function ProvidersPanel({ window }: { window: TimeWindow }) {
   const providers = useResource(() => api.providers(), [], { cacheKey: 'providers' });
   const [viewingModels, setViewingModels] = useState<ProviderItem | null>(null);
-  /* [v0.5.4] 按正在查看的提供商拉它自己的分区（各自的清单，不再合并显示）。 */
+  /* [v0.5.4] 按正在查看的提供商拉它自己的分区（各自的清单，不再合并显示）。
+     [v1.7.2 修] **必须传 enabled**：抽屉关闭时 viewingModels=null，若照常发请求
+     会去打**无参数**的 `/api/models/catalog`（全量目录）并写进 `catalog` 缓存 ——
+     那个键与请求日志页 / 新建密钥弹窗共用。之后打开抽屉时 SWR 先渲染那份全量数据，
+     首帧就显示别家的模型；两家 MiniMax 目录里的同名模型还会各出现一次
+     —— 于是出现「说 2 个、列 4 行」这种自相矛盾的画面。
+     这正是 useResource 的 enabled 注释点名要避免的形态（「下次打开先闪一下旧数据」）。 */
   const catalogRes = useResource(() => api.catalog(viewingModels?.id), [viewingModels?.id], {
     cacheKey: viewingModels?.id ? `catalog:${viewingModels.id}` : 'catalog',
+    enabled: viewingModels !== null,
   });
   /* 提供商用量按本页的时间选择器取 —— 与表格头部的窗口选择器同源。 */
   const clientsRes = useResource(() => api.clients(window), [window], { cacheKey: `clients:${window}` });
@@ -181,8 +189,14 @@ export function ProvidersPanel({ window }: { window: TimeWindow }) {
     setBusyId(target.id);
     setErr(null);
     try {
-      await api.deleteProvider(target.id);
+      const r = await api.deleteProvider(target.id);
       setDeleting(null);
+      /* [v1.7.1] 如实回报留档结果：成功告诉用户「能退」，失败也说出来（别让人以为有备份）。 */
+      toast.push(
+        r.backup
+          ? { tone: 'success', message: `已删除「${target.name}」，留档 ${r.backup}（可从备份目录恢复）` }
+          : { tone: 'error', message: `已删除「${target.name}」，但留档失败 —— 该家凭证无法再恢复` },
+      );
       reload();
     } catch (e) {
       setErr(e instanceof ApiError ? e : new ApiError(String(e), 0, 0));
@@ -448,9 +462,8 @@ export function ProvidersPanel({ window }: { window: TimeWindow }) {
           }
         >
           <div className="ov-lose">
-            <b>会失去什么：</b>
-            提供商「{deleting.name}」（{deleting.baseUrl}）的登记与它的凭证文件一并删除，
-            需要重新登记并填一次 ck_ 密钥。此操作不可撤销。
+            <b>会失去什么</b>
+            <ProviderImpactBlock providerId={deleting.id} compact />
           </div>
         </Modal>
       ) : null}
@@ -725,6 +738,9 @@ ${r.detail}` : '') });
             </Tooltip>
           </div>
         </form>
+
+        {/* [v1.7.1] 影响面：改凭证/地址之前，先看清谁在依赖这家。 */}
+        <ProviderImpactBlock providerId={provider.id} />
 
         {/* 试通结果：通 / 连上了但被拒（key 坏或没订阅）/ 网络都没到 —— 三种都要能读。 */}
         {testResult ? (
