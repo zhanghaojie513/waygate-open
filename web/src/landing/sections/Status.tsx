@@ -16,8 +16,6 @@ import { formatTokens } from '../../lib/format';
  * 上游根本没提供的数（额度端点 404，`quota.available` 恒 false）—— 页面上
  * 永远只能渲染 `—`，等于把「取不到」伪装成「待加载」。四格结构保持不变。
  */
-const CAM = '{"x":18,"y":-128,"z":-390,"rx":-7,"ry":-3,"rz":0,"fog":0.46,"dim":0.46}';
-
 export function Status({ status }: { status: LandingStatus }) {
   const { real, numbers } = status;
   /* 本窗口 tokens 用紧凑记法（1.93M）——与「积分与用量」页的概览卡同一格式，
@@ -31,7 +29,7 @@ export function Status({ status }: { status: LandingStatus }) {
      的引导 + 控制台直达。 */
   if (!real) {
     return (
-      <section className="section band" id="status" data-cam={CAM}>
+      <section className="section band" id="status">
         <div className="wrap">
           <div
             className="reveal"
@@ -57,7 +55,7 @@ export function Status({ status }: { status: LandingStatus }) {
   }
 
   return (
-    <section className="section band" id="status" data-cam={CAM}>
+    <section className="section band" id="status">
       <div className="wrap">
         <div
           className="reveal"

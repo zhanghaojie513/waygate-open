@@ -197,12 +197,12 @@ function clientSnapshotName(clientId: string): string {
 }
 
 const KEY_HINTS = [
-  'sk-waygate-4f9c…7a2e',
-  'sk-waygate-1b83…c40f',
-  'sk-waygate-9d02…3ee1',
-  'sk-waygate-c3a5…91d7',
-  'sk-waygate-77c1…b8f0',
-  'sk-waygate-2e6b…0a13',
+  'sk-waygate-4f9c••••7a2e',
+  'sk-waygate-1b83••••c40f',
+  'sk-waygate-9d02••••3ee1',
+  'sk-waygate-c3a5••••91d7',
+  'sk-waygate-77c1••••b8f0',
+  'sk-waygate-2e6b••••0a13',
 ];
 const HOT_MODELS = ['kimi-k3', 'glm-5.3', 'kimi-k2.7', 'deepseek-v4.1-flash', 'minimax-m3', 'kimi-k2.8-preview', 'MiniMax-M3.1-Flash'];
 
@@ -348,7 +348,7 @@ function toolOfUa(ua: string): string | null {
   if (low.includes('python-requests')) return 'Python requests';
   /* [2026-10-09] 兜底项，与生产关键词表末尾的 `{ keyword: 'node', tool: 'Node.js' }` 对应。
      必须在具体客户端**之后** —— 表是顺序敏感的（生产的同一条纪律）。
-     实测形态：`ZCode/3.14.5 … runtime/node.js` 里含 `node`，因此判为 Node.js。 */
+     实测形态：`ZCode/3.14.5 •••• runtime/node.js` 里含 `node`，因此判为 Node.js。 */
   if (low.includes('node')) return 'Node.js';
   return null; // 认不出来 —— 与生产一样，不编造工具名
 }
@@ -406,6 +406,7 @@ function trendPoint(daysAgo: number): TrendPoint {
     /* 按模型切片（tooltip 用）：按 MODEL_MIX 的请求权重分账本桶 tokens，取前 5。
        生产端由服务端排好序；Mock 端自己排。 */
     models: modelSlicesFor(tokens),
+    providers: providerSlicesFor(tokens),
   };
 }
 
@@ -437,6 +438,23 @@ const cents = (credits: number) => Math.round(credits * 100);
  * 与生产端 `overview.service.ts` 的 TREND_TOP_MODELS 同口径。
  * MODEL_MIX 在本文件更下方声明（const）—— 本函数只在造数时被调用，届时已初始化。
  */
+/** [v8] 按提供商切片：与 modelSlicesFor 同一份 MODEL_MIX 权重，
+ *  但聚合键是 providerId（经 MOCK_MODEL_PROVIDER_ID 映射、名字用 MOCK_PROVIDER_NAME）。
+ *  概览堆叠面积图的维度。 */
+function providerSlicesFor(tokens: number): Array<{ providerId: string; provider: string; tokens: number }> {
+  const weightByProvider = new Map<string, number>();
+  for (const m of MODEL_MIX) {
+    const pid = MOCK_MODEL_PROVIDER_ID[m.id] ?? 'p_default00';
+    weightByProvider.set(pid, (weightByProvider.get(pid) ?? 0) + m.requests);
+  }
+  const keys = [...weightByProvider.keys()];
+  const parts = apportion(tokens, keys.map((k) => weightByProvider.get(k) as number));
+  return keys
+    .map((k, i) => ({ providerId: k, provider: MOCK_PROVIDER_NAME[k] ?? k, tokens: parts[i] }))
+    .sort((a, b) => b.tokens - a.tokens)
+    .slice(0, 5);
+}
+
 function modelSlicesFor(tokens: number): Array<{ model: string; tokens: number }> {
   const parts = apportion(tokens, MODEL_MIX.map((m) => m.requests));
   return MODEL_MIX
@@ -486,9 +504,10 @@ function buildTrend(): TrendPoint[] {
    ========================================================================== */
 
 /** 窗口键 —— 与服务端 `WindowKey` 一致。 */
-export type MockWindow = 'today' | '1h' | '24h' | '7d' | '30d';
+/* [v7] 补 '90d'（91 天，13 周热力图用），与服务端 window.ts 同口径。 */
+export type MockWindow = 'today' | '1h' | '24h' | '7d' | '30d' | '90d' | '1y';
 
-export const MOCK_WINDOWS: readonly MockWindow[] = ['today', '1h', '24h', '7d', '30d'];
+export const MOCK_WINDOWS: readonly MockWindow[] = ['today', '1h', '24h', '7d', '30d', '90d', '1y'];
 
 const HOUR_MS = 3_600_000;
 
@@ -541,7 +560,13 @@ function mockWindowRange(win: MockWindow, nowMs: number): { from: number; to: nu
     const from = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
     return { from, to: nowMs + 1 };
   }
-  const ms = win === '1h' ? HOUR_MS : win === '24h' ? 24 * HOUR_MS : win === '7d' ? 7 * 86_400_000 : 30 * 86_400_000;
+  const ms =
+    win === '1h' ? HOUR_MS :
+    win === '24h' ? 24 * HOUR_MS :
+    win === '7d' ? 7 * 86_400_000 :
+    win === '90d' ? 91 * 86_400_000 : // 91 天（13 周整），不是 90 —— 服务端同口径
+    win === '1y' ? 364 * 86_400_000 : // 52 周整，服务端同口径
+    30 * 86_400_000;
   return { from: nowMs - ms, to: nowMs + 1 };
 }
 
@@ -579,6 +604,7 @@ function hourlyTrend(count: number, nowMs: number, day: TrendPoint, partials?: b
     /* 失败数不能超过该桶的请求数（分账按权重摊，权重小的桶可能摊到 1 次失败但 0 次请求）。 */
     errors: Math.min(reqs[i], errs[i]),
     models: modelSlicesFor(toks[i]),
+    providers: providerSlicesFor(toks[i]),
     /* [v1.6.31] 首/末桶常只覆盖窗口的一部分（窗口按 now 滚动、不对齐整点）。
        数字是真的，但不足一整格 —— 前端 tooltip 据此注明「不足一格」。 */
     partial: partials?.[i] ?? false,
@@ -601,7 +627,9 @@ export function buildWindowTrend(win: MockWindow, nowMs: number = Date.now()): T
   const { from, to } = mockWindowRange(win, nowMs);
   /* 日桶窗口（7d/30d）：桶序列同样**向下对齐**到窗口起点那一天的零点，
      排到当前日 —— 7d → 8 格、30d → 31 格（与服务端 `fillEmptyBuckets` 同语义）。 */
-  if (win === '30d' || win === '7d') {
+  /* [v7] 90d 同走日桶分支：91 天 → 向下对齐后 92 格。daily 基线只有 30 天，
+     30 天前的格子取不到基线、走空桶（requests 0）—— 正好演示早期无数据。 */
+  if (win === '30d' || win === '7d' || win === '90d' || win === '1y') {
     const start = new Date(from);
     start.setHours(0, 0, 0, 0);
     const end = new Date(to - 1);
@@ -617,7 +645,7 @@ export function buildWindowTrend(win: MockWindow, nowMs: number = Date.now()): T
       const base = byLabel.get(label);
       const partial = markPartial(label, 86_400_000, from, to);
       if (!base) {
-        return { bucket: label, requests: 0, tokens: 0, credits: 0, errors: 0, models: [], partial };
+        return { bucket: label, requests: 0, tokens: 0, credits: 0, errors: 0, models: [], providers: [], partial };
       }
       return { ...base, partial };
     });
@@ -1117,7 +1145,7 @@ export function assertOverviewConsistent(d: OverviewData): void {
 
   /* ⛔ AC-C07 / AC-C06 的根：**显示名绝不能等于稳定 id**。
      一旦某个客户端的名字被写成它的 id，按名字匹配与按 id 匹配的差别就被掩盖了 ——
-     「改不改名都一样」的测试会因此恒真通过；而界面上也会冒出用户看不懂的 `k_…`。
+     「改不改名都一样」的测试会因此恒真通过；而界面上也会冒出用户看不懂的 `k_••••`。
      所以这条必须在数据层就把它顶住。 */
   for (const r of [...d.byClient, ...d.recent]) {
     if (r.clientId !== null && r.clientId === r.client) {
@@ -1215,13 +1243,13 @@ export function makeKeys(): ClientKeyRow[] {
      —— 这些图会进 README，读者会以为绑定的是 IDE。
      `client` 仍保留「这把密钥归属哪个客户端」的快照名，两者不是一回事。 */
   const rows: ClientKeyRow[] = [
-    { ...defaults, id: 'k_8f21', name: 'Claude Code · 本机', hint: 'sk-waygate-4f9c…7a2e', scope: { type: 'all' }, client: 'Claude Code', clients: ['p_default00'], enabled: true, expiresAt: null, createdAt: new Date(now - 13 * 86_400_000).toISOString(), lastSeenAt: new Date(now - 40_000).toISOString(), requests24h: 760 },
-    { ...defaults, maxIps: 3, tokenQuota: 2_000_000, usedIps: 2, usedTokens: 1_234_567, id: 'k_1b83', name: 'Cherry Studio', hint: 'sk-waygate-1b83…c40f', scope: { type: 'all' }, client: 'Cherry Studio', clients: ['p_mmx002'], enabled: true, expiresAt: null, createdAt: new Date(now - 11 * 86_400_000).toISOString(), lastSeenAt: new Date(now - 90_000).toISOString(), requests24h: 324 },
-    { ...defaults, id: 'k_9d02', name: 'Cursor · 笔记本', hint: 'sk-waygate-9d02…3ee1', scope: { type: 'family', value: 'kimi' }, client: 'Cursor', clients: ['p_qoder01', 'p_default00'], enabled: true, expiresAt: null, createdAt: new Date(now - 9 * 86_400_000).toISOString(), lastSeenAt: new Date(now - 3 * 3600_000).toISOString(), requests24h: 154 },
-    { ...defaults, id: 'k_c3a5', name: 'Cron Job · 定时任务', hint: 'sk-waygate-c3a5…91d7', scope: { type: 'family', value: 'deepseek' }, client: 'Cron Job', clients: ['p_default00'], enabled: true, expiresAt: null, createdAt: new Date(now - 8 * 86_400_000).toISOString(), lastSeenAt: new Date(now - 300_000).toISOString(), requests24h: 78 },
-    { ...defaults, ipWhitelist: ['192.168.1.0/24'], id: 'k_77c1', name: '手机端（临时）', hint: 'sk-waygate-77c1…b8f0', scope: { type: 'all' }, client: '手机端（临时）', clients: ['p_mmx002'], enabled: false, expiresAt: null, createdAt: new Date(now - 30 * 86_400_000).toISOString(), lastSeenAt: new Date(now - 3 * 86_400_000).toISOString(), requests24h: 0 },
-    { ...defaults, id: 'k_2e6b', name: '测试脚本 · 本地', hint: 'sk-waygate-2e6b…0a13', scope: { type: 'tag', value: '夜间折扣' }, client: null, clients: [], enabled: true, expiresAt: new Date(now - 2 * 86_400_000).toISOString(), createdAt: new Date(now - 40 * 86_400_000).toISOString(), lastSeenAt: new Date(now - 12 * 86_400_000).toISOString(), requests24h: 0 },
-    { ...defaults, id: 'k_5d7f', name: '家人共享 · 只读', hint: 'sk-waygate-5d7f…22c8', scope: { type: 'models', value: ['glm-5.3', 'kimi-k2.7'] }, client: null, clients: [], enabled: false, expiresAt: null, createdAt: new Date(now - 20 * 86_400_000).toISOString(), lastSeenAt: new Date(now - 5 * 86_400_000).toISOString(), requests24h: 0 },
+    { ...defaults, id: 'k_8f21', name: 'Claude Code · 本机', hint: 'sk-waygate-4f9c••••7a2e', scope: { type: 'all' }, client: 'Claude Code', clients: ['p_default00'], enabled: true, expiresAt: null, createdAt: new Date(now - 13 * 86_400_000).toISOString(), lastSeenAt: new Date(now - 40_000).toISOString(), requests24h: 760 },
+    { ...defaults, maxIps: 3, tokenQuota: 2_000_000, usedIps: 2, usedTokens: 1_234_567, id: 'k_1b83', name: 'Cherry Studio', hint: 'sk-waygate-1b83••••c40f', scope: { type: 'all' }, client: 'Cherry Studio', clients: ['p_mmx002'], enabled: true, expiresAt: null, createdAt: new Date(now - 11 * 86_400_000).toISOString(), lastSeenAt: new Date(now - 90_000).toISOString(), requests24h: 324 },
+    { ...defaults, id: 'k_9d02', name: 'Cursor · 笔记本', hint: 'sk-waygate-9d02••••3ee1', scope: { type: 'family', value: 'kimi' }, client: 'Cursor', clients: ['p_qoder01', 'p_default00'], enabled: true, expiresAt: null, createdAt: new Date(now - 9 * 86_400_000).toISOString(), lastSeenAt: new Date(now - 3 * 3600_000).toISOString(), requests24h: 154 },
+    { ...defaults, id: 'k_c3a5', name: 'Cron Job · 定时任务', hint: 'sk-waygate-c3a5••••91d7', scope: { type: 'family', value: 'deepseek' }, client: 'Cron Job', clients: ['p_default00'], enabled: true, expiresAt: null, createdAt: new Date(now - 8 * 86_400_000).toISOString(), lastSeenAt: new Date(now - 300_000).toISOString(), requests24h: 78 },
+    { ...defaults, ipWhitelist: ['192.168.1.0/24'], id: 'k_77c1', name: '手机端（临时）', hint: 'sk-waygate-77c1••••b8f0', scope: { type: 'all' }, client: '手机端（临时）', clients: ['p_mmx002'], enabled: false, expiresAt: null, createdAt: new Date(now - 30 * 86_400_000).toISOString(), lastSeenAt: new Date(now - 3 * 86_400_000).toISOString(), requests24h: 0 },
+    { ...defaults, id: 'k_2e6b', name: '测试脚本 · 本地', hint: 'sk-waygate-2e6b••••0a13', scope: { type: 'tag', value: '夜间折扣' }, client: null, clients: [], enabled: true, expiresAt: new Date(now - 2 * 86_400_000).toISOString(), createdAt: new Date(now - 40 * 86_400_000).toISOString(), lastSeenAt: new Date(now - 12 * 86_400_000).toISOString(), requests24h: 0 },
+    { ...defaults, id: 'k_5d7f', name: '家人共享 · 只读', hint: 'sk-waygate-5d7f••••22c8', scope: { type: 'models', value: ['glm-5.3', 'kimi-k2.7'] }, client: null, clients: [], enabled: false, expiresAt: null, createdAt: new Date(now - 20 * 86_400_000).toISOString(), lastSeenAt: new Date(now - 5 * 86_400_000).toISOString(), requests24h: 0 },
   ];
   return rows;
 }

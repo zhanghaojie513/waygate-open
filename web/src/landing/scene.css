@@ -1,6 +1,6 @@
 /* ==========================================================================
    [注意] 自动产出：由 tools/scope-css.mjs 从
-      （内部原型，未随开源版发布）<同名文件> 生成。
+      relay-station-design/prototype/v4/<同名文件> 生成。
    要改请改原型稿再重跑脚本。本文件只在原型基础上加了 `.landing` 作用域前缀，
    规则内容与原型一致（便于 diff），不重排、不合并。
    ========================================================================== */
@@ -61,8 +61,32 @@
 /* 场景底色单独提成变量：调暗层要盖同一张底色才等价于「整体降透明度」，
    写两份渐变迟早会写出不一致（改了一处忘了另一处）。 */.landing .scene
 {
-  --scene-bg: linear-gradient(168deg, #0A0919 0%, #120E2A 46%, #070611 100%);
-  position: fixed; inset: 0; z-index: 0;
+  /* v5：全屏固定背景 → Hero 右栏的局部装置。
+     为什么改：全屏背景要求装置在每一屏都成立，于是只能靠"滚动运镜"
+     把同一坨玻璃反复重构图；局部盒子则让装置只在首屏出现一次，
+     读作「柜台上的一件东西」而不是「墙纸」。
+     代价：10 个 section 的 data-cam 运镜退役（见 scene.ts 的说明）。 */
+  --scene-bg: transparent;
+  position: relative;
+  /* [v7] 860/470 → 1/1.06 —— 九片玻璃的构型直径在 500px 量级（外圈 translateZ 到 254px），
+     扁宽盒子的高度只有宽度的 55%，纵向必然被裁：登录页表现为上下被切，
+     官网表现为外圈玻璃在粉色光场边缘突然断开。
+     新设计（proto/c-optic 与 proto/login）用的就是 1/1.06 与 1/1 —— 接近正方形，
+     装置才能完整落在盒内。max-width 同步收到 520px，否则方形盒子在
+     1280 视口下会撑到 660px 高、把 Hero 顶出首屏。 */
+  aspect-ratio: 1 / 1.06;
+  /* [v7] 尺寸约束
+     九片玻璃的横向展开实测 ~510px（外圈 translateZ 218–228 + 片宽 + rotateX 投影）。
+     盒子太宽 → 高度撑破 Hero；太窄 → 左右玻璃贴边，读作"被切开"。
+     540px 是实测的平衡点：玻璃跨度 510px 落在中间，左右各留 15px，
+     加上 .hero-side 自身的 padding，视觉上不再贴边。
+     更窄容器（≤1080 收单列）由 .hero-side 的 100% 接管。 */
+  max-width: 540px;
+  /* margin-left:auto 是"贴右"——玻璃跨度 511，右边只剩 3px，
+     读作紧贴栏边。改成居中：左 26 / 右 3 变成左 15 / 右 15，
+     左右对称，装置读作"摆在这一栏里"而不是"塞在右角"。 */
+  margin: 0 auto;
+  z-index: 1;
   /* 一个固定全屏的场景层，用 clip 比 hidden 合适：clip 只裁切、
      不建立滚动容器，语义上正是这里要的。保留 hidden 在前是给旧引擎兜底。
 
@@ -71,12 +95,31 @@
      **实测没有解决**（420 视口下 scrollWidth 仍是 462）。
      真正的元凶是 .cta::before 的负 inset，见 landing.css。
      保留 clip 只是因为它是这里更正确的选择，不是因为它修了那个 bug。 */
-  overflow: hidden;
-  overflow: clip;
+  /* 不裁：透视外扩实测只有 10–47px，body 的 overflow-x:clip 已兜住横向滚动条。
+     在这里裁会把装置背后的彩色光场切出矩形硬边。 */
   pointer-events: none;
-  perspective: var(--prism-persp);
-  perspective-origin: 50% 46%;
-  background: var(--scene-bg);
+  perspective: 1500px;
+  perspective-origin: 48% 44%;
+}
+
+/* ---------- v5 新增：装置背后的光谱光场 ----------
+   浅底上玻璃不能发光（发光是深底的语法）。但没有环境光，九片玻璃会浮在
+   纯白里读作「贴纸」。这四团极低透明度的径向渐变就是那个环境 ——
+   它们不是装饰，是玻璃能被看见的前提。 */.landing .scene::before
+{
+  content: ''; position: absolute; inset: 4% 0 6% 6%;
+  pointer-events: none; z-index: 0;
+  background:
+    radial-gradient(42% 36% at 56% 38%, color-mix(in srgb, var(--spectrum-5) 22%, transparent), transparent 70%),
+    radial-gradient(38% 32% at 72% 56%, color-mix(in srgb, var(--spectrum-7) 18%, transparent), transparent 72%),
+    radial-gradient(36% 30% at 40% 66%, color-mix(in srgb, var(--spectrum-1) 16%, transparent), transparent 74%),
+    radial-gradient(34% 28% at 62% 72%, color-mix(in srgb, var(--spectrum-3) 14%, transparent), transparent 74%);
+  filter: blur(34px);
+  /* [v7] 色场原本在盒子右缘是一道硬边（inset 到 100%），玻璃正好压在那条边上，
+     所以看起来像"装置被切了"。这里给色场自己也加一层椭圆渐隐，
+     让它在到达边缘之前先淡掉 —— 玻璃于是读作"从光里浮出来"。 */
+  -webkit-mask-image: radial-gradient(ellipse 72% 68% at 50% 46%, #000 30%, transparent 88%);
+  mask-image: radial-gradient(ellipse 72% 68% at 50% 46%, #000 30%, transparent 88%);
 }
 
 /* ---------- 相机机架：滚动运镜 + 视线视差 ----------
@@ -123,7 +166,7 @@
   position: absolute; inset: 0;
   transform-style: preserve-3d;
   transform-origin: 50% 46%;
-  transform: rotateX(-7deg) rotateZ(1.6deg);
+  transform: rotateX(-9deg) rotateZ(1.4deg);
 }
 
 /* ---------- 装配体：时间自转 ----------
@@ -134,10 +177,13 @@
    两者各占一半、互不遮挡，同时中心光芯正好落在标题右侧的空白里。
    放正中时实测光芯会骑在副标题上，把一行字读断。 */.landing .stage
 {
-  position: absolute; left: var(--prism-anchor-x); top: var(--prism-anchor-y);
+  /* [v7] top 44% → 46%：装置重心原先偏上（实测顶部余 115、底部余 141），
+     玻璃在盒子里读作"往上飘"。46% 让上下余量接近，
+     与登录页背景层的视觉中心也对齐。 */
+  position: absolute; left: 50%; top: 46%;
   width: 0; height: 0;
   transform-style: preserve-3d;
-  animation: prism-turn var(--prism-turn) linear infinite;
+  animation: prism-turn var(--prism-turn, 140s) linear infinite;
 }
 @keyframes prism-turn {
   from { transform: rotateY(0deg); }
@@ -154,7 +200,7 @@
   width: var(--w); height: var(--h);
   margin-left: calc(var(--w) * -.5);
   margin-top:  calc(var(--h) * -.5);
-  border-radius: 2px;
+  border-radius: 3px;
   /* v4.3：--tint 从「RGB 三元组」改成「颜色值」。
      从前内联写的是 `--tint:139,124,255`，只有放进 `rgba(var(--tint), α)`
      才成立；现在内联直接给颜色令牌（`--tint:var(--iris)`），
@@ -164,7 +210,7 @@
      缺省值是为了**可诊断**：某一片漏写 --tint 时，
      没有缺省会让整条 background 声明失效（表现是"这片玻璃不见了"），
      而**失效不会报错** —— 一条写坏的自定义属性看起来和一条写对的一样安静。 */
-  --tint: var(--iris);
+  --tint: var(--spectrum-1);
   /* opacity 放在叶子节点上是安全的：它下面没有 3D 内容，压平无所谓。
      真正危险的是把 opacity 放到 preserve-3d 的容器上（见 .rig 的说明）。 */
   opacity: var(--o);
@@ -184,29 +230,29 @@
      因为现实里没有哪种玻璃会整体发白。
      体做暗还有第二个好处：两片重叠处会吸收变暗 → 自然读成"叠了两层"，
      这就是 CSS 里能拿到的最接近遮挡（AO）的信号。 */
+  /* v5 浅底公式：染色浓度大幅提高（15%/7% → 40%/24%/13%）。
+     旧值是为深底"淡雅"调的，到浅底上光谱七色几乎读不出颜色 ——
+     九片玻璃看起来像九张白纸。新公式按玻璃厚度的真实光分布：
+     顶部厚处色最重，66% 处降到 13%，底边回到近白。 */
   background:
-    radial-gradient(36% 24% at 8% 3%, rgba(255, 255, 255, var(--hot, .20)), transparent 68%),
-    linear-gradient(146deg,
-      color-mix(in srgb, var(--bg-surface-3) 58%, transparent) 0%,
-      color-mix(in srgb, var(--bg-code) 44%, transparent) 32%,
-      color-mix(in srgb, var(--bg-page) 30%, transparent) 66%,
-      color-mix(in srgb, var(--bg-page) 10%, transparent) 100%),
-    /* 透射染色：只压在靠上的一侧，光从上面来 */
-    linear-gradient(170deg,
-      color-mix(in srgb, var(--tint) 18%, transparent) 0%,
-      color-mix(in srgb, var(--tint) 5%, transparent) 36%,
-      transparent 64%);
+    linear-gradient(166deg,
+      color-mix(in srgb, var(--tint) 40%, var(--bg-surface)) 0%,
+      color-mix(in srgb, var(--tint) 24%, var(--bg-surface)) 34%,
+      color-mix(in srgb, var(--tint) 13%, var(--bg-surface)) 66%,
+      color-mix(in srgb, var(--bg-surface) 88%, transparent) 100%);
 
   /* ② 边缘：棱边比面亮一个量级，四条边亮度完全不同 —— 这是"哪边受光"的全部信息。
      末项是外发光。刻意做得收敛（-22px 的负扩散）：玻璃在光里只洇出一圈，
      洇大了就从"棱镜"变成"霓虹灯"。 */
+  /* 浅底的受光信息全在边上：上缘最亮（光从上来）、左右缘带 tint、下缘最暗。
+     外层不是"外发光"而是"彩色落影" —— 浅底上发光的读法是晕斑，落影才撑体积。 */
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, var(--e, .5)),
-    inset 1px 0 0 rgba(255, 255, 255, calc(var(--e, .5) * .38)),
-    inset -1px 0 0 color-mix(in srgb, var(--tint) 34%, transparent),
-    inset 0 -1px 0 color-mix(in srgb, var(--tint) 16%, transparent),
-    inset 0 0 0 1px color-mix(in srgb, var(--tint) 18%, transparent),
-    0 0 40px -20px color-mix(in srgb, var(--tint) 48%, transparent);
+    inset 0 1.5px 0 rgba(255, 255, 255, .95),
+    inset 1px 0 0 color-mix(in srgb, var(--tint) 68%, transparent),
+    inset -1px 0 0 color-mix(in srgb, var(--tint) 50%, transparent),
+    inset 0 -1.5px 0 color-mix(in srgb, var(--tint) 38%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--tint) 34%, transparent),
+    0 26px 50px -32px color-mix(in srgb, var(--tint) 85%, transparent);
 }
 
 /* 景深模糊只给外壳。
@@ -219,23 +265,28 @@
    沉到下沿时被吸收成一道淡色沉积。少了这两层，面会读成一张纸。 */.landing .pl::before
 {
   content: ''; position: absolute; inset: 0;
+  /* v5：厚度层加强（白 .13→.62，tint 16%→34%）。
+     浅底玻璃的体积感不来自发光，来自「上缘一层薄雾 + 下缘一道淡色沉积」，
+     少了这两层，面就读成一张纸。 */
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, calc(var(--e, .5) * .13)), transparent 28%),
-    linear-gradient(0deg,   color-mix(in srgb, var(--tint) 16%, transparent), transparent 20%);
+    linear-gradient(180deg, rgba(255, 255, 255, .62), transparent 24%),
+    linear-gradient(0deg,   color-mix(in srgb, var(--tint) 34%, transparent), transparent 26%);
 }
 
 /* ② 掠射高光：一道亮带沿面扫过。
    周期由 --sheen-* 给，各片错峰 —— 同时闪会变成"整块屏在闪"。 */.landing .pl::after
 {
   content: ''; position: absolute; inset: 0;
-  mix-blend-mode: screen;
+  /* v5：去掉 screen —— 浅底上"往更亮里叠"不可见。
+     改为白色实叠，幅度 .30→.72：掠光是九片玻璃唯一的动态光感，
+     12% 在暖底上完全看不出来（浅色主题曾压到这个值）。 */
   background: linear-gradient(112deg,
-    transparent 40%,
-    rgba(255, 255, 255, .30) 47%,
-    color-mix(in srgb, var(--glow-ice) 62%, transparent) 50%,
-    rgba(255, 255, 255, .30) 53%,
-    transparent 60%);
-  background-size: 300% 100%;
+    transparent 38%,
+    rgba(255, 255, 255, .72) 46%,
+    rgba(255, 255, 255, .94) 50%,
+    rgba(255, 255, 255, .72) 54%,
+    transparent 62%);
+  background-size: 320% 100%;
   opacity: 0;
   animation: p-sheen var(--sheen-dur, 16s) var(--ease-in-out) infinite;
   animation-delay: var(--sheen-delay, 0s);
@@ -258,7 +309,7 @@
    结果是光芯整体上移 190px（首版就是这么错的，光芯骑到了副标题上）。
    居中的正确写法是 translateY(-50%)：百分比位移按元素自身尺寸算。 */.landing .core
 {
-  position: absolute; left: var(--prism-anchor-x); top: var(--prism-anchor-y);
+  position: absolute; left: 50%; top: 44%;
   width: 4px; height: 54%;
   mix-blend-mode: screen;
   background: linear-gradient(180deg,
@@ -293,7 +344,7 @@
 /* 光芯本体：一个硬亮核。整个画面只允许有这一个"过曝点" ——
    有了它，周围所有玻璃的亮度才有参照，才读得出"谁被照亮了"。 */.landing .nucleus
 {
-  position: absolute; left: var(--prism-anchor-x); top: var(--prism-anchor-y);
+  position: absolute; left: 50%; top: 44%;
   width: 15px; height: 15px; margin: -7.5px 0 0 -7.5px;
   border-radius: 50%;
   background: #fff;
@@ -340,11 +391,8 @@
              translate3d(calc(var(--cam-x) * .62), calc(var(--cam-y) * .5), 0);
   animation: beam-drift 46s var(--ease-in-out) infinite alternate-reverse;
 }
-/* 只动画 opacity（合成层可直接处理）。原先同时把 filter 从 blur(52px) 推到 blur(66px)：
-   对 300px × 170% 视口高的元素逐帧改模糊半径 = 每帧重新栅格化，常驻消耗 GPU。
-   模糊半径固定在 .beam 上，视觉差异仅为光柱边缘柔度不再呼吸。 */
 @keyframes beam-drift {
-  to { opacity: .55; }
+  to { opacity: .55; filter: blur(66px); }
 }
 
 /* ==========================================================================

@@ -319,7 +319,25 @@
    [2026-10-09] 同时删掉了 `.client-row-actions`：客户端子行已去掉（客户端 ≡ 提供商，
    子行与提供商行是同一件事），那条规则没有任何消费者 —— 无消费者的规则比没有更坏
    （读代码的人会以为还有个地方在用）。 */
-.tbl td .prov-row-actions { display: inline-flex; flex-wrap: wrap; gap: 6px; justify-content: flex-start; }
+/* [v5] 操作列不折行。
+   此前 `flex-wrap: wrap`：五枚按钮（配置/模型列表/签到·已签到/启停/删除）
+   并排需要约 380px，操作列只有 ~300px，于是折成两行 ——
+   结果是**行高由按钮数量决定**：WorkBuddy 行 76px、DeepSeek 行 108px，
+   表格失去横向基线，扫读时找不到同一列的对应关系。
+   现在改为 nowrap：整表已包在 .tbl-scroll 里（横向可滚），
+   宁可让表格宽一点，也不让行高参差。 */
+.tbl td .prov-row-actions {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  gap: 5px;
+  justify-content: flex-start;
+}
+/* 行内四枚按钮（配置 / 模型列表 / 启停 / 更多）收紧一档。
+   五枚并排要 380px、操作列只有 ~300px —— 收口到四枚后仍差 11px，
+   这一档（内边距 6→5、间距 5→4、图标 11→10）刚好补上。 */
+.tbl td .prov-row-actions .mini-pill { padding: 2px 5px; gap: 2px; }
+.tbl td .prov-row-actions .mini-pill svg { width: 10px; height: 10px; }
+.tbl td .prov-row-actions { gap: 4px; }
 
 /* ---------- 客户端消耗明细卡（对应原型 .kv-grid） ---------- */
 .kv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; }
@@ -913,10 +931,7 @@ button.switch:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--brand-t
   /* 用量横幅：三栏（大数字 / 本机聚合说明 / 缓存命中率）在窄屏放不下 ——
      360px 实测中间那列被挤成「一字一行」的竖排，整块不可读。改为纵向堆叠，
      原来的左分隔线转成上分隔线。宽屏（≥721px）不受影响。 */
-  .credit-banner { flex-direction: column; align-items: stretch; gap: 16px; padding: 18px 20px; }
-  .cb-right { text-align: left; padding-left: 0; padding-top: 14px; border-left: 0;
-    border-top: 1px solid var(--border-default); }
-  .cb-why { max-width: none; }
+  /* [v5] .credit-banner / .cb-right / .cb-why 已随改版移除（改为 .credit-strip） */
 
   /* 顶栏改两行：标题/状态一行、操作一行 —— 换行而不是把整页撑宽。
      左内边距给左上角的开关让位（12px + 34px）。 */
@@ -993,24 +1008,50 @@ button.switch:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--brand-t
 /* ---- 侧栏品牌英文名（v0.4.17：「途关 Waygate」双名）----
    中文名 16px 粗体（tokens.css 的 .sb-brand span 给），英文名降一档 12px
    加字距 —— 双名并排时同尺寸会显得头重，降档才有主次。 */
+/* 品牌 logo 必须禁止收缩 —— 这是「logo 看起来太小」的真正原因。
+   .sb-brand 是 flex 容器，侧栏 216px − 内边距 = 约 183px 可用，
+   而「途关(32) + Waygate(57) + v1.7.3(40) + 3×gap(30) + 左右内边距」已经占满，
+   于是 flex 去压唯一还能缩的子项 —— 那个 SVG。
+   文本有 .sb-brand span { flex-shrink: 0 } 保护，**SVG 没有**，
+   实测被压成 7px 宽 / 26px 高（一根竖线）。
+   反过来，正确做法是给 logo 固定尺寸、让版本号在空间不足时让位。 */
+.sb-brand > svg { flex: none; }
+
+/* 品牌行在 216px 侧栏里本来就不够：logo(26) + 途关(32) + Waygate(57) + v1.7.3(40)
+   + 3×gap(30) = 185px > 可用 183px，一直处于溢出状态 —— 版本号被推到边缘、
+   logo 被压成 7px。这里同时做两件事：
+   ① logo 放大到 30px（用户反馈「太小」）；
+   ② 品牌名与英文名之间的间距收紧（gap 10 → 8），并把 Waygate 的
+      margin-left 从 -2px 改成 -4px —— 中文与拉丁本来就不需要满格间距。
+   净结果是总宽 189px，仍在 195px 的可用宽度内（侧栏 216 − 左右内边距 8×2 − 滚动条）。 */
+/* 可用宽度算清楚：侧栏 216 − padding 16×2 = 184，再减 .sb-brand 自身
+   padding 8×2 = 168px 内容宽。而 logo(30) + 途关(32) + Waygate(57) + v1.7.3(40)
+   + 3×gap = 183px，超 15px。
+   处理：gap 收到 6px（省 12px），品牌名与英文名之间再收 -4px，
+   并把 .sb-brand 的左右内边距从 8px 降到 4px（再省 8px）——
+   侧栏本身已有 16px 内边距，logo 不需要再叠 8px。 */
+.sb-brand { gap: 6px; padding-left: 4px; padding-right: 4px; }
+.sb-brand .brand-en { margin-left: -4px; }
+
 .sb-brand .brand-en {
   font-family: var(--font-display); font-weight: 600; font-size: 12px;
   letter-spacing: .08em; color: var(--text-faint); margin-left: -2px;
 }
 
-/* ---- 侧栏版本号 chip（v0.4.10）----
-   版本号是"这次是不是新版"的唯一快速判据，放在品牌区最右、与 RELAY 同一行的
-   视觉带上：等宽 + 极淡描边芯片，存在感低于品牌名但不至于看不见。 */
-/* [注意] 选择器必须带 `.sb-brand`（特异度 0,2,0）——tokens.css 的
-   `.sb-brand span { font-size: 16px; font-weight: 700 }`（0,1,1）会压过裸
-   `.brand-ver`（0,1,0），版本号因此一直渲染成 16px 粗体大字（用户反复反馈"太大"的根因）。
-   字号对齐侧栏账号区副标题（.sb-account .meta i = 11px），只作标识、不抢视线。 */
-.sb-brand .brand-ver {
+/* ---- 版本号（[v6] 从品牌行移入账号卡）----
+   原 .sb-brand .brand-ver：挤在「途关 Waygate」后面。品牌行在 216px 侧栏里
+   只有 168px 内容宽，logo+中文名+英文名+版本号共 183px —— 于是 flex 去压
+   唯一还能缩的子项，把 SVG 压成 7px 宽的一条竖线（用户反馈「logo 太小」的真因）。
+   现在版本号与「会话有效 · …到期」并列为账号卡的次要信息：
+   11px 等宽、极淡，同一视线内，且不占品牌的横向空间。 */
+/* [v6] 版本号与「会话有效」**不并排** —— 并排实测只能给到约 130px，
+   「会话有效 · 11 小时后到期」被截成「会…」，反而比原来更差。
+   改成两行：meta 是纵向栈，第一行管理员名、第二行会话时效、第三行版本号。
+   版本号与外观开关之间留一点距离，读作"这版是哪一版"，不与身份信息混排。 */
+.sb-account .meta { display: flex; flex-direction: column; gap: 1px; }
+.acct-ver {
   font-family: var(--font-mono); font-size: 11px; font-weight: 400; line-height: 1;
-  color: var(--text-ghost);
-  margin-left: 4px;
-  align-self: flex-end; padding-bottom: 1px;
-  white-space: nowrap;
+  color: var(--text-ghost); white-space: nowrap; flex: none;
 }
 /* 品牌文字不折行（logo/驿站/RELAY/版本号在同一行，空间不够时整体收缩而不是换行）。 */
 .sb-brand { flex-wrap: nowrap; }
@@ -1108,6 +1149,14 @@ button.switch:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--brand-t
   content: ''; position: absolute; left: -16px; right: -16px; top: -12px;
   height: 1px; background: var(--border-subtle);
 }
+/* [v6] 账号卡的横向空间账：卡宽 183 − padding 12×2 − avatar 34 − gap 11×2 − 按钮 32
+   = 71px，只够放「会话有效 · 11 小时…」的前 6 个字。
+   收紧三处：padding 12→10、gap 11→9、退出按钮 32→28 —— 合计省 12px，
+   meta 拿到 83px。「会话有效 · 11 小时后到期」实测约 96px，仍会截一点，
+   所以把该行文案缩短为「11 小时后到期」（去掉「会话有效 ·」前缀：
+   上下文已是账号卡，读者不需要被提醒"这是会话"）。 */
+.sb-account { padding: 10px; gap: 9px; }
+.sb-logout { width: 28px; height: 28px; }
 .sb-account .meta { flex: 1 1 auto; min-width: 0; }
 .sb-logout {
   flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
@@ -2054,3 +2103,788 @@ svg.ua-ico.none { color: var(--text-ghost); }
 .seg-ingress { background: color-mix(in srgb, var(--text-primary) 28%, transparent); }
 .dot-ingress { background: color-mix(in srgb, var(--text-primary) 28%, transparent); }
 .timing-hint-item { color: var(--text-muted); }
+
+/* ---------- [v5] 登录门厅：左装置 / 右表单 ----------
+   旧版是「居中卡片 + 全屏棱镜背景」，装置只露出边缘，读作壁纸。
+   分屏让装置完整占左半边 —— 登录页是"门"，门厅里该看得见那件装置。 */
+.gate {
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(420px, .92fr);
+  min-height: 100vh;
+}
+/* [v7] 门厅：玻璃装置作**背景层**，不是容器里的一个方盒。
+   为什么改：九片玻璃的外圈半径是固定 px（218–228），装置的横向展开
+   约 460px，而盒子无论给多宽总有一边被切（实测 620px 宽时右侧溢 22px、
+   收窄到 457px 时左右各溢 25/23px）。背景化让"被切"不再成立 ——
+   装置铺满整栏、边缘本来就该渐隐。 */
+.gate-scene {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 40px 24px 56px;
+  /* 不裁：边缘的淡出由 .gate-scene-bg 的 mask 做，比 overflow 切一刀自然 */
+  overflow: visible;
+  isolation: isolate;
+}
+
+/* 背景层：铺满整栏、居中、四周用 mask 渐隐。
+   mask 是这里的关键 —— 没有它，装置在栏的左右边缘会被"看见截断"；
+   有它，玻璃是"从光里浮出来"的。 */
+.gate-scene-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  /* 中心亮、边缘淡：两轴各一道渐隐，叠加成柔和的椭圆窗口 */
+  -webkit-mask-image: radial-gradient(ellipse 62% 58% at 50% 46%, #000 38%, transparent 82%);
+  mask-image: radial-gradient(ellipse 62% 58% at 50% 46%, #000 38%, transparent 82%);
+}
+/* 装置本体在背景层里定尺寸：取栏宽与栏高里较小的那一条边，
+   保证九片玻璃的 460px 展开总能落进来（大屏上也不会暴涨）。 */
+.gate-scene-bg .scene {
+  width: min(100%, 78vh, 560px);
+  max-width: none;
+  margin: 0;
+  aspect-ratio: 1 / 1.06;
+}
+
+/* 说明文字浮在背景之上，压在栏的底部 */
+.gate-note {
+  position: relative;
+  z-index: 1;
+  max-width: 30ch;
+  margin: 0;
+  font-size: var(--fs-micro);
+  line-height: 1.75;
+  color: var(--text-ghost);
+  text-align: center;
+}
+.gate-note b { color: var(--text-secondary); font-weight: 500; }
+
+.gate-form {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 40px;
+  background: var(--bg-page);
+  border-left: 1px solid var(--border-subtle);
+}
+.form-in { width: 100%; max-width: 352px; }
+
+/* 品牌行：与侧栏/官网同源（思源宋体 + 字距大写拉丁） */
+.gate-form .login-brand { margin-bottom: 34px; }
+.gate-form .b-name { font-family: var(--font-serif); font-weight: 700; }
+.gate-form h1 {
+  margin: 0 0 8px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 23px;
+  letter-spacing: -.025em;
+  line-height: 1.3;
+}
+.gate-form .sub {
+  margin: 0 0 26px;
+  font-size: var(--fs-small);
+  line-height: 1.7;
+  color: var(--text-muted);
+}
+.gate-form .login-submit { width: 100%; margin-top: 20px; }
+.gate-form .login-hint {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+@media (max-width: 860px) {
+  .gate { grid-template-columns: 1fr; }
+  /* 竖排时门厅只是引子，不该吃掉首屏。
+     实测 min-height:34vh（=287px）+ 居中，让装置只剩 210×115 却撑出 319px 的盒子，
+     输入框被推到 582px —— 手机上要滚一下才能开始登录。
+     改成高度交给内容（padding + 装置本身），装置同时放大到 76% 补回存在感。 */
+  /* [v7] 竖排时装置仍是背景层，但需要给它一个明确的高度，
+     否则 absolute 背景在 flex 列里没有高度可铺。 */
+  .gate-scene { min-height: 34vh; padding: 26px 20px 10px; justify-content: center; }
+  .gate-scene-bg .scene { width: min(100%, 62vw, 320px); }
+  .gate-note { display: none; }
+  .gate-form { border-left: 0; padding: 20px 24px 40px; }
+}
+
+/* ---------- [v5] Chip：带圆点的语义标签（Pill.tsx 的 Chip） ----------
+   与 .tag 的分工：.tag 表达「行状态」（启用/停用/过期），
+   .chip 表达「健康语义」（可用/降级/未通过/待验证）。
+   圆点是"这个状态有实时来源"的信号，不是装饰。 */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--fs-2xs);
+  font-weight: 500;
+  line-height: 1.5;
+  padding: 2px 9px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+.chip i {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: 0 0 auto;
+  display: block;
+}
+/* 四档语义色：文字全部 ≥4.5:1（在各自的浅底上） */
+.chip-ok { color: var(--signal-live); background: color-mix(in srgb, var(--signal-live) 12%, transparent); }
+.chip-warn { color: var(--warn-amber); background: color-mix(in srgb, var(--warn-amber) 12%, transparent); }
+.chip-bad { color: var(--danger-red); background: color-mix(in srgb, var(--danger-red) 11%, transparent); }
+.chip-mute { color: var(--text-muted); background: var(--bg-surface-3); }
+
+/* ==========================================================================
+   [v5] KpiTile · 指标卡（四列等宽）
+   ==========================================================================
+   容器：发丝线 + 极淡染色阴影（不是硬 1px 灰框 —— 那是廉价后台的第一号特征）。
+   布局：**四列等宽，不做跨列主卡**。跨列会让首卡是其余的两倍宽，
+        读起来像"重点卡 + 附属卡"，但这一组是并列指标，没有主次。
+   层级：只有首卡带品牌色图标芯片 + 极淡光晕，其余中性。 */
+.kpi-row-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--kpi-cols, 4), minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+/* 3 格时每格更宽，间距不必变；2 格时（移动端以外的极窄容器）按 2 列铺 */
+.kpi-row-grid[data-count="3"] { --kpi-cols: 3; }
+.kpi-row-grid[data-count="2"] { --kpi-cols: 2; }
+/* 5 张卡：用量页在天级之外的窗口下多出「我方开销 / 首字节 P95」两格，
+   合计 5 —— 不定义就会回落到默认 4 列，第 5 张掉到第二行独自占位。
+   5 列在 990px 容器下每卡约 190px，够放 26px 数字 + 一行副注。 */
+.kpi-row-grid[data-count="5"] { --kpi-cols: 5; }
+/* 6 张卡：用量页天级窗口（7d/30d）—— 消耗 / 请求 / 日均 / 可用天数 / 我方开销 / P95。
+   不定义就回落默认 4 列，变成 4+2 两行，最后两张孤悬第二行。 */
+/* 6 列只在大屏成立：990px 容器 ÷ 6 = 155px，26px 的数字加图标列会挤。
+   1550px 以下退成 3 列（两行三列，语义上「消耗/请求/日均」一行、
+   「可用天数/我方开销/P95」一行，比 4+2 整齐）；1550px 以上才铺满 6 列。 */
+.kpi-row-grid[data-count="6"] { --kpi-cols: 3; }
+@media (min-width: 1550px) {
+  .kpi-row-grid[data-count="6"] { --kpi-cols: 6; }
+}
+/* 网格项默认 stretch，但首卡带 hover 位移与光晕，个别行会出现 1px 亚像素差
+   （实测第 5 张卡 top 比其他低 1px）。显式声明 stretch + 让行高由 grid 统一给，
+   卡片自身不再参与高度计算。 */
+.kpi-row-grid { align-items: stretch; }
+.kpi-row-grid > .kpi { height: 100%; }
+
+.kpi {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px 15px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--bg-scrim) 4%, transparent);
+  transition: box-shadow var(--d-hover) var(--ease-out), transform var(--d-hover) var(--ease-out);
+}
+.kpi:hover {
+  box-shadow: 0 4px 14px -6px color-mix(in srgb, var(--bg-scrim) 12%, transparent);
+  transform: translateY(-1px);
+}
+/* 首卡的品牌光晕：全页唯一一处 accent glow，只标记"这是核心指标" */
+.kpi-lead {
+  background:
+    radial-gradient(130% 150% at 90% -25%, color-mix(in srgb, var(--brand-500) 9%, transparent), transparent 64%),
+    var(--bg-surface-2);
+}
+
+/* ① 图标芯片 + 环比胶囊 */
+/* 左列：图标。固定宽度 —— 四张卡的图标要对齐成一条竖线，
+   否则数字的起始位置会随"有没有图标"而参差。 */
+.kpi-side { flex: 0 0 30px; }
+/* 右列：标签行 + 数字 + 说明 */
+.kpi-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* 标签行：标签靠左、环比胶囊靠右，同一水平线 */
+.kpi-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 20px;
+}
+.kpi-ico {
+  width: 30px; height: 30px;
+  border-radius: 9px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg-surface-3);
+  color: var(--text-secondary);
+  flex: 0 0 auto;
+}
+.kpi-ico svg { width: 15px; height: 15px; }
+.kpi-lead .kpi-ico {
+  background: color-mix(in srgb, var(--brand-500) 10%, transparent);
+  color: var(--brand-400);
+}
+.kpi-delta {
+  font-size: var(--fs-2xs);
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.kpi-delta.kpi-up {
+  color: var(--signal-live);
+  background: color-mix(in srgb, var(--signal-live) 10%, transparent);
+}
+.kpi-delta.kpi-down {
+  color: var(--danger-red);
+  background: color-mix(in srgb, var(--danger-red) 9%, transparent);
+}
+
+/* ② 标签 */
+.kpi-lb {
+  font-size: var(--fs-2xs);
+  color: var(--text-muted);
+  letter-spacing: .01em;
+  white-space: nowrap;
+}
+/* ③ 大数字：固定间距，**不用 margin-top:auto 贴底** ——
+   贴底会让有 sub 的卡把数字推低，整排数字的基线就各不相同。 */
+.kpi-val {
+  margin-top: 7px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 26px;
+  line-height: 1.08;
+  letter-spacing: -.035em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+.kpi-val .u {
+  font-family: var(--font-body);
+  font-weight: 400;
+  font-size: var(--fs-2xs);
+  color: var(--text-muted);
+  margin-left: 4px;
+  letter-spacing: 0;
+}
+/* ④ 补充说明 */
+.kpi-sub {
+  margin-top: 5px;
+  font-size: var(--fs-2xs);
+  line-height: 1.5;
+  color: var(--text-faint);
+}
+.kpi-sub.warn { color: var(--warn-amber); font-weight: 500; }
+/* 数值级的语义色：.kpi-val 本身是 text-primary（26px 粗体），
+   里面的 <span class="warn|live"> 要显式改色 —— 父级的 color 不会被子级覆盖，
+   但子级 span 若不写规则就继承父级，等于这些类名不生效。
+   用在「异常计数 > 0 才变红」「启用数用实时绿」这类**条件强调**上。 */
+.kpi-val .warn { color: var(--warn-amber); }
+.kpi-val .live { color: var(--signal-live); }
+.kpi-val .bad { color: var(--danger-red); }
+
+@media (max-width: 1080px) {
+  .kpi-row-grid, .kpi-row-grid[data-count="3"], .kpi-row-grid[data-count="2"], .kpi-row-grid[data-count="5"], .kpi-row-grid[data-count="6"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 560px) {
+  .kpi-row-grid, .kpi-row-grid[data-count="3"], .kpi-row-grid[data-count="2"], .kpi-row-grid[data-count="5"], .kpi-row-grid[data-count="6"] {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* [v5] StatBar 首格：与 KpiTile 首卡同一套强调（品牌色光晕），
+   让「概览用 KpiTile、用量用 StatBar」两套容器在第一眼读作同一组指标。 */
+.sb-lead {
+  border-radius: var(--radius-md);
+  background:
+    radial-gradient(130% 150% at 90% -25%, color-mix(in srgb, var(--brand-500) 8%, transparent), transparent 64%),
+    var(--bg-surface-2);
+}
+
+/* ==========================================================================
+   [v5] 用量读数带（原 .credit-banner 三栏横幅的替代）
+   ==========================================================================
+   为什么不再是「横幅」：它此前用 42px 大数字 + 品牌渐变底，视觉权重高过
+   下方四张 KPI 卡，而那三栏里的两个数（总 tokens / 积分）在卡里已经有了。
+   现在它退成一条**补充读数带**：三个 KPI 卡里没有的指标（缓存命中率、
+   输入输出构成、总量）+ 一句口径脚注。
+   底色回到中性 —— 品牌色只留给"核心指标"和主操作，不铺在容器上。 */
+/* [v6] 两栏：左「三格读数」/ 右「这组数字怎么来的」。
+   此前是单行 flex + 下方整行脚注：读数只占到 755/990，右侧空 483px，
+   而脚注在下面又占两行 49px。脚注解释的就是左边那三个数，
+   按距离原则应该在旁边 —— 换列之后横幅从 160px 降到约 100px。 */
+.credit-strip {
+  display: grid;
+  /* 右栏放宽到 340px：300px 下「仅统计经本服务转发的请求」会断在「请/求」之间，
+     340px 刚好容下这句不折行（实测该句 21 个字 @11px ≈ 231px + 两倍行距余量）。 */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 340px);
+  align-items: start;
+  gap: 0 28px;
+  padding: 16px 20px;
+  margin-bottom: 18px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border-subtle);
+}
+/* 三格**均分**轨道宽度，而不是靠内容定宽。
+   定宽时实测只占 388px / 轨道 581px —— 轨道内空 193px，
+   再加上 28px 栏间距，读数与右栏之间就裂出一道 157px 的大空白。
+   均分后每格 194px，竖分割线落在均分点上，视觉上是整齐的三等分。
+
+   内边距给 24px 且**只给前两格**（末格 .cs-total 归零），
+   分割线才贴着格的右缘、离文字有呼吸；若统一给 32px，
+   最后一格会被推离右缘。 */
+.cs-readouts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+  gap: 0;
+}
+.cs-readouts > .cs-item { padding-right: 24px; }
+.cs-readouts > .cs-total { padding-right: 0; }
+.cs-provenance {
+  padding-left: 28px;
+  border-left: 1px solid var(--border-subtle);
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cs-prov-main {
+  margin: 0;
+  font-size: var(--fs-2xs);
+  line-height: 1.65;
+  color: var(--text-faint);
+}
+.cs-prov-main b { color: var(--text-secondary); font-weight: 500; }
+.cs-prov-more > summary {
+  cursor: pointer;
+  font-size: var(--fs-2xs);
+  color: var(--text-ghost);
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: color var(--d-hover) var(--ease-out);
+}
+.cs-prov-more > summary::-webkit-details-marker { display: none; }
+.cs-prov-more > summary::after {
+  content: '';
+  width: 5px; height: 5px;
+  border-right: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+  transform: rotate(45deg) translateY(-1px);
+  transition: transform var(--d-hover) var(--ease-out);
+}
+.cs-prov-more[open] > summary::after { transform: rotate(-135deg) translateY(-1px); }
+.cs-prov-more > summary:hover { color: var(--text-tertiary); }
+.cs-prov-more p {
+  margin: 6px 0 0;
+  font-size: var(--fs-2xs);
+  line-height: 1.7;
+  color: var(--text-ghost);
+}
+.cs-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-right: 32px;
+  border-right: 1px solid var(--border-subtle);
+}
+.cs-total {
+  border-right: 0;
+  padding-right: 0;
+}
+.cs-k {
+  font-size: var(--fs-2xs);
+  color: var(--text-muted);
+}
+.cs-v {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 19px;
+  letter-spacing: -.03em;
+  line-height: 1.2;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.cs-sep {
+  color: var(--text-faint);
+  font-weight: 400;
+  margin: 0 3px;
+}
+.cs-d {
+  font-size: var(--fs-2xs);
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+/* 口径脚注：占满整行，与三个读数之间用一道发丝线隔开 */
+/* ---------- [v6] 补充读数行（用量页三卡之下的派生指标） ----------
+   与 .credit-strip 的分工：那个是"横幅"（有独立底色、抢视线），
+   这个是"读数带"——无底色、无大数字，只有 15px 的数值，
+   服从卡片而不与卡片竞争。 */
+/* ---------- [v7] 概览 token 消耗折线（VChart） ----------
+   图表本体由 Canvas 渲染，这几条只管外框与占位。
+   占位必须与图表同高：否则 Suspense 完成时页面会跳一下。 */
+/* [v7] 概览页的时间窗口分段控件（新设计口径）+ 一个「更多」下拉。
+   胶囊组：选中态靠底色与字重，不靠色条。高度与右侧主按钮对齐（32px）。 */
+.win-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--bg-surface-3);
+}
+.win-seg > button {
+  border: 0;
+  background: transparent;
+  padding: 5px 13px;
+  border-radius: 999px;
+  font-family: var(--font-body);
+  font-size: var(--fs-2xs);
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--d-hover) var(--ease-out), color var(--d-hover) var(--ease-out);
+}
+.win-seg > button:hover { color: var(--text-secondary); }
+.win-seg > button.on {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-weight: 600;
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--bg-scrim) 10%, transparent);
+}
+/* 「更多」下拉与胶囊组的分隔：一条极淡竖线，表示"这些不是常用档" */
+.win-seg > .sel-field { margin-left: 3px; padding-left: 6px; border-left: 1px solid var(--border-subtle); }
+
+/* ---------- [v7] 活跃度热力图（VChart 版） ----------
+   图表本体由 Canvas 渲染（同 TokenTrend），这里只管外框、
+   占位与底部统计行。占位与图表同高，避免 Suspense 完成时跳变。 */
+.activity-heat { padding: 2px 0 0; }
+
+/* ---------- [v9] Arco 分页器与设计系统对齐 ----------
+   Arco 的分页器默认样式是**浅色主题**的（项底白、深字、浅边框），
+   直接放在暖黑面板上会读作异物；字号/圆角也跟设计系统差一档。
+   这里做作用域覆盖，颜色全走令牌 —— 深浅两套自动跟随。
+   （ArcoProvider 的 --arco-* 只映射了主色等少数变量，
+    分页器的 bg/text/border 变量不在其中，所以必须覆盖到具体类。） */
+.arco-pagination {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 20px;
+  font-family: var(--font-body);
+  font-size: var(--fs-2xs);
+  color: var(--text-muted);
+}
+.arco-pagination .arco-pagination-item-total {
+  color: var(--text-muted);
+  font-size: var(--fs-2xs);
+  padding: 0 10px 0 0;
+}
+.arco-pagination .arco-pagination-item,
+.arco-pagination .arco-pagination-item-prev,
+.arco-pagination .arco-pagination-item-next {
+  min-width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--fs-2xs);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background var(--d-hover) var(--ease-out), color var(--d-hover) var(--ease-out);
+}
+.arco-pagination .arco-pagination-item:hover {
+  background: var(--bg-surface-3);
+  color: var(--text-primary);
+}
+.arco-pagination .arco-pagination-item-active {
+  background: var(--brand-tint);
+  color: var(--brand-400);
+  font-weight: 600;
+  cursor: default;
+}
+.arco-pagination .arco-pagination-item-disabled,
+.arco-pagination .arco-pagination-item-prev.arco-pagination-item-disabled,
+.arco-pagination .arco-pagination-item-next.arco-pagination-item-disabled {
+  color: var(--text-ghost);
+  cursor: not-allowed;
+  background: transparent;
+}
+.arco-pagination .arco-pagination-item-active:hover { background: var(--brand-tint); color: var(--brand-400); }
+/* 页大小选择（Arco Select 迷你版）：底与边走令牌 */
+.arco-pagination .arco-pagination-options .arco-select-view {
+  background: var(--bg-surface-2);
+  border-color: var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+.arco-pagination .arco-pagination-options .arco-select-view .arco-select-view-value {
+  color: var(--text-secondary);
+  font-size: var(--fs-2xs);
+}
+.arco-pagination .arco-pagination-options .arco-select-view-icon {
+  color: var(--text-ghost);
+}
+
+/* [v9] 活跃度面板的骨架格阵：两层正交的 repeating-gradient 交叉成小方块纹理。
+   不逐格渲染 91 个 div —— 骨架只承诺形状，不承诺格数。
+   颜色只用令牌（AC-11），透明段用中性 transparent（豁免项）。 */
+.ah-skel-grid {
+  height: 132px;
+  border-radius: var(--radius-sm);
+  background:
+    repeating-linear-gradient(90deg, var(--bg-surface-3) 0 11px, transparent 11px 15px),
+    repeating-linear-gradient(0deg, var(--bg-surface-3) 0 11px, transparent 11px 15px);
+  opacity: .8;
+}
+.activity-heat-loading { height: 168px; }
+.ah-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 4px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+.ah-stat { font-size: var(--fs-2xs); color: var(--text-muted); }
+.ah-stat b { color: var(--text-secondary); font-weight: 500; font-variant-numeric: tabular-nums; }
+.ah-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-2xs);
+  color: var(--text-ghost);
+  flex: none;
+}
+.ah-legend i {
+  width: 11px; height: 11px;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+.token-trend { padding: 4px 0 0; }
+.token-trend-loading { height: 220px; }
+/* [v8] 堆叠面积图的提供商图例：色点 + 名，顺序=堆叠主次 */
+.tt-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 8px 0 0;
+}
+.tt-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-2xs);
+  color: var(--text-secondary);
+}
+.tt-legend-item i {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  flex: none;
+}
+.token-trend-note {
+  margin: 6px 0 0;
+  font-size: var(--fs-2xs);
+  color: var(--text-ghost);
+}
+.token-trend-empty {
+  padding: 56px 0;
+  text-align: center;
+  font-size: var(--fs-small);
+  color: var(--text-muted);
+}
+
+.substats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  /* 格内 label→value→detail 各 7px，格间靠 22px + 一条竖线分隔 ——
+     纯靠间距时"62.76 30 天均值  按当前速度可用天数"读起来像一句话，
+     加一条极淡竖线才看得出一格一格的边界。 */
+  gap: 6px 22px;
+  margin: -4px 0 14px;
+  padding: 0 2px;
+}
+.substats > * + * {
+  padding-left: 22px;
+  border-left: 1px solid var(--border-subtle);
+}
+.substat { display: inline-flex; }
+.ss-cell { display: inline-flex; align-items: baseline; gap: 7px; }
+.ss-k { font-size: var(--fs-2xs); color: var(--text-muted); }
+.ss-v {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+.ss-d { font-size: var(--fs-2xs); color: var(--text-ghost); }
+/* 用量页的积分口径脚注：比通用 footer-note 更靠上一档（紧跟读数行），
+   且不与下一个 Panel 的标题贴住。 */
+.usage-note { margin: 0 0 22px; }
+/* [v6] .cs-note 已并入右栏 .cs-provenance（口径说明随读数同栏）。 */
+
+@media (max-width: 900px) {
+  /* 容不下两栏时右栏落到下一行：横线改在上方（竖分割线在单列里没有意义）。 */
+  .credit-strip {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px 0;
+  }
+  .cs-provenance {
+    padding-left: 0;
+    padding-top: 12px;
+    border-left: 0;
+    border-top: 1px solid var(--border-subtle);
+  }
+  .cs-readouts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 20px; }
+  .cs-item {
+    border-right: 0;
+    padding-right: 0;
+    min-width: calc(50% - 10px);
+  }
+}
+
+/* [v5] 提供商身份色点：6px 圆点，贴在名称左侧。
+   6px 而不是 8px：一行里五枚操作按钮已经很密，色点只做"这是哪一家"的索引，
+   不需要抢注意力。垂直对齐用 baseline 偏移而不是 flex 居中 ——
+   中文的 baseline 比英文低，flex 居中会让色点看起来偏上。 */
+.prov-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-right: 7px;
+  vertical-align: 1px;
+  flex: 0 0 auto;
+}
+
+/* ==========================================================================
+   [v5] 行内「更多」菜单（RowMenu）
+   ==========================================================================
+   不用自绘弹层：<details> 自带键盘可达（Enter/Space）、焦点顺序、
+   屏幕阅读器展开状态。缺口只有「点外部/Esc 关闭」，由组件里的监听补上。 */
+.row-menu {
+  position: relative;
+  display: inline-block;
+}
+/* summary 的默认 marker（三角）要去掉 —— 它会把按钮撑偏 */
+.row-menu > summary {
+  list-style: none;
+  cursor: pointer;
+}
+.row-menu > summary::-webkit-details-marker { display: none; }
+.row-menu > summary::marker { content: ''; }
+/* 展开时按钮保持"按下"的观感 */
+.row-menu[open] > summary {
+  background: var(--bg-surface-3);
+  color: var(--text-primary);
+}
+/* 菜单面板：贴右对齐（行尾的菜单向右展开不会出表） */
+.row-menu-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 40;
+  min-width: 132px;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  box-shadow: 0 12px 28px -14px color-mix(in srgb, var(--bg-scrim) 55%, transparent);
+}
+.row-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: var(--fs-2xs);
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--d-hover) var(--ease-out), color var(--d-hover) var(--ease-out);
+}
+.row-menu-item:hover {
+  background: var(--bg-surface-3);
+  color: var(--text-primary);
+}
+.row-menu-item[aria-disabled='true'] {
+  color: var(--text-ghost);
+  cursor: not-allowed;
+}
+.row-menu-item[aria-disabled='true']:hover { background: transparent; }
+.row-menu-item.danger { color: var(--danger-red); }
+.row-menu-item.danger:hover {
+  background: color-mix(in srgb, var(--danger-red) 9%, transparent);
+}
+.row-menu-item.danger[aria-disabled='true'] { color: var(--text-ghost); }
+
+/* 菜单里的按钮仍然是 ProviderTable 原有的 `.mini-pill`（它们各自包着一层
+   Tooltip，说明文案不能丢）。在这里把药丸外观归一成整行菜单项：
+   左对齐、通栏、行高与 .row-menu-item 一致 —— 不改 TSX 就能保住 Tooltip。 */
+/* 特异性必须压过上面那条 `.tbl td .prov-row-actions .mini-pill`（0,3,1）——
+   否则菜单项沿用行内药丸的 2px 5px，行高只有 20px，点按区太小。 */
+.tbl td .prov-row-actions .row-menu-list .mini-pill {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 7px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--fs-2xs);
+  text-align: left;
+  white-space: nowrap;
+  transition: background var(--d-hover) var(--ease-out), color var(--d-hover) var(--ease-out);
+}
+.row-menu-list .mini-pill svg { width: 12px; height: 12px; flex: none; }
+.row-menu-list .mini-pill:hover { background: var(--bg-surface-3); color: var(--text-primary); }
+.row-menu-list .mini-pill[aria-disabled='true'],
+.row-menu-list .mini-pill:disabled { color: var(--text-ghost); cursor: not-allowed; opacity: 1; }
+.row-menu-list .mini-pill[aria-disabled='true']:hover { background: transparent; color: var(--text-ghost); }
+/* 删除用危险红，沿用旧的 .danger 类名（它此前被映射到 warn-amber，
+   在菜单语境里删除是破坏性操作，必须读作红而不是警告黄）。 */
+.tbl td .prov-row-actions .row-menu-list .mini-pill.danger { color: var(--danger-red); border: 0; }
+.tbl td .prov-row-actions .row-menu-list .mini-pill.danger:hover { background: color-mix(in srgb, var(--danger-red) 9%, transparent); color: var(--danger-red); }
+.tbl td .prov-row-actions .row-menu-list .mini-pill.danger[aria-disabled='true'] { color: var(--text-ghost); }
+
+/* 菜单最少 148px：两枚 4 字按钮各 60px + 图标 + 内边距，太窄会把
+   「已签到」压成省略号，看起来像数据缺失而不是状态。 */
+.row-menu-list { min-width: 148px; }
+/* 上方展开：末行向下放不下时，RowMenu 会挂这个类。
+   只改锚点（top → bottom），其余外观不变。 */
+.row-menu--up > .row-menu-list { top: auto; bottom: calc(100% + 4px); }
+/* Tooltip 包裹层默认是 inline —— 菜单行要通栏，必须跟着变成块级。 */
+.row-menu-list > .tooltip-anchor { display: block; }

@@ -156,13 +156,12 @@ export function AppShell({
 
       <aside ref={sidebarRef} className="sidebar" id="console-sidebar" aria-label="控制台导航">
         {/* 品牌 → 官网（契约 §2.5：控制台品牌 logo 回到 `/`）。
-            版本号 chip：[v1.5.2] 读后端 /healthz（唯一真相，与官网同源）；
-            拉取失败回落 vite define 的 `__APP_VERSION__`（构建期 package.json 版本）。 */}
+            [v6] 版本号已移出此行（见账号卡的 .acct-ver）：216px 侧栏里
+            「logo + 途关 + Waygate + 版本号」塞不下，会把 logo 压成一条竖线。 */}
         <a className="sb-brand" href="/">
-          <BrandMark size={26} />
+          <BrandMark size={30} />
           <span>途关</span>
           <span className="brand-en">Waygate</span>
-          <span className="brand-ver">v{runtimeVersion ?? __APP_VERSION__}</span>
         </a>
 
         <div className="sb-group">工作台</div>
@@ -195,7 +194,12 @@ export function AppShell({
           <div className="avatar">管</div>
           <div className="meta">
             <b>管理员</b>
-            <i>{expiresAt ? `会话有效 · ${formatRelative(expiresAt)}到期` : '本机管理员'}</i>
+            {/* [v6] 版本号并入这行次要信息 —— 原先它挤在「途关 Waygate」后面，
+                而品牌行在 216px 侧栏里只有 168px 可用，版本号把 logo 挤成 7px 宽
+                （flex 压缩 SVG）。这里与「会话有效」同级：11px、等宽、极淡。
+                仍是 /healthz 的运行时版本（唯一真相），失败回落构建期版本。 */}
+            <i>{expiresAt ? `${formatRelative(expiresAt)}到期` : '本机管理员'}</i>
+            <span className="acct-ver">v{runtimeVersion ?? __APP_VERSION__}</span>
           </div>
           <Tooltip content="退出登录">
             <button

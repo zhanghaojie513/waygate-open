@@ -120,7 +120,7 @@
 <div class="page">
   <header>
     <h1>途关 Waygate · 技术架构</h1>
-    <span class="chip">v1.6.28</span>
+    <span class="chip">v1.10.0</span>
     <button class="theme-toggle" id="themeToggle" type="button">切换主题</button>
   </header>
   <p class="sub">自托管订阅反代：把按客户端订阅计费的服务，转成 OpenAI / Anthropic 兼容接口。</p>
@@ -130,7 +130,7 @@
   </div>
 
   <h2 class="sec">A · 请求链路</h2>
-  <p class="sec-note">调用端 → 鉴权 → 翻译 → 反代管线 → 上游三家（按模型 id 路由，可同时生效）。三家凭证均由控制台「官方授权」导入后落盘服务端。</p>
+  <p class="sec-note">调用端 → 鉴权 → 翻译 → 反代管线 → 上游（按模型 id 路由，可同时生效）。订阅三家凭证由控制台「官方授权」导入；任意 OpenAI 兼容端点（v1.10.0）填 Base URL + API Key 即接。</p>
   <div id="diagramA">
     <svg id="edgesA" aria-hidden="true"></svg>
 
@@ -146,9 +146,9 @@
       <div class="band-label">网关 · 8787</div>
       <div class="nodes">
         <div class="node" id="a-guard" tabindex="0" role="button" aria-pressed="false"><b>KeyGuard 鉴权</b><span>密钥 · IP 策略 · 配额 · 模型范围</span></div>
-        <div class="node" id="a-trans" tabindex="0" role="button" aria-pressed="false"><b>协议翻译</b><span>OpenAI ↔ Anthropic ↔ 三种上游方言</span></div>
+        <div class="node" id="a-trans" tabindex="0" role="button" aria-pressed="false"><b>协议翻译</b><span>OpenAI ↔ Anthropic ↔ 上游方言（含自定义 OpenAI 兼容）</span></div>
         <div class="node" id="a-pipe" tabindex="0" role="button" aria-pressed="false"><b>反代管线</b><span>模型路由 · 并发闸 · SSE 透传 · usage 累计</span></div>
-        <div class="node" id="a-retry" tabindex="0" role="button" aria-pressed="false"><b>容错</b><span>断流重试 · 11128 渠道降级 · 渠道熔断（快速失败不占槽）</span></div>
+        <div class="node" id="a-retry" tabindex="0" role="button" aria-pressed="false"><b>容错</b><span>断流重试 · 11128 渠道降级 · 渠道熔断</span></div>
       </div>
     </div>
 
@@ -158,6 +158,7 @@
         <div class="node" id="a-wb" tabindex="0" role="button" aria-pressed="false"><b>WorkBuddy</b><span>openai 方言 · 官方 OAuth 授权（ck_ 已退役）</span></div>
         <div class="node" id="a-mm" tabindex="0" role="button" aria-pressed="false"><b>MiniMax Code</b><span>anthropic 方言 · OAuth 自动换 token</span></div>
         <div class="node" id="a-qd" tabindex="0" role="button" aria-pressed="false"><b>Qoder CN</b><span>COSY 协议 · 客户端登录态身份</span></div>
+        <div class="node" id="a-cu" tabindex="0" role="button" aria-pressed="false"><b>自定义端点</b><span>OpenAI 兼容 · 静态 API Key（v1.10.0）</span></div>
       </div>
     </div>
   </div>
@@ -187,7 +188,7 @@
     <div class="band">
       <div class="band-label">数据服务</div>
       <div class="nodes">
-        <div class="node" id="b-catalog" tabindex="0" role="button" aria-pressed="false"><b>模型目录</b><span>三家真拉取（WB / Qoder / MiniMax）· seed 回落 · observed 并入</span></div>
+        <div class="node" id="b-catalog" tabindex="0" role="button" aria-pressed="false"><b>模型目录</b><span>seed / upstream / observed / manual</span></div>
         <div class="node" id="b-agg" tabindex="0" role="button" aria-pressed="false"><b>用量聚合</b><span>requests + aggregates 双写 · 留存清理</span></div>
         <div class="node" id="b-quota" tabindex="0" role="button" aria-pressed="false"><b>额度采集</b><span>MiniMax 账本 · Qoder 余额 · WB 额度真值</span></div>
         <div class="node" id="b-claim" tabindex="0" role="button" aria-pressed="false"><b>签到与领取</b><span>三家代签 · WB 成长任务 / 连登兑换</span></div>
@@ -198,6 +199,7 @@
       <div class="band-label">凭证来源<br />v1.6.12+</div>
       <div class="nodes">
         <div class="node" id="b-import" tabindex="0" role="button" aria-pressed="false"><b>官方授权导入</b><span>三家设备授权（WB 业务码 / MiniMax PKCE / Qoder PKCE+404）· 私有状态只存服务端</span></div>
+        <div class="node" id="b-cukey" tabindex="0" role="button" aria-pressed="false"><b>自定义 API Key</b><span>OpenAI 兼容端点手填（v1.10.0）· 清单拉 /v1/models 或手动补</span></div>
       </div>
     </div>
 
@@ -328,7 +330,8 @@
     { from: 'a-pipe',   to: 'a-retry', dash: '3 4' },
     { from: 'a-pipe',   to: 'a-wb' },
     { from: 'a-pipe',   to: 'a-mm' },
-    { from: 'a-pipe',   to: 'a-qd' }
+    { from: 'a-pipe',   to: 'a-qd' },
+    { from: 'a-pipe',   to: 'a-cu' }
   ]);
 
   makeDiagram('diagramB', 'edgesB', 'detailB', [
@@ -341,7 +344,8 @@
     { from: 'b-agg',    to: 'b-store', dash: '4 4' },
     { from: 'b-quota',  to: 'b-store', dash: '4 4' },
     { from: 'b-claim',  to: 'b-store', dash: '4 4' },
-    { from: 'b-import', to: 'b-store', dash: '4 4' }
+    { from: 'b-import', to: 'b-store', dash: '4 4' },
+    { from: 'b-cukey',  to: 'b-store', dash: '4 4' }
   ]);
 
   var toggle = document.getElementById('themeToggle');

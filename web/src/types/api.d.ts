@@ -104,6 +104,11 @@ export interface TrendPoint {
    */
   models: Array<{ model: string; tokens: number }>;
   /**
+   * [v8] 本桶内按**提供商** token 消耗的前几名（服务端排好序、取前 5）。
+   * 概览堆叠面积图的主维度。provider 名解析与 byProvider 同源，null 归「未归属」。
+   */
+  providers: Array<{ providerId: string | null; provider: string; tokens: number }>;
+  /**
    * [v1.6.31] 本桶是否只覆盖窗口的**一部分**（首/末桶常态——窗口按 `now` 滚动，
    * 不对齐整点）。数字仍是真实的（只统计窗口内的行），但不足一整格：
    * tooltip 据此注明，避免把「半小时的桶」读成「一整个小时」。
@@ -240,7 +245,10 @@ export interface OverviewData {
 }
 
 /** [2026-10-08] 新增 'today'：本地零点到现在（日历日语义，不是滚动 24h）。 */
-export type TimeWindow = 'today' | '1h' | '24h' | '7d' | '30d';
+/* [v7] 补 '90d'：概览活跃度热力图需要 13 周（91 天）数据。
+   它不出现在任何选择器里（WINDOW_OPTIONS 过滤掉了）——
+   只作为热力图的固定数据窗口，由前端单独请求。 */
+export type TimeWindow = 'today' | '1h' | '24h' | '7d' | '30d' | '90d' | '1y';
 
 /* ---------------- 请求日志 ---------------- */
 

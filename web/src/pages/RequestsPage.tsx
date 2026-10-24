@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Camera, CameraOff, Search } from 'lucide-react';
+import { AlertTriangle, Camera, CameraOff, ListFilter, Rows3, Search } from 'lucide-react';
 import { api } from '../services/api';
 import { useResource } from '../hooks/useResource';
 import { useFx } from '../hooks/useFx';
@@ -8,11 +8,13 @@ import type { RequestLogRow } from '../types/api';
 import { Topbar } from '../components/ui/Topbar';
 import { Pill } from '../components/ui/Pill';
 import { Select } from '../components/ui/Select';
-import { Panel, StatBar } from '../components/ui/Panel';
+import { Panel, KpiRow, KpiTile } from '../components/ui/Panel';
 import { StateBlock, errorDetail } from '../components/ui/StateBlock';
 import { RequestsSkeleton } from '../components/ui/PageSkeleton';
 import { Drawer } from '../components/ui/Drawer';
-import { Pager } from '../components/ui/Pager';
+import Pagination from '@arco-design/web-react/es/Pagination';
+import { ArcoProvider } from '../components/ui/ArcoProvider';
+import '@arco-design/web-react/es/Pagination/style/css.js';
 import { Tooltip } from '../components/ui/Tooltip';
 import { Banner } from '../components/ui/Banner';
 import { RequestTable } from '../components/requests/RequestTable';
@@ -374,14 +376,37 @@ export function RequestsPage() {
              （alerts.credentialInvalid，单次即报），这格只统计当前页 20 行、
              与其严重性不匹配；「注 token」密码式缩写一并消失（人设红旗）。
            ② 「本页条数」保留 —— 它是「筛选命中 vs 实际可见」的即时对照，
-             分页器只显示页码范围，不回应这个对照。 */}
-        <StatBar
-          items={[
-            { label: '当前筛选命中', value: formatInt(total), detail: '当前筛选全部命中' },
-            { label: '本页条数', value: formatInt(rows.length), tone: 'live', detail: `每页 ${limit} 条` },
-            { label: '当前页异常', value: formatInt(rows.filter((r) => r.status >= 400).length), detail: 'status ≥ 400' },
-          ]}
-        />
+             分页器只显示页码范围，不回应这个对照。
+           [v5] 容器从 StatBar 读数行改为 KpiRow 卡片 —— 与概览、用量两页统一。 */}
+        <KpiRow count={3}>
+          <KpiTile
+            lead
+            label="当前筛选命中"
+            value={formatInt(total)}
+            icon={<ListFilter size={14} />}
+            sub="当前筛选全部命中"
+          />
+          <KpiTile
+            label="本页条数"
+            value={formatInt(rows.length)}
+            icon={<Rows3 size={14} />}
+            sub={`每页 ${limit} 条`}
+          />
+          {/* 异常格用告警色而非品牌色：这一格为 0 才是好消息，
+              给它品牌强调会让人误读成"这是核心指标"。 */}
+          <KpiTile
+            label="当前页异常"
+            value={
+              rows.filter((r) => r.status >= 400).length > 0 ? (
+                <span className="warn">{formatInt(rows.filter((r) => r.status >= 400).length)}</span>
+              ) : (
+                formatInt(0)
+              )
+            }
+            icon={<AlertTriangle size={14} />}
+            sub="status ≥ 400"
+          />
+        </KpiRow>
 
         {/* [2026-10-07] 「读取口径」从**右列**改为常驻在请求流**下方**。
             原来它和请求流并排（`.row2` + 固定 383px），把表格容器压到 685px，
@@ -419,14 +444,22 @@ export function RequestsPage() {
               />
             )}
           </div>
+            {/* [v8] 分页器换 Arco Pagination（按需引入，样式走 ArcoProvider 的主题映射）。
+                showTotal 保留「共 N 条」口径；换页大小重置回第一页 ——
+                与旧 Pager 的 resetTo 行为一致（游标分页跳页会回落 OFFSET）。 */}
           {rows.length > 0 ? (
-            <Pager
-              page={page}
-              limit={limit}
+            <ArcoProvider>
+              <Pagination
+              current={page}
+              pageSize={limit}
               total={total}
-              onPage={goPage}
-              onLimit={(l) => resetTo(() => setLimit(l))}
+              showTotal={(t: number, range: number[]) => `第 ${range[0]}-${range[1]} 条 · 共 ${t} 条`}
+              sizeCanChange
+              sizeOptions={[20, 50, 100]}
+              onChange={(p: number) => goPage(p)}
+              onPageSizeChange={(l: number) => resetTo(() => setLimit(l))}
             />
+            </ArcoProvider>
           ) : null}
         </Panel>
           </>

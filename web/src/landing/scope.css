@@ -126,3 +126,105 @@ html.relay-landing { overflow-x: hidden; }
    但偏差会掩盖后续「按钮里放图标」的真实回归，故按原型归位。 */
 .landing .btn { justify-content: normal; }
 /* @zbiti-ai:f:115:c8db8d94 */
+
+/* ==========================================================================
+   [v5] Hero 右栏装置 · 标题衬线斜体 · 接入卡下移
+   这一层是手写的收尾层（不进 scope-css 的生成链，见文件头的说明）。
+   ========================================================================== */
+
+/* ---------- 1 · 右栏：装置容器 ----------
+   装置本体（.scene）的定位在 scene.css 里（由原型生成）；
+   这里只负责它在 hero 栏里的位置与下方那句说明。 */
+.landing .hero-scene {
+  position: relative;
+  width: 100%;
+}
+/* 装置下方的说明：它是「装置的解释」，不是装饰文字。
+   居中、弱色、单行 —— 读完后视线自然回到左边的主文案。 */
+.landing .scene-note {
+  margin: 6px 0 0;
+  text-align: center;
+  font-size: var(--fs-micro);
+  line-height: 1.6;
+  color: var(--text-ghost);
+}
+
+/* ---------- 2 · 标题：衬线斜体「变成一个」+ 朱砂变量名 ----------
+   .bridge 是全页唯一的衬线 —— 拉丁字体里它承担「人味」的角色，
+   用在转折词上把两行长句的节奏切开。
+   中文衬线（思源宋体）在 56px 下笔画会明显变细，所以字重取 500
+   （700 会读成"加粗的正文"，不是"另一种声音"）。 */
+.landing .bridge {
+  font-family: var(--font-serif);
+  font-weight: 500;
+  font-style: italic;
+  letter-spacing: .01em;
+  color: var(--text-tertiary);
+}
+/* 变量名：朱砂 + 一道手绘笔触下划线。
+   笔触用 SVG data-uri 而不是 border-bottom —— 直线读作"链接"，
+   略弯的笔迹才读作"划重点"。透明度 .45 是因为它要压住 56px 的字，
+   实色会抢走文字本身。 */
+.landing .mk.lit {
+  position: relative;
+  display: inline-block;
+  color: var(--brand-400);
+  letter-spacing: -.05em;
+}
+.landing .mk.lit::after {
+  content: '';
+  position: absolute;
+  left: 2%; right: 1%; bottom: -9px; height: 9px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 10' preserveAspectRatio='none'%3E%3Cpath d='M2 6.5 Q 60 1.5, 110 5.5 T 198 4' fill='none' stroke='%23C93129' stroke-width='2.4' stroke-linecap='round' opacity='.45'/%3E%3C/svg%3E") no-repeat center / 100% 100%;
+}
+/* 倒影里的标题不要再叠一道笔触 —— 会读成"两个标题都在划重点" */
+.landing .hero-flip .mk.lit::after { display: none; }
+
+/* ---------- 3 · 接入卡：从右栏移下来的横排 ----------
+   原样保留内容（地址/协议/TLS/部署），只把纵向卡片改成横向条 ——
+   它在首屏里是「次要信息」，不该占半屏高度。 */
+.landing .hero-access {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px 26px;
+  align-items: center;
+  margin-top: 26px;
+  padding: 16px 20px;
+  border-radius: var(--radius-lg);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(calc(var(--glass-blur) * .6));
+}
+.landing .hero-access .access-h {
+  display: flex; align-items: center; gap: 10px;
+  grid-column: 1 / -1;
+}
+.landing .hero-access .access-url {
+  display: flex; align-items: center; gap: 8px;
+  min-width: 0;
+}
+.landing .hero-access .access-url code {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.landing .hero-access .access-note {
+  font-size: var(--fs-micro); color: var(--text-ghost);
+  grid-column: 1 / -1;
+}
+/* 四个键值对横向排开（原来在卡里是竖排） */
+.landing .hero-access .kv {
+  display: flex; flex-wrap: wrap; gap: 8px 26px;
+  grid-column: 1 / -1;
+  margin: 2px 0 0; padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+.landing .hero-access .kv > div { display: flex; align-items: baseline; gap: 7px; }
+.landing .hero-access .kv dt {
+  font-size: var(--fs-micro); color: var(--text-ghost);
+}
+.landing .hero-access .kv dd {
+  margin: 0; font-size: var(--fs-small); color: var(--text-secondary);
+}
+
+@media (max-width: 1080px) {
+  .landing .hero-access { grid-template-columns: 1fr; }
+}

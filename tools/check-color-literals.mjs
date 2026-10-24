@@ -32,6 +32,10 @@ const DERIVED = [
   'landing/landing.css', 'landing/ui.css', 'landing/scene.css',
   'landing/scene.ts', 'landing/page.ts',
   'styles/vendor/tokens.css', 'styles/vendor/motion.css', 'styles/vendor/fonts.css',
+  /* [v8] reactbits.dev 的 copy-paste 源码（CountUp/BlurText，MIT）。
+     原样入库保真（升级=从上游重新复制），里面的色值/默认值是上游的，
+     不是本仓手写组件 —— 与"派生文件"同一判据：可信来源不在本仓。 */
+  'landing/bits/CountUp.jsx', 'landing/bits/BlurText.jsx',
 ];
 
 /**

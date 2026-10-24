@@ -6,9 +6,11 @@
  * 两者混用是这里最容易出错的地方，所以解析/格式化都收敛到本文件。
  */
 
-export type WindowKey = 'today' | '1h' | '24h' | '7d' | '30d';
+/* [v7] 补 '90d'：概览要画 13 周活跃度热力图（91 格 = 13×7），
+   而此前最长窗口只有 30 天。日桶粒度与 7d/30d 相同，只是范围更长。 */
+export type WindowKey = 'today' | '1h' | '24h' | '7d' | '30d' | '90d' | '1y';
 
-export const WINDOWS: readonly WindowKey[] = ['today', '1h', '24h', '7d', '30d'];
+export const WINDOWS: readonly WindowKey[] = ['today', '1h', '24h', '7d', '30d', '90d', '1y'];
 
 /**
  * 缺省窗口 —— 产品默认「今日」（2026-10-09）。
@@ -41,6 +43,17 @@ export function resolveWindow(raw: string | undefined): WindowSpec {
       return { key, ms: 7 * DAY, bucket: 'day' };
     case '30d':
       return { key, ms: 30 * DAY, bucket: 'day' };
+    case '90d':
+      /* 91 天而不是 90：热力图按「周」对齐（13 列 × 7 行 = 91 格），
+         90 天会切掉一格、最后一列缺一天。 */
+      return { key, ms: 91 * DAY, bucket: 'day' };
+    case '1y':
+      /* [v8] 364 天 = 52 周整 —— 热力图把格子钉死成小方块（bandSize 13px）后，
+         13 周只有 ~170px 宽，必须拉长时间轴才能铺满面板。
+         364（不是 365）：52×7，对齐周后不多出第 53 列。
+         注意：请求日志有保留期（默认 30 天），更早的日期查不到行 ——
+         热力图上表现为无格，是诚实呈现而不是缺数。 */
+      return { key, ms: 364 * DAY, bucket: 'day' };
     case '24h':
     default:
       /* 认不出来的值仍回落到 24h（既有行为，未改）；**缺省**走上面的 'today' 分支。 */

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { KeyRound, Loader2, Plus, X } from 'lucide-react';
+import { CalendarX, CircleCheck, CircleMinus, KeyRound, Loader2, Plus, X } from 'lucide-react';
 import { api } from '../services/api';
 import { ApiError } from '../services/http';
 import { useResource } from '../hooks/useResource';
@@ -7,7 +7,7 @@ import type { ClientKeyRow } from '../types/api';
 import { Topbar } from '../components/ui/Topbar';
 import { Banner } from '../components/ui/Banner';
 import { Pill } from '../components/ui/Pill';
-import { Panel, StatBar } from '../components/ui/Panel';
+import { Panel, KpiRow, KpiTile } from '../components/ui/Panel';
 import { StateBlock, errorDetail } from '../components/ui/StateBlock';
 import { Modal } from '../components/ui/Modal';
 import { KeyTable } from '../components/clients/KeyTable';
@@ -105,7 +105,7 @@ export function ApiKeysPage() {
   return (
     <div className="view on">
       <Topbar
-        title="API Keys"
+        title="API 密钥"
         actions={
           <button type="button" className="btn btn-primary btn-sm" onClick={() => setCreating(true)}>
             <Plus size={14} />
@@ -127,18 +127,38 @@ export function ApiKeysPage() {
         {/* [v7.0-d] 三行卡片：标签 → 数字 → 口径。
             第三行说明这一格**按什么规则**算出来的 —— 尤其是「过期」：
             keyState 里过期优先于启停判断（expiresAt 已过就算过期，不看 enabled），
-            所以三格是互斥的，不能相加当总数用。
+            所以这三格是互斥的，不能相加当总数用。
             口径写在标签同行右端 —— 必须写**短**，超过约 150px 会被截成「…」。 */}
-        <StatBar items={[
-          {
-            label: '密钥总数',
-            value: count(summary.total),
-            detail: clientId ? `客户端筛选下 ${count(summary.total)} 把` : '全部密钥',
-          },
-          { label: '启用', value: count(summary.live), tone: 'live', detail: '未过期且启用' },
-          { label: '停用', value: count(summary.off), detail: '已停用且未过期' },
-          { label: '过期', value: count(summary.exp), tone: 'amber', detail: 'expiresAt 已过' },
-        ]} />
+        {/* [v5] 读数行 → 卡片，与概览/用量/请求日志三页统一。
+            四格互斥（过期优先于启停判断），不能相加当总数用 —— 所以首卡
+            「密钥总数」独立成组，后三格各自标注自己的判定规则。 */}
+        <KpiRow count={4}>
+          <KpiTile
+            lead
+            label="密钥总数"
+            value={count(summary.total)}
+            icon={<KeyRound size={14} />}
+            sub={clientId ? `客户端筛选下 ${count(summary.total)} 把` : '全部密钥'}
+          />
+          <KpiTile
+            label="启用"
+            value={<span className="live">{count(summary.live)}</span>}
+            icon={<CircleCheck size={14} />}
+            sub="未过期且启用"
+          />
+          <KpiTile
+            label="停用"
+            value={count(summary.off)}
+            icon={<CircleMinus size={14} />}
+            sub="已停用且未过期"
+          />
+          <KpiTile
+            label="过期"
+            value={summary.exp > 0 ? <span className="warn">{count(summary.exp)}</span> : count(summary.exp)}
+            icon={<CalendarX size={14} />}
+            sub="expiresAt 已过"
+          />
+        </KpiRow>
 
         {clientId ? (
           <div className="note">
@@ -203,7 +223,7 @@ export function ApiKeysPage() {
           <div className="footer-note">
             完整密钥只在创建时显示一次，服务端只保存哈希；停用后立即失效，可随时重新启用。改名与改绑定不会动作废 —— 已接入的客户端不受影响。
             <br />
-            上面三格互斥、可相加等于总数：<b>过期优先于启停判断</b>（expiresAt 已过即归过期，不再看启用状态），所以一把同时「启用」又「过期」的密钥只会计进「过期」。
+            上面「启用 / 停用 / 过期」三格互斥、相加等于总数：<b>过期优先于启停判断</b>（expiresAt 已过即归过期，不再看启用状态），所以一把同时「启用」又「过期」的密钥只会计进「过期」。
           </div>
         </Panel>
           </>

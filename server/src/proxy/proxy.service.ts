@@ -85,6 +85,50 @@ export function prependFirstChunk(body: ReadableStream<Uint8Array>, first: Uint8
 export const DEFAULT_ANTHROPIC_CHAT_PATH = '/mavis/api/v1/llm/v1/messages';
 
 /**
+ * [v1.7.4] 这段文本里有没有**可用的 SSE 数据帧**（`data: …` 且载荷非空）。
+ *
+ * 用途：Qoder 出站「探首块」时判「有字节但无内容」—— 生产实测过这种形态
+ * （回 200、响应体非空、但解不出任何 data 帧），旧判定会放过它、不重试，
+ * 用户白等到超时才收到 502。
+ *
+ * 为什么不算 `data: [DONE]`：只有结束标记等于上游没产出任何内容，仍应重试。
+ * 纯函数（可单测）；不做 JSON 解析 —— 这里只判「有没有东西可解」，
+ * 帧内结构坏了是解码层的事（那层会跳过坏帧、不会把整条流判死）。
+ */
+export function hasDataFrame(text: string): boolean {
+  for (const rawLine of text.split('\n')) {
+    const line = rawLine.replace(/\r$/, '');
+    if (!line.startsWith('data:')) continue;
+    const payload = line.slice(5).trim();
+    if (payload && payload !== '[DONE]') return true;
+  }
+  return false;
+}
+
+/**
+ * [v1.7.4] 首块是否**确定没有**可用帧。
+ *
+ * 「确定」二字是重点：分块边界会切断帧 —— 首块可能只是 `data: {"bod`，
+ * 那是**正常的上游分片**，不能判成「无内容」并触发重试（重发会白花一次额度，
+ * 而且用户等更久）。所以只有同时满足两条才判无内容：
+ *   ① 这一块里没有完整的 data 帧；
+ *   ② 它也不以 `data:` 开头（开头就说明帧被切断了，后续块会补全）。
+ *
+ * 判定用**宽松**方向：拿不准就算「有内容」，交给后面的解码层处理
+ * —— 误重试的代价（多一次上游调用、延迟翻倍）比漏重试（用户白等）更贵。
+ */
+export function firstChunkHasNoContent(text: string): boolean {
+  if (hasDataFrame(text)) return false;
+  /* 是否以一个**未完成**的帧开头（`data:` 出现但载荷还没到）。
+     ⚠️ `data: [DONE]` 不算未完成 —— 它是完整帧、且已由上面的 hasDataFrame 排除，
+     这里必须把它排除在「被切断」之外，否则「只有 [DONE] 的响应」会被误判成有内容。 */
+  const trimmedEnd = text.replace(/\s+$/, '');
+  const lastLine = trimmedEnd.slice(trimmedEnd.lastIndexOf('\n') + 1);
+  if (lastLine.startsWith('data:') && lastLine.slice(5).trim() !== '[DONE]') return false;
+  return true;
+}
+
+/**
  * [v0.5.0 / v0.6.1] anthropic（MiniMax Code）出站 UA。
  *
  * 取值依据（2026-10-11 实机取证 + 官方 CLI 0.6.8 源码）：
@@ -479,7 +523,16 @@ export class ProxyService {
     }
 
     const rewritten = rewriteRequestBody(body, {
-      promptRewrite: cfg.upstream.promptRewrite,
+      /* [v1.7.4] prompt 改写**只对 openai（WorkBuddy）生效**。
+         它是对抗上游 system 模板指纹的手段（11128 渠道校验），WorkBuddy 专有；
+         anthropic / qoder 没有那套校验，改写只会**篡改用户的 system 提示**。
+         生产实证：Qoder 侧 47 次成功请求里 46 次带 template_rewritten_5 ——
+         一直是白白改动用户 prompt，成功率照旧 84%（也说明它不是那些 502 的原因）。
+         ⚠️ 只关「提示改写」这一档（RewriteOptions.promptRewrite），
+         `rewriteRequestBody` 的其余四件事必须保留：developer→system 规范化、
+         未知 role 降级、无 system 时注入最小 system、剥 stream_options。
+         后者尤其重要 —— Qoder 的每次成功记录都带 stream_options_stripped。 */
+      promptRewrite: routed.provider.protocol === 'openai' ? cfg.upstream.promptRewrite : 'off',
       neutralPrompt: cfg.upstream.defaultSystemPrompt || undefined,
     });
     ctx.notes = [...rewritten.notes];
@@ -1001,9 +1054,25 @@ export class ProxyService {
       }
 
       /* 等首块字节：拿到 → 塞回新流一并交给解码器（不丢首帧内容）；
-         流直接结束 → 零内容断流，还有额度就重试。 */
+         流直接结束 / 拿到的字节里**没有任何有效 SSE 帧** → 零内容断流，还有额度就重试。
+
+         [v1.7.4] 为什么加了「有字节但无内容」这一支：
+         生产实测（2026-10-21 15:50:43）有一种失败形态 —— Qoder 回 200 且**响应体非空**，
+         所以旧的「byteLength === 0」判定放过它、不重试；但那些字节解码后
+         **解不出任何 data: 帧**（空帧 / 错误信封 / 半截分块），于是
+         `sse-stream` 立刻读到结束 → `first_byte_ms` 为 NULL、`total_tokens=0`、
+         note=stream_aborted。用户白等 14 秒后收到 502，而重试一次很可能就过
+         （同一请求两次结果不同的实测见 Qoder 探针）。
+
+         判定放这里、不放 `qoderToOpenAiSse`：那层在流式管道中间，改它会让**所有**
+         请求的首字延迟都往后推（要等首帧解码完才能决定是否重发）。这里只看首块，
+         本来就已经在读它了，零额外时序代价。 */
       const first = await this.readFirstBytes(res.body);
-      if (first.done || !first.value || first.value.byteLength === 0) {
+      const noUsableFrame =
+        !first.done && first.value && first.value.byteLength > 0
+          ? firstChunkHasNoContent(new TextDecoder().decode(first.value))
+          : true;
+      if (first.done || !first.value || first.value.byteLength === 0 || noUsableFrame) {
         guard.dispose();
         if (attempt < MAX_QODER_RETRY) continue;
         slot.release();

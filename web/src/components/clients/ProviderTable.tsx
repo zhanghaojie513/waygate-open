@@ -1,5 +1,7 @@
 import { CalendarCheck, Plus, RefreshCw, Trash2, Wrench } from 'lucide-react';
-import { Pill } from '../ui/Pill';
+import { RowMenu } from '../ui/RowMenu';
+import { Chip } from '../ui/Pill';
+import { providerColor } from '../../lib/providerColor';
 import type { ProviderItem, ProviderUsageRow } from '../../types/api';
 
 import { formatCredits, formatInt, formatRelative } from '../../lib/format';
@@ -96,8 +98,12 @@ export function ProviderTable({
             return (
               <tr className="prov-row" key={p.id}>
                 <td className="td-strong">
+                  {/* [v5] 提供商身份色点：与光谱七色同源，按 id 稳定映射。
+                      和官网棱镜装置说的是同一件事 —— 那里「光被分成七色」，
+                      这里「流量按来源分色」。同一家在任何页面都是同一个颜色。 */}
+                  <i className="prov-dot" style={{ background: providerColor(p.id) }} aria-hidden="true" />
                   {p.name}
-                  {p.active ? <Pill tone="live">已启用</Pill> : <Pill tone="ghost">未启用</Pill>}
+                  {p.active ? <Chip tone="ok">已启用</Chip> : <Chip tone="mute">未启用</Chip>}
                   {/* [v0.5.0] 协议徽标：一眼区分 WorkBuddy（OpenAI 方言）与 MiniMax（Anthropic 方言）。
                       [v0.6.0] Qoder CN（COSY 协议，免费档）。 */}
                   {p.protocol === 'custom' ? (
@@ -172,9 +178,12 @@ export function ProviderTable({
                   <Tooltip content="供应商访问密钥（掩码显示；全量只存在服务器上）">
                     <span className="cred-mask">{p.credentialMask}</span>
                   </Tooltip>
-                  <span className={`up-badge${p.configured ? '' : ' warn'}`}>
-                    {p.configured ? '有效' : '未配置'}
-                  </span>
+                  {/* [v5] 与上面那处一致：凭证状态用 Chip（健康语义），不用 up-badge。
+                      up-badge 的底色是 brand-tint、字色是 brand-400 —— 浅色主题下
+                      brand-400 是深朱砂，读起来像"警示"，而"凭证有效"是好消息。 */}
+                  <Chip tone={p.configured ? 'ok' : 'warn'}>
+                    {p.configured ? '凭证有效' : '未配置'}
+                  </Chip>
                 </td>
                 <td className="r td-mono">{p.active ? formatInt(usageByProvider.get(p.id)?.requests ?? 0) : '—'}</td>
                 {/* [2026-10-18] 不能 `?? 0`：MiniMax 系上游不回单次 credit，整桶未知时
@@ -219,86 +228,6 @@ export function ProviderTable({
                         自动签到时刻**两家不同**，故按提供商取（不能写死一个）：MiniMax 08:05、
                         Qoder 10:05（官方活动每日 10:00 UTC+8 刷新，见 qoder-activity.service.ts 常量注释）。
                         文案里的时刻必须与服务端常量一致 —— 否则用户照提示等到 08:05 会白等。 */}
-                    {p.credKind === 'oauth_minimax' || p.protocol === 'qoder' ? (
-                      <Tooltip
-                        content={(() => {
-                          const at = p.protocol === 'qoder' ? '10:05' : '08:05';
-                          const base = p.signin?.checkedOn
-                            ? `最近签到 ${p.signin.checkedOn}${p.signin.lastPoints ? ` · +${p.signin.lastPoints} 积分` : ''}（relay 每天 ${at} 自动签）`
-                            : `今天还没签到 —— 点一下立即签（relay 每天 ${at} 也会自动签）`;
-                          /* [v1.6.10] Qoder 补一行**官方标注**（用户口径）：上面的 10:05 是 relay
-                             自己的代签时刻，与官方的 10:00 刷新不是一回事，光给前者会让人以为
-                             "10:05 才有活动"；有效期 30 天更是结果里推不出来的信息。
-                             MiniMax 无此标注，故只对 qoder 追加（两家共用这一个 Tooltip）。 */
-                          return p.protocol === 'qoder' ? (
-                            <>
-                              {base}
-                              <br />
-                              Qoder 官方标注：每日 10:00（UTC+8）刷新，领取后 30 天有效。
-                            </>
-                          ) : base;
-                        })()}
-                      >
-                        {/* ⚠️ 这里**不能**翻 `disabled`：Tooltip 在被包裹元素 `disabled` 时
-                            会改用一层 `<span class="tooltip-anchor">` 承载交互（原生 disabled
-                            元素收不到 hover/focus），非禁用时则返回裸 trigger —— 于是
-                            `disabled` 一变，Tooltip 的分支就变、两棵不同的树互换 = 整棵重挂。
-                            点「已签到」时 busy 翻一次、刷新回来再翻一次，用户看到的就是"闪一下"。
-                            改用 `aria-disabled`（Tooltip 不据它分支，树恒定）+ 守卫点击；
-                            外观由 CSS 的 `.mini-pill[aria-disabled='true']` 表达。 */}
-                        {/* 禁用条件 = 忙碌 **或今天已签到** —— 已签到是终态，不该再发请求
-                            （服务端幂等但没必要打这一枪）。用 `aria-disabled` 而非 `disabled`
-                            的原因见上：Tooltip 对被包裹元素的 `disabled` 敏感，会换分支重挂。 */}
-                        <button
-                          type="button"
-                          className="mini-pill"
-                          aria-disabled={busy || p.signin?.checkedOn === todayIso()}
-                          onClick={() => {
-                            if (busy || p.signin?.checkedOn === todayIso()) return;
-                            onSignin(p);
-                          }}
-                        >
-                          <CalendarCheck size={12} />
-                          {p.signin?.checkedOn === todayIso() ? '已签到' : '签到'}
-                        </button>
-                      </Tooltip>
-                    ) : null}
-                    {/* [v1.4.0] WorkBuddy 领取域（OAuth）：导入凭证 + 手动签到。
-                        [v1.4.4] 今日已跑过即禁用（服务端幂等但没必要白打 17 个任务接口）。
-                        [v1.4.5] 按钮改叫「签到」（用户口径）；任务面板移至设置页「提供商健康」。 */}
-                    {p.protocol === 'openai' ? (
-                      p.wbOAuth?.configured ? (
-                        <Tooltip
-                          content={
-                            p.wbSignin?.checkedOn === todayIso()
-                              ? '今天已签到过（明天 08:05 自动跑；任务面板在设置 → 提供商健康）'
-                              : '立即签到 + 顺带跑一轮成长任务与连登兑换（每天 08:05 也会自动跑）。转发不受影响。'
-                          }
-                        >
-                          <button
-                            type='button'
-                            className='mini-pill'
-                            aria-disabled={busy || p.wbSignin?.checkedOn === todayIso()}
-                            onClick={() => { if (!busy && p.wbSignin?.checkedOn !== todayIso()) onGrowthRun(p); }}
-                          >
-                            <CalendarCheck size={12} />
-                            {p.wbSignin?.checkedOn === todayIso() ? '已签到' : '签到'}
-                          </button>
-                        </Tooltip>
-                      ) : (
-                        <Tooltip content={'导入桌面端 OAuth 凭证后可代领签到/任务（上游不允许 API 密钥代领）。粘贴 tools/wb-oauth-export.mjs 的输出；转发仍走 API 密钥。'}>
-                          <button
-                            type='button'
-                            className='mini-pill'
-                            aria-disabled={busy}
-                            onClick={() => { if (!busy) onOauthImport(p); }}
-                          >
-                            <CalendarCheck size={12} />
-                            导入OAuth
-                          </button>
-                        </Tooltip>
-                      )
-                    ) : null}
                     {/* [v0.5.1] 多生效：启用/停用切换（最后一个生效的不可停 —— 服务端把关）。 */}
                     {p.active ? (
                       <Tooltip content="退出出站路由（目录与凭证保留，可再启用）">
@@ -317,25 +246,113 @@ export function ProviderTable({
                         启用
                       </button>
                     )}
-                    <Tooltip
-                      content={
-                        p.active
-                          ? '不能删除已启用的提供商 —— 先停用它'
-                          : rows.length <= 1
-                          ? '至少保留一个提供商'
-                          : '删除这个提供商（凭证文件一并删除）'
-                      }
-                    >
-                      <button
-                        type="button"
-                        className="mini-pill danger"
-                        aria-disabled={busy || p.active || rows.length <= 1}
-                        onClick={() => { if (!busy && !p.active && rows.length > 1) onDelete(p); }}
-                      >
-                        <Trash2 size={12} />
-                        删除
-                      </button>
-                    </Tooltip>
+                    {/* [v5] 低频操作收进「更多」：签到与删除。
+                        高频三枚（配置 / 模型列表 / 启停）留在行内。
+                        理由：五枚并排要 380px，操作列只有 300px —— 折行会让行高
+                        由按钮数量决定（实测 46 / 76 / 108 三种行高并存），
+                        表格失去横向基线。而 nowrap 会撑出横向滚动条，
+                        为了点「删除」还得先滑一下 —— 低频操作不该占这个成本。 */}
+                    <RowMenu disabled={busy}>
+            {p.credKind === 'oauth_minimax' || p.protocol === 'qoder' ? (
+              <Tooltip
+                content={(() => {
+                  const at = p.protocol === 'qoder' ? '10:05' : '08:05';
+                  const base = p.signin?.checkedOn
+                    ? `最近签到 ${p.signin.checkedOn}${p.signin.lastPoints ? ` · +${p.signin.lastPoints} 积分` : ''}（relay 每天 ${at} 自动签）`
+                    : `今天还没签到 —— 点一下立即签（relay 每天 ${at} 也会自动签）`;
+                  /* [v1.6.10] Qoder 补一行**官方标注**（用户口径）：上面的 10:05 是 relay
+                     自己的代签时刻，与官方的 10:00 刷新不是一回事，光给前者会让人以为
+                     "10:05 才有活动"；有效期 30 天更是结果里推不出来的信息。
+                     MiniMax 无此标注，故只对 qoder 追加（两家共用这一个 Tooltip）。 */
+                  return p.protocol === 'qoder' ? (
+                    <>
+                      {base}
+                      <br />
+                      Qoder 官方标注：每日 10:00（UTC+8）刷新，领取后 30 天有效。
+                    </>
+                  ) : base;
+                })()}
+              >
+                {/* ⚠️ 这里**不能**翻 `disabled`：Tooltip 在被包裹元素 `disabled` 时
+                    会改用一层 `<span class="tooltip-anchor">` 承载交互（原生 disabled
+                    元素收不到 hover/focus），非禁用时则返回裸 trigger —— 于是
+                    `disabled` 一变，Tooltip 的分支就变、两棵不同的树互换 = 整棵重挂。
+                    点「已签到」时 busy 翻一次、刷新回来再翻一次，用户看到的就是"闪一下"。
+                    改用 `aria-disabled`（Tooltip 不据它分支，树恒定）+ 守卫点击；
+                    外观由 CSS 的 `.mini-pill[aria-disabled='true']` 表达。 */}
+                {/* 禁用条件 = 忙碌 **或今天已签到** —— 已签到是终态，不该再发请求
+                    （服务端幂等但没必要打这一枪）。用 `aria-disabled` 而非 `disabled`
+                    的原因见上：Tooltip 对被包裹元素的 `disabled` 敏感，会换分支重挂。 */}
+                <button
+                  type="button"
+                  className="mini-pill"
+                  aria-disabled={busy || p.signin?.checkedOn === todayIso()}
+                  onClick={() => {
+                    if (busy || p.signin?.checkedOn === todayIso()) return;
+                    onSignin(p);
+                  }}
+                >
+                  <CalendarCheck size={12} />
+                  {p.signin?.checkedOn === todayIso() ? '已签到' : '签到'}
+                </button>
+              </Tooltip>
+            ) : null}
+            {/* [v1.4.0] WorkBuddy 领取域（OAuth）：导入凭证 + 手动签到。
+                [v1.4.4] 今日已跑过即禁用（服务端幂等但没必要白打 17 个任务接口）。
+                [v1.4.5] 按钮改叫「签到」（用户口径）；任务面板移至设置页「提供商健康」。 */}
+            {p.protocol === 'openai' ? (
+              p.wbOAuth?.configured ? (
+                <Tooltip
+                  content={
+                    p.wbSignin?.checkedOn === todayIso()
+                      ? '今天已签到过（明天 08:05 自动跑；任务面板在设置 → 提供商健康）'
+                      : '立即签到 + 顺带跑一轮成长任务与连登兑换（每天 08:05 也会自动跑）。转发不受影响。'
+                  }
+                >
+                  <button
+                    type='button'
+                    className='mini-pill'
+                    aria-disabled={busy || p.wbSignin?.checkedOn === todayIso()}
+                    onClick={() => { if (!busy && p.wbSignin?.checkedOn !== todayIso()) onGrowthRun(p); }}
+                  >
+                    <CalendarCheck size={12} />
+                    {p.wbSignin?.checkedOn === todayIso() ? '已签到' : '签到'}
+                  </button>
+                </Tooltip>
+              ) : (
+                <Tooltip content={'导入桌面端 OAuth 凭证后可代领签到/任务（上游不允许 API 密钥代领）。粘贴 tools/wb-oauth-export.mjs 的输出；转发仍走 API 密钥。'}>
+                  <button
+                    type='button'
+                    className='mini-pill'
+                    aria-disabled={busy}
+                    onClick={() => { if (!busy) onOauthImport(p); }}
+                  >
+                    <CalendarCheck size={12} />
+                    导入OAuth
+                  </button>
+                </Tooltip>
+              )
+            ) : null}
+            <Tooltip
+              content={
+                p.active
+                  ? '不能删除已启用的提供商 —— 先停用它'
+                  : rows.length <= 1
+                  ? '至少保留一个提供商'
+                  : '删除这个提供商（凭证文件一并删除）'
+              }
+            >
+              <button
+                type="button"
+                className="mini-pill danger"
+                aria-disabled={busy || p.active || rows.length <= 1}
+                onClick={() => { if (!busy && !p.active && rows.length > 1) onDelete(p); }}
+              >
+                <Trash2 size={12} />
+                删除
+              </button>
+            </Tooltip>
+                    </RowMenu>
                   </span>
                 </td>
               </tr>

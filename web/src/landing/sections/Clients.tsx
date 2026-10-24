@@ -17,8 +17,6 @@ import { accessBaseUrl } from '../../lib/accessUrl';
  * 「提供 Anthropic Messages 兼容端点」，**不写**「支持 Claude Code 全部功能」这类断言 —— 未验证。
  * 地址与所在页面同源，由 `lib/accessUrl` 现算，绝不硬编码。
  */
-const CAM = '{"x":148,"y":-94,"z":-630,"rx":6,"ry":-11,"rz":-2.5,"fog":0.60,"dim":0.34}';
-
 /** 示例密钥：格式与真实一致（`sk-waygate-<hex>`），是占位符，不是可用密钥。 */
 const KEY = 'sk-waygate-4f9c2a7e1b83d04f391c7a2e';
 /** 接入地址（含 `/v1`）——从当前页面现算。OpenAI 兼容端点填这个。 */
@@ -48,7 +46,7 @@ const SPECS = [
 
 export function Clients() {
   return (
-    <section className="section" id="clients" data-cam={CAM}>
+    <section className="section" id="clients">
       <div className="wrap">
         <div className="sec-head reveal">
           <div>

@@ -8,8 +8,8 @@
 [![NestJS](https://img.shields.io/badge/NestJS-12-E0234E?style=flat-square)](https://nestjs.com)
 [![SQLite](https://img.shields.io/badge/SQLite-better--sqlite3-003B57?style=flat-square)](https://github.com/WiseLibs/better-sqlite3)
 [![Node](https://img.shields.io/badge/Node-%E2%89%A522.9-3C873A?style=flat-square)](https://nodejs.org)
-[![version](https://img.shields.io/badge/version-1.7.3-4A38C0?style=flat-square)](https://github.com/zhanghaojie513/waygate-open/releases)
-[![tests](https://img.shields.io/badge/tests-878%20passed-0A7247?style=flat-square)](./server)
+[![version](https://img.shields.io/badge/version-1.10.0-4A38C0?style=flat-square)](https://github.com/zhanghaojie513/waygate-open/releases)
+[![tests](https://img.shields.io/badge/tests-899%20passed-0A7247?style=flat-square)](./server)
 
 ![途关 · Waygate](docs/img/intro.png)
 
@@ -45,10 +45,10 @@
 - **双方言出口**：`/v1/chat/completions`（OpenAI 兼容）与 `/v1/messages`（Anthropic 兼容），流式/非流式；三种上游方言自动翻译
 - **多提供商**：目录按 `(provider_id, id)` 分区；来源分 `seed / upstream / observed / manual` 四类，observed 由真实流量并入；三家可同时生效
 - **导入客户端**（v1.6.11，三家订阅制客户端的**唯一**凭证入口）：控制台选客户端 → 跳各自**官方授权页** → 回来自动落盘凭证。三家的授权机制各不相同（WorkBuddy 业务码判等待 / MiniMax PKCE 设备码 / Qoder PKCE + 404 判等待），服务端按协议分派；私有状态（`device_code` / `code_verifier`）只存服务端，**绝不回传浏览器**。三家凭证都在客户端登录态里、用户拿不到，因此**不提供手填**（WorkBuddy 原用的 `ck_` 密钥已退役，转发也改走 OAuth）——行内「重新导入授权」用于换账号 / 刷新令牌
-- **自定义提供商**（v1.7.3，「导入客户端」旁的第二条新建路径）：任意 **OpenAI 兼容端点**（DeepSeek / OpenRouter / 硅基流动 / 自建 vLLM…）填 **Base URL + API Key** 即可接入。与上面不矛盾 —— API-key 制端点的 key 就在用户手上，**手填就是它的原生鉴权**（和当年订阅客户端的 `ck_` 死路是两回事）。出站走独立分支：纯 Bearer、无指纹 UA、不做 prompt 重写、无 111xx 重试梯；模型清单拉 `GET /v1/models`，拉不到可**手动补模型**（`source='manual'`，不被替换式同步冲掉）；积分列恒「未回报」（不自标定）。聊天端点路径**智能解析**：base 无版本段拼 `/v1/chat/completions`，以 `/vN` 结尾只拼 `/chat/completions`，也可显式覆盖
+- **自定义提供商**（v1.10.0，「导入客户端」旁的第二条新建路径）：任意 **OpenAI 兼容端点**（DeepSeek / OpenRouter / 硅基流动 / 自建 vLLM…）填 **Base URL + API Key** 即可接入。与上面不矛盾 —— API-key 制端点的 key 就在用户手上，**手填就是它的原生鉴权**（和当年订阅客户端的 `ck_` 死路是两回事）。出站走独立分支：纯 Bearer、无指纹 UA、不做 prompt 重写、无 111xx 重试梯；模型清单拉 `GET /v1/models`，拉不到可**手动补模型**（`source='manual'`，不被替换式同步冲掉）；积分列恒「未回报」（不自标定）。聊天端点路径**智能解析**：base 无版本段拼 `/v1/chat/completions`，以 `/vN` 结尾只拼 `/chat/completions`，也可显式覆盖
 - **API 密钥**：绑定提供商优先级、权限范围（全部/按族/按模型/按标签）、IP 上限、token 配额、IP 白名单
 - **请求日志**：提供商列读 `provider_id` **事实列**（本次请求实际路由到哪家；迁移前的老行按目录反解兜底）；SSE 流也留痕；**游标（keyset）分页**——翻页期间的新写入不产生重复行；按 `logs.retainDays` 每日自动清理过期日志（启动即补跑停机期间欠的账）
-- **延迟归因**（v1.7.3）：把「慢不慢」拆成「谁慢」——`ingress_ms`（客户端上传 + 解析）/ `auth_ms`（鉴权）/ `prep_ms`（路由 + 凭证 + 组包）/ `upstream_wait_ms`（上游排队 + 思考）。详情抽屉「时间去哪了」分段条；用量页「我方开销」均值 + 「首字节 P95」（P95 取秩不插值）。四列**全可空**，NULL = 未记录，**绝不用 0 冒充**
+- **延迟归因**（v1.10.0）：把「慢不慢」拆成「谁慢」——`ingress_ms`（客户端上传 + 解析）/ `auth_ms`（鉴权）/ `prep_ms`（路由 + 凭证 + 组包）/ `upstream_wait_ms`（上游排队 + 思考）。详情抽屉「时间去哪了」分段条；用量页「我方开销」均值 + 「首字节 P95」（P95 取秩不插值）。四列**全可空**，NULL = 未记录，**绝不用 0 冒充**
 - **不可逆前留档**（v1.7.2）：删提供商前把「行 + 模型目录 + 启停偏好 + 凭证文件原文」写进 `backup/provider-<id>-<ts>.json`（0600 / 目录 0700，保留最近 20 份）；写失败不阻断删除（如实返回 `backup: null`）。另有 `GET /api/providers/:id/impact` 查「会碰到谁」（绑定密钥 / 模型范围 / 近 N 小时流量）
 - **积分与用量**：趋势图（Token / 请求数双口径，**等距时间轴**，空桶补零）、按模型 / 按提供商拆分、缓存命中率、缓存 token 计量（Anthropic 口径：prompt = input + cache_creation + cache_read）
 - **积分账本**：MiniMax `credit/details` 真实余额（精确到 0.01）；凭证 refresh token 自动续期 + 每日签到（专用账号后即可代签）；WorkBuddy 资源包聚合余额（`get-user-resource` POST 实测口径）
@@ -56,9 +56,9 @@
 - **WorkBuddy 领取域**（v1.4.0；v1.6.11 起与转发统一）：签到代领 + 成长任务 + 连登兑换走**用户会话域**（OAuth，`providers/<id>.oauth`，多会话共存不互踢）——正是这条链路让 `ck_` 得以整体退役。诚实边界：任务多为「体验 XX」型，前置条件不满足就如实记 `skipped`，**绝不伪造行为去凑任务**；补登卡/抽奖等资源消耗型操作不自动化
 - **容错**：Qoder 零内容断流**自动重试一次**（对客户端无感）；上游 11128 渠道校验自动降级重试；**11128 渠道熔断**（连续 3 次「降级重试也 11128」即开闸，冷却期内未打上游、未占并发槽、未计费，毫秒级 502 + `retry-after`，阵发过去自动半开放行探测）——上游阵发期每个失败要烧 ~65s，并发槽是全局单计数，不加熔断会烧满槽饿死其他提供商；**只计渠道级信号**（内容级 11128 降级能过的不计入），避免一个客户端的请求特征变成全提供商的闸门
 - **审计不丢行**：流式请求在途期间密钥被删时，落库撞 `key_id` 外键会丢整行 —— 现自动降级 `key_id = NULL` 重试保住整行（tokens / 积分 / 状态 / 耗时照常），`client_id` / `key_hint` 快照仍在，note 标记 `key_deleted_inflight`
-- **提供商归属是记录的事实**（v1.7.3）：`requests.provider_id` 记下**本次请求实际路由到**的提供商。原因：同一模型 id 可能同时存在于两家目录（实测 MiniMax-M2.7 / M3 / M3.1-Flash-Preview 同时在 MiniMax Code 与 Code2），而「目录反解」按创建序先到先得、「路由」按密钥绑定优先 —— 两者不一致时统计会静默记到错误的那家，且无字段可查。老行留 `NULL` 并按目录反解兜底（不回填猜测）
+- **提供商归属是记录的事实**（v1.10.0）：`requests.provider_id` 记下**本次请求实际路由到**的提供商。原因：同一模型 id 可能同时存在于两家目录（实测 MiniMax-M2.7 / M3 / M3.1-Flash-Preview 同时在 MiniMax Code 与 Code2），而「目录反解」按创建序先到先得、「路由」按密钥绑定优先 —— 两者不一致时统计会静默记到错误的那家，且无字段可查。老行留 `NULL` 并按目录反解兜底（不回填猜测）
 - **错误语义统一**（v1.6.32）：`/api/*` 的「资源不存在」一律 404 统一信封（不再 200 + `reason` 字符串）；`POST /api/providers` 与其余写方法一样返回 200（此前是 Nest 默认 201）；`/v1/usage` 鉴权失败回 **401**（此前返回 200 + error body，客户端会当成功）
-- **趋势图覆盖整个窗口**（v1.7.3）：桶序列起点**向下对齐到桶边界**、终点是当前桶，于是图覆盖区间 ⊇ 窗口区间，`Σ趋势 === 卡片数字` 成为结构性保证（1h→2 格、24h→25 格、7d→8 格、30d→31 格）。首/末桶带 `partial` 标记，tooltip 标「不足一格」
+- **趋势图覆盖整个窗口**（v1.10.0）：桶序列起点**向下对齐到桶边界**、终点是当前桶，于是图覆盖区间 ⊇ 窗口区间，`Σ趋势 === 卡片数字` 成为结构性保证（1h→2 格、24h→25 格、7d→8 格、30d→31 格）。首/末桶带 `partial` 标记，tooltip 标「不足一格」
 - **控制台**：React 19 单页，明暗双主题（跟随系统/手动，侧栏底部切换；官网与控制台同套主题——棱镜场景浅色下以 `multiply` 显形、深色下以 `screen`），CSS 伪元素 tooltip 体系，同形状骨架屏；页间数据先旧后新（SWR：重进页面即刻渲染上次数据、后台刷新无缝替换，自己的写操作写穿缓存不闪旧态）；「提供商健康」只读总览
 - **性能**：路由级代码分割：官网与控制台互不加载对方代码，首屏 gzip <100K；vendor 独立 chunk 享 30d `immutable` 长缓存（发版只重下业务 chunk）；概览 5s TTL 缓存（写操作即清）、SQL 语句按文本缓存复用、凭证文件 stat 失效缓存、last_seen 节流落库——同进程转发 SSE，省下的每次查询/写库都是还给流的事件循环时间；Nginx gzip（level 5）压缩传输
 
@@ -79,7 +79,7 @@ npm install -g waygate-open
 waygate-open
 ```
 
-想看固定版本而不是跟着 `latest` 走：`npx waygate-open@1.7.3`。
+想看固定版本而不是跟着 `latest` 走：`npx waygate-open@1.10.0`。
 
 两种方式行为一致：起本地服务并**自动打开浏览器**到控制台（默认 <http://127.0.0.1:8787/console>）。
 首次启动的管理口令默认是 **`waygate`** —— 仅当只监听回环（`127.0.0.1`）时套用这个
@@ -444,4 +444,4 @@ tools/                     仓库级工具（lint 门禁、token 合并、截图
 
 ---
 
-版本约定：`1.0.0` 起 API 契约稳定（当前 `1.7.3`，见 `server/src/version.ts`；历史版本见 [Releases](https://github.com/zhanghaojie513/waygate-open/releases)）。
+版本约定：`1.0.0` 起 API 契约稳定（当前 `1.10.0`，见 `server/src/version.ts`；历史版本见 [Releases](https://github.com/zhanghaojie513/waygate-open/releases)）。

@@ -739,26 +739,34 @@ export class OverviewService {
     /* 趋势：**一次扫描**按 (桶, 模型) 分组 —— 柱的合计（请求/积分/tokens/错误）与 tooltip 的
        模型切片都从这份结果归并（此前是两条各扫一遍窗口的查询）。
        [v0.5.11] tooltip 每桶取 token 最多的前 TREND_TOP_MODELS 个模型（完整明细在「按模型消耗明细」表）。 */
+    /* 趋势：**一次扫描**按 (桶, 模型, 提供商) 分组 —— 柱的合计（请求/积分/tokens/错误）、
+       tooltip 的模型切片、[v8] 概览堆叠面积图的提供商切片，都从这份结果归并
+       （此前是两条各扫一遍窗口的查询）。
+       [v0.5.11] tooltip 每桶取 token 最多的前 TREND_TOP_MODELS 个模型（完整明细在「按模型消耗明细」表）。
+       [v8] providers 切片：概览的 token 折线改按**提供商**堆叠（用户口径「按提供商维度来」）。
+       分组键带上 provider_id（迁移 018 起有此列，真实路由结果），名字解析与
+       byProvider 同源（providerName / providerByModel 兜底老行）；null = 目录外/未记录，
+       与请求日志「提供商」列同口径显示「未归属」。 */
     const bucketExpr =
       spec.bucket === 'hour'
         ? `strftime('%Y-%m-%dT%H', ts/1000, 'unixepoch', 'localtime')`
         : `strftime('%Y-%m-%d', ts/1000, 'unixepoch', 'localtime')`;
     const trendSlices = this.stmt(
-        `SELECT ${bucketExpr} AS bucket, model,
+        `SELECT ${bucketExpr} AS bucket, model, provider_id AS providerId,
                 COUNT(*) AS requests,
                 COALESCE(SUM(credits), 0) AS credits,
                 COALESCE(SUM(total_tokens), 0) AS tokens,
                 SUM(CASE WHEN status >= 400 THEN 1 ELSE 0 END) AS errors
            FROM requests WHERE ts >= ? AND ts < ?
-          GROUP BY bucket, model ORDER BY bucket`,
+          GROUP BY bucket, model, provider_id ORDER BY bucket`,
       )
-      .all(from, to) as Array<{ bucket: string; model: string; requests: number; credits: number; tokens: number; errors: number }>;
+      .all(from, to) as Array<{ bucket: string; model: string; providerId: string | null; requests: number; credits: number; tokens: number; errors: number }>;
 
-    const bucketAgg = new Map<string, { bucket: string; requests: number; credits: number; tokens: number; errors: number; models: TrendModelSlice[] }>();
+    const bucketAgg = new Map<string, { bucket: string; requests: number; credits: number; tokens: number; errors: number; models: TrendModelSlice[]; providerTokens: Map<string, { name: string; tokens: number }> }>();
     for (const s of trendSlices) {
       let b = bucketAgg.get(s.bucket);
       if (!b) {
-        b = { bucket: s.bucket, requests: 0, credits: 0, tokens: 0, errors: 0, models: [] };
+        b = { bucket: s.bucket, requests: 0, credits: 0, tokens: 0, errors: 0, models: [], providerTokens: new Map() };
         bucketAgg.set(s.bucket, b);
       }
       b.requests += s.requests;
@@ -766,11 +774,23 @@ export class OverviewService {
       b.tokens += s.tokens;
       b.errors += s.errors;
       b.models.push({ model: s.model, tokens: s.tokens });
+      const pName = s.providerId
+        ? providerName.get(s.providerId) ?? s.providerId
+        : providerByModel.get(s.model) ?? null;
+      /* 键用 providerId（前端 providerColor 以 id 为键，与提供商表同色）；
+         老行无 id 才退显示名。名字随值存，输出时不再反查。 */
+      const pKey = s.providerId ?? (pName ? idByName.get(pName) ?? pName : '未归属');
+      const prev = b.providerTokens.get(pKey);
+      b.providerTokens.set(pKey, { name: pName ?? '未归属', tokens: (prev?.tokens ?? 0) + s.tokens });
     }
     const rawTrend = [...bucketAgg.values()].map((t) => ({
       ...t,
       credits: round2(t.credits),
       models: t.models.sort((a, b) => b.tokens - a.tokens).slice(0, TREND_TOP_MODELS),
+      providers: [...t.providerTokens.entries()]
+        .map(([pid, slice]) => ({ providerId: pid, provider: slice.name, tokens: slice.tokens }))
+        .sort((a, b) => b.tokens - a.tokens)
+        .slice(0, TREND_TOP_MODELS),
     }));
 
     /* [v0.6.6] **补满空桶**：SQL 的 `GROUP BY bucket` 只返回「有请求的桶」，

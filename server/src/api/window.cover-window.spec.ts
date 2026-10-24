@@ -84,6 +84,24 @@ describe('fillEmptyBuckets · 覆盖整个窗口（首桶不得丢弃）', () =>
     expect(out).toHaveLength(31);
   });
 
+  it('★ 90d（v7 热力图）：92 个日桶（首日残段 + 91 整天）', () => {
+    const now = local(2026, 10, 19, 15, 30);
+    const spec = resolveWindow('90d');
+    const { from, to } = windowRange(spec, now);
+    const out = fillEmptyBuckets<Row>([], spec, from, to, empty);
+    /* 92 = 首日残段（15:30 起窗）+ 91 个整天 —— 与 30d→31 同一 +1 模式。
+       热力图的 13×7 对齐由前端负责（90d 只作数据源，不进选择器）。 */
+    expect(out).toHaveLength(92);
+  });
+
+  it('★ 1y（v8 热力图拉长轴）：365 个日桶（首日残段 + 364 整天 = 52 周）', () => {
+    const now = local(2026, 10, 19, 15, 30);
+    const spec = resolveWindow('1y');
+    const { from, to } = windowRange(spec, now);
+    const out = fillEmptyBuckets<Row>([], spec, from, to, empty);
+    expect(out).toHaveLength(365);
+  });
+
   it('★ today：不变（起点本就是零点，桶数 = 当前小时 + 1）', () => {
     const now = local(2026, 10, 19, 5, 20);
     const spec = resolveWindow('today');

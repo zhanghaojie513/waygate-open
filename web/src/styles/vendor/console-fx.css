@@ -28,18 +28,12 @@
     var(--border-subtle) 58%, transparent 100%);
 }
 .sb-item { position: relative; transition: background var(--d-hover) var(--ease-out), color var(--d-hover) var(--ease-out); }
-.sb-item::before {
-  content: ""; position: absolute; left: 0; top: 50%; transform: translateY(-50%) scaleY(0);
-  width: 3px; height: 56%; border-radius: 0 3px 3px 0;
-  background: linear-gradient(180deg, var(--brand-450), var(--brand-stop-2));
-  box-shadow: 0 0 14px 1px color-mix(in srgb, var(--brand-450) 70%, transparent);
-  transition: transform var(--d-hover) var(--ease-out);
-}
-.sb-item.active::before { transform: translateY(-50%) scaleY(1); }
-.sb-item.active::after {
-  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
-  background: radial-gradient(130px 42px at 10% 50%, color-mix(in srgb, var(--brand-450) 30%, transparent), transparent 72%);
-}
+/* [v5] 移除侧栏选中态的彩色左边条与光斑。
+   impeccable craft-floor 明确把「>1px 的 border/色条装饰」列为该拒绝的默认；
+   原型也写了同样的判断：选中态靠**底色 + 字重**，不靠色条。
+   色条的问题是它会和当前在哪个视图这个信息争夺注意力 ——
+   一条发光的紫/朱砂竖线在深色侧栏里比导航文字本身更显眼。 */
+.sb-item::before, .sb-item.active::before, .sb-item.active::after { content: none; }
 
 /* ==========================================================================
    ② 主区「照明」—— 控制台不用「装置」，只用「光」（v4）

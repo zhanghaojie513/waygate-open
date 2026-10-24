@@ -26,7 +26,11 @@ const OUT = join(ROOT, 'docs', 'img');
    凌晨只有 1–2 个桶（桶数 = 当前小时 + 1，这是正确行为），截图会变成两根巨柱，
    既不好看也说明不了趋势。30 天是这一页设计上的默认展示口径。 */
 const PAGES = [
-  ['overview', 'console-overview.png'],
+  ['overview', 'console-overview.png', [
+    /* [v9] VChart 是懒加载 chunk + Canvas 异步首绘，1.2s 的默认等待
+       在冷启动下抓到的是空白画布（实测）。热力图与折线两个都要等。 */
+    { type: 'wait', ms: 3000 },
+  ]],
   ['usage', 'console-usage.png', [
     { type: 'click', sel: 'button[aria-haspopup=listbox]' },
     { type: 'wait', ms: 700 },

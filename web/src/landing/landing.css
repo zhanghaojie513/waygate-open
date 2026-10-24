@@ -1,6 +1,6 @@
 /* ==========================================================================
    [注意] 自动产出：由 tools/scope-css.mjs 从
-      （内部原型，未随开源版发布）<同名文件> 生成。
+      relay-station-design/prototype/v4/<同名文件> 生成。
    要改请改原型稿再重跑脚本。本文件只在原型基础上加了 `.landing` 作用域前缀，
    规则内容与原型一致（便于 diff），不重排、不合并。
    ========================================================================== */
@@ -56,7 +56,15 @@
    ========================================================================== */.landing .hero
 {
   position: relative;
-  padding-block: clamp(140px, 16vh, 196px) clamp(56px, 8vh, 96px);
+  /* [v7] 顶部 140–196px → 96–124px。原值是按「装置要占满整屏」那个时代定的，
+     那时棱镜是全屏固定背景，Hero 需要很大的上方留白让它透出来。
+     装置收回右栏、且改成 540px 见方的盒子之后，这段留白没有任何东西承载 ——
+     表现为整页内容整体下坠（新设计 proto/c-optic 用的是 80px）。
+     取 72–104（新设计 80px 是固定值，这里保留一点视口自适应）：
+     720px 视口下内容起点约 116px，1080px 下约 164px ——
+     比原来的 184 / 233 上移 68px，首屏不再"整体偏下"。
+     底部同步 56–96 → 48–72。 */
+  padding-block: clamp(72px, 8.5vh, 104px) clamp(48px, 6.4vh, 72px);
 }
 /* 首屏两栏：左 1.55 / 右 0.85。
    右栏不是"补一块内容"，是把这个决定做出来 —— 左边的正文与右边的棱镜
@@ -64,15 +72,19 @@
    窄屏（≤1080px）右栏收起：手机上它只会和标题抢注意力。 */.landing .hero-grid
 {
   display: grid;
-  grid-template-columns: minmax(0, 1.55fr) minmax(0, .85fr);
+  grid-template-columns: minmax(0, 1.02fr) minmax(0, 1fr);
   gap: clamp(28px, 3.6vw, 64px);
-  align-items: start;
+  align-items: center;
 }.landing .hero-inner
-{ max-width: 940px; }.landing .hero-side
-{ padding-top: clamp(34px, 4.4vh, 58px); }
+{ max-width: 940px; }
+/* [v7] 34–58px → 8–20px。这段 padding 是当年为了让装置在全屏背景里
+   「从导航下方透出来」而加的；现在装置是右栏里的一个盒子、由 grid 的
+   align-items:center 管垂直位置，再压 58px 就成了纯粹的偏移 ——
+   右栏比左栏低一截，整页读作「偏下」。 */.landing .hero-side
+{ padding-top: clamp(8px, 1.6vh, 20px); }
 @media (max-width: 1080px) {.landing .hero-grid
 { grid-template-columns: 1fr; }.landing .hero-side
-{ display: none; }
+{ display: block; max-width: 520px; margin: 0 auto; }
 }
 
 /* 运行状态徽标 */.landing .hero-badge
@@ -213,7 +225,7 @@
   flex: 0 0 auto; height: 26px; padding: 0 10px;
   font-family: var(--font-mono); font-size: 11px;
   color: var(--text-muted); cursor: pointer;
-  background: var(--wash-4);
+  background: rgba(255, 255, 255, .04);
   border: 1px solid var(--border-default); border-radius: var(--radius-xs);
   transition: color var(--d-hover) var(--ease-out), border-color var(--d-hover) var(--ease-out);
 }.landing .access-url .copy:hover
@@ -261,7 +273,7 @@
   padding: 2px 6px; border-radius: var(--radius-xs);
   font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .1em;
   color: var(--text-ghost);
-  background: var(--wash-4);
+  background: rgba(255, 255, 255, .04);
   border: 1px solid var(--border-subtle);
 }.landing .winbar .wsp
 { flex: 1; }.landing .winbar .wbtn
@@ -269,7 +281,7 @@
   height: 24px; padding: 0 10px; cursor: pointer;
   font-family: var(--font-mono); font-size: 10.5px;
   color: var(--text-muted);
-  background: var(--wash-4);
+  background: rgba(255, 255, 255, .035);
   border: 1px solid var(--border-subtle); border-radius: var(--radius-xs);
   transition: color var(--d-hover) var(--ease-out), border-color var(--d-hover) var(--ease-out);
 }.landing .winbar .wbtn:hover
@@ -288,7 +300,7 @@
 }.landing .cl > i
 {
   font-style: normal; text-align: right; padding-right: 16px;
-  color: var(--text-faint);
+  color: var(--text-ghost); opacity: .42;
   user-select: none;
 }.landing .cl > span
 { white-space: pre; overflow-x: auto; color: var(--text-tertiary); }
@@ -501,7 +513,7 @@
    而滚动条在深色标题卡里几乎看不见，结果就是**最后几个字符被静默裁掉**。
    配置片段折行不好看，但"看不全"是硬伤，折行只是不好看。 */.landing .cfg .code
 {
-  flex: 1; font-size: 12px; line-height: 1.8;
+  flex: 1; font-size: 10.5px; line-height: 1.8;
   white-space: pre-wrap; overflow-wrap: anywhere;
 }.landing .specbar
 {

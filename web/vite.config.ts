@@ -47,9 +47,32 @@ export default defineConfig({
        重新下载业务 chunk，vendor 命中本地缓存（两者都带内容哈希 + 30d
        immutable）。函数形式只按"是否来自 node_modules"一刀切，不逐包列名：
        逐包列名会在每次加依赖时悄悄过期。 */
+    /* modulePreload：默认会把**所有**静态 import 的 chunk 都写进 preload 列表。
+       vchart 虽然用动态 import 引入，但 manualChunks 单独拆块后仍被 vite
+       当成「首屏可能用到」而 preload —— 实测 dist/index.html 里出现了
+       vchart-WXO9HGfo.js，意味着首屏就预取 2MB，动态导入等于白做。
+       这里显式过滤掉它：只有渲染到图表时才由 import() 拉取。 */
+    modulePreload: {
+      resolveDependencies: (_filename: string, deps: string[]) =>
+        deps.filter((d: string) => !d.includes('vchart')),
+    },
     rollupOptions: {
       output: {
         manualChunks(id: string) {
+          /* VChart（VisActor）单独成块 —— 它实测约 580 KB gzip（12 个 @visactor 子包），
+             比整个 vendor 还大。TokenTrend 用动态 import 引入，所以只要不把它
+             并进 vendor，首屏就不会加载它：概览页渲染到图表那一行时才拉。
+             全塞进 vendor 会把 232 KB 的首屏依赖撑到 2.5 倍。 */
+          /* VChart 实测约 580 KB gzip。它用 import() 动态引入，**必须落到自动生成的
+             动态 chunk** —— 显式命名成 'vchart' 反而让它被入口静态引用，
+             实测 start=98ms 就发请求，lazy 完全失效。所以交回 vite 默认分割。 */
+          if (id.includes('@visactor')) return undefined;
+          /* [v8] motion（reactbits 动效）与 Arco 同理交回默认分割：
+             motion 只被官网/登录（懒加载页）引用 → 随那个 chunk 走，
+             不进 vendor 拖累控制台首屏；Arco 被 AppShell（首屏）与
+             RequestsPage（懒加载）引用 → 共享部分自动提成公共 chunk。
+             全归 vendor 实测 232KB → 625KB raw。 */
+          if (id.includes('motion') || id.includes('@arco-design')) return undefined;
           if (id.includes('node_modules')) return 'vendor';
         },
       },

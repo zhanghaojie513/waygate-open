@@ -13,6 +13,29 @@ export function formatInt(n: number | null | undefined): string {
   return numFmt.format(Math.round(n));
 }
 
+/**
+ * 速率类数值（RPM / TPM 等"每分钟多少"）—— **绝不能四舍五入成 0**。
+ *
+ * 典型场景：今日已过 10.5 小时、62 次请求 → 0.098 RPM。
+ * 此前走 `formatInt`（内部 Math.round），显示成 "0"，
+ * 读者会以为"没有流量"，而事实上流量是有的、只是密度低于 1。
+ *
+ * 规则按有效数字而非固定小数位（与 Grafana / Prometheus 的读数习惯一致）：
+ *   · < 1     → 两位小数（0.098 → "0.10"，0.5 → "0.50"）
+ *   · < 100   → 一位小数（2.4 → "2.4"，99.95 → "100.0"）
+ *   · >= 100  → 整数（1,234 → "1,234"，与 formatInt 一致）
+ * 为什么分档：0.098 若固定一位小数会变成 0.1（丢一半信息），
+ * 而 1234.0 带小数位是噪声。
+ */
+export function formatRate(n: number | null | undefined): string {
+  if (n === null || n === undefined || Number.isNaN(n)) return '--';
+  const abs = Math.abs(n);
+  if (abs === 0) return '0';
+  if (abs < 1) return n.toFixed(2);
+  if (abs < 100) return n.toFixed(1);
+  return numFmt.format(Math.round(n));
+}
+
 /** 积分保留两位小数；无数据源时返回 '--'，绝不用 0 占位 */
 export function formatCredits(n: number | null | undefined): string {
   if (n === null || n === undefined || Number.isNaN(n)) return '--';
@@ -219,23 +242,24 @@ const NOTE_MAP: Record<string, string> = {
   retried: '已自动重试',
   'cache hit': '命中缓存',
   system_injected: '已补 system',
+  /* [v1.6.27] 11128 渠道熔断快速失败：阵发期（上游全拒，降级重试也 11128）连续 3 次后
+     开闸，后续请求**未打上游、未占并发槽、未计费**，毫秒级返回 502 + retry-after。
+     与上面的 upstream_11128 分开 —— 那一行说明上游真的拒绝了，这一行说明我们主动不发；
+     处置也不同（前者查提示指纹，后者只需等阵发过去）。 */
+  breaker_open: '渠道熔断中（未发上游）',
   // [task#77] rewrite.ts 出站前把开发者角色 developer 规范化为 system（上游只拒精确小写 developer）。
   developer_role_normalized: '已规范 developer 角色',
   stream_options_stripped: '已移除 stream_options',
   // [2026-10-07] 命中 11128 时 proxy.service 以 neutral 档自动降级重试一次（L2 fail-open）。
   sysprompt_degraded_retry: '命中渠道校验，已降级重试',
-  /* [v1.6.19] 11128 渠道熔断快速失败：阵发期（上游全拒，降级重试也 11128）连续 3 次后
-     开闸，后续请求**未打上游、未占并发槽、未计费**，毫秒级返回 502 + retry-after。
-     与上面的 upstream_11128 分开 —— 那一行说明上游真的拒绝了，这一行说明我们主动不发；
-     处置也不同（前者查提示指纹，后者只需等阵发过去）。 */
-  breaker_open: '渠道熔断中（未发上游）',
-  /* [v1.6.20] 落库时发现密钥已在请求在途期间被删除：行保留（tokens/积分/状态照常），
-     key_id 降级为 NULL。client_id / key_hint 快照仍在，所以这条仍能看出是谁发的。 */
-  key_deleted_inflight: '密钥在途删除（归属已置空）',
   stream_aborted: '流式中断',
   // 与 stream_aborted 必须分开：stream_aborted = 上游流中断（去查上游）；
   // client_detached = 客户端在流式进行中主动断开/写失败（去查客户端/网络）。处置相反，不可混同。
   client_detached: '客户端已断开',
+  /* [v1.6.28] 落库时发现密钥已在请求在途期间被删除：行保留（tokens / 积分 / 状态 / 耗时
+     照常落库），key_id 降级为 NULL。client_id / key_hint 文本快照仍在，所以这条仍能
+     看出是谁发的 —— 不改写成 unidentified，避免污染客户端排行。 */
+  key_deleted_inflight: '密钥在途删除（归属已置空）',
   usage_missing: '上游未返回用量',
   'minimax tokens unavailable': 'MiniMax token 不可用',
   'token refresh failed': '上游 token 刷新失败',

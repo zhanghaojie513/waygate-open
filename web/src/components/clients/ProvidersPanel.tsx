@@ -539,6 +539,7 @@ ${r.detail}` : '') });
   };
 
   const [newKey, setNewKey] = useState('');
+
   const [chatPath, setChatPath] = useState(provider.chatPath ?? '');
   const [busy, setBusy] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -670,8 +671,7 @@ ${r.detail}` : '') });
                   </button>
                   {/* [v1.6.28] 「从本机客户端读取」只对 **有本机登录态文件** 的两家有意义：
                       MiniMax（~/.minimax/auth/.../auth.json）、Qoder（auth.v1.dat）。
-                      WorkBuddy 走 OAuth、custom 是手填 key —— 本机都没有可读文件，
-                      显示这个按钮只会给出一条永远走不通的误导提示。 */}
+                      WorkBuddy 走 OAuth、custom 是手填 key —— 本机都没有可读文件。 */}
                   {provider.protocol === 'openai' || provider.protocol === 'custom' ? null : (
                     <button
                       type="button"

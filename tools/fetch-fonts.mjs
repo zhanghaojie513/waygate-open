@@ -22,8 +22,22 @@ const UA =
   '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
 const FAMILIES = [
-  { query: 'Sora:wght@400;600;700;800', slug: 'sora' },
-  { query: 'Noto+Sans+SC:wght@400;500;700;900', slug: 'noto-sans-sc' },
+  /* v5 · 字体清单是「体积 vs 覆盖」的取舍结果，不是把所有字重都拉下来。
+   *
+   * 删除 Sora：--font-display 已改为 Manrope，全项目零引用了。
+   *   留着它只是让 fonts.css 多 8 个 @font-face 声明 + 8 个 woff2 文件。
+   * 删除 Noto Sans SC 的 900：只有 .h2 一条规则用（且那条规则同时指定了
+   *   --font-body，中文实际落不到 900），删掉少 101 个分片。
+   * 思源宋体只保留 500/700：品牌名（700）与标题斜体（500）各一档，
+   *   italic 由浏览器合成（中文衬线没有真斜体字形，合成斜体在这两处可接受）。
+   */
+  /* display：拉丁字符，不切分（Google 不给纯拉丁字体做 unicode-range） */
+  { query: 'Manrope:wght@300;400;600;700;800', slug: 'manrope' },
+  /* 品牌名与标题衬线斜体 */
+  { query: 'Noto+Serif+SC:wght@500;700', slug: 'noto-serif-sc' },
+  /* 正文字体 */
+  { query: 'Noto+Sans+SC:wght@400;500;700', slug: 'noto-sans-sc' },
+  /* 等宽：数字与代码 */
   { query: 'JetBrains+Mono:wght@400;500;700', slug: 'jetbrains-mono' },
 ];
 

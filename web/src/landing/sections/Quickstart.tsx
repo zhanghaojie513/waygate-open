@@ -13,11 +13,9 @@ import { cssVars } from '../bits';
  *
  * `--type` 版本号取自 /healthz（与顶栏胶囊同源），避免同一页出现两个版本号。
  */
-const CAM = '{"x":58,"y":-70,"z":-480,"rx":10,"ry":-5,"rz":1.5,"fog":0.52,"dim":0.36}';
-
 export function Quickstart({ version }: { version: string }) {
   return (
-    <section className="section" id="quickstart" data-cam={CAM}>
+    <section className="section" id="quickstart">
       <div className="wrap">
         <div className="sec-head reveal">
           <div>

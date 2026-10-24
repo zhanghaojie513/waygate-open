@@ -82,7 +82,6 @@ export const api = {
 
   /**
    * [v1.6.25] 登录页预填：当前是否仍用**内置默认口令**。
-   *
    * 只有「服务端确认还在用内置默认值」且「请求来自回环」时才返回明文，
    * 其余情形一律 `{ defaultInUse: false, password: null }`。
    * 失败也不抛 —— 登录页据此什么都不预填即可，不该因此报红。
@@ -287,15 +286,6 @@ export const api = {
     );
   },
 
-  /** [v1.7.0] 给自定义提供商手动补一个模型（source='manual'；仅 custom 开放）。 */
-  addManualModel(providerId: string, input: { id: string; displayName?: string }): Promise<{ id: string; added: boolean }> {
-    if (MOCKS_ENABLED) return mockApi.addManualModel(providerId, input);
-    return apiRequestGuarded<{ id: string; added: boolean }>(
-      `/api/models/catalog/${encodeURIComponent(providerId)}/manual-model`,
-      { method: 'POST', body: JSON.stringify(input) },
-    );
-  },
-
   /* ---------------- 提供商（2026-10-08，api-contract §3.12） ---------------- */
 
   /** [v0.5.6] 查签到面板。 */
@@ -309,10 +299,7 @@ export const api = {
     return apiRequestGuarded(`/api/providers/${encodeURIComponent(id)}/oauth-import`, { method: 'POST', body: JSON.stringify(payload) });
   },
 
-  /**
-   * [v1.6.5] 从**服务端所在机器**的客户端登录态自动导入 MiniMax / Qoder 凭证。
-   * 同机部署 → 真·一键；分离部署 → `outcome: 'unavailable'`（前端降级给推送命令）。
-   */
+
   providerImportLocal(id: string): Promise<{ ok: boolean; outcome: 'imported' | 'unavailable' | 'error'; message: string; detail?: string }> {
     if (MOCKS_ENABLED) return mockApi.providerImportLocal(id);
     /* 带空 JSON body：服务端 content-type 为 application/json 时 Fastify 要求 body 非空。 */
@@ -323,7 +310,7 @@ export const api = {
   },
 
   /**
-   * [v1.6.11] 设备授权导入 ①：申请授权，拿到浏览器要打开的地址。
+   * [v1.6.12] 设备授权导入 ①：申请授权，拿到浏览器要打开的地址。
    * 私有状态（device_code / PKCE verifier）留在服务端，这里只拿到 authUrl。
    */
   providerImportDeviceStart(id: string): Promise<{ ok: boolean; authUrl?: string; userCode?: string; hint?: string; expiresInSec?: number; message?: string }> {
@@ -334,7 +321,7 @@ export const api = {
     });
   },
 
-  /** [v1.6.11] 设备授权导入 ②：轮询取票（`status='pending'` 表示用户还没点完）。 */
+  /** [v1.6.12] 设备授权导入 ②：轮询取票（`status='pending'` 表示用户还没点完）。 */
   providerImportDevicePoll(id: string): Promise<{ ok: boolean; status: 'pending' | 'done' | 'error'; summary?: string; message?: string }> {
     if (MOCKS_ENABLED) return mockApi.providerImportDevicePoll(id);
     return apiRequestGuarded(`/api/providers/${encodeURIComponent(id)}/import-device/poll`, {
@@ -343,7 +330,7 @@ export const api = {
     });
   },
 
-  /** [v1.6.11] 取消进行中的授权（关闭弹窗时调用，释放服务端会话）。 */
+  /** [v1.6.12] 取消进行中的授权（关闭弹窗时调用，释放服务端会话）。 */
   providerImportDeviceCancel(id: string): Promise<{ ok: boolean }> {
     if (MOCKS_ENABLED) return mockApi.providerImportDeviceCancel(id);
     return apiRequestGuarded(`/api/providers/${encodeURIComponent(id)}/import-device/cancel`, {
@@ -398,6 +385,15 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(input),
     });
+  },
+
+  /** [v1.7.0] 给自定义提供商手动补一个模型（source='manual'；仅 custom 开放）。 */
+  addManualModel(providerId: string, input: { id: string; displayName?: string }): Promise<{ id: string; added: boolean }> {
+    if (MOCKS_ENABLED) return mockApi.addManualModel(providerId, input);
+    return apiRequestGuarded<{ id: string; added: boolean }>(
+      `/api/models/catalog/${encodeURIComponent(providerId)}/manual-model`,
+      { method: 'POST', body: JSON.stringify(input) },
+    );
   },
 
   /**

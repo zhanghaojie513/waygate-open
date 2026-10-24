@@ -7,6 +7,11 @@
     "jsx": "react-jsx",
     "types": ["vite/client"],
     "strict": true,
+    /* [v8] allowJs：landing/bits/ 下是 reactbits.dev 的 copy-paste 源码
+       （CountUp / BlurText，MIT）。原样入库保真 —— 手工转 TS 的 330 行
+       改写风险大于收益。allowJs 只让 tsc *解析* .jsx 供 import，
+       不检查其内部类型（checkJs 关闭）。 */
+    "allowJs": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,

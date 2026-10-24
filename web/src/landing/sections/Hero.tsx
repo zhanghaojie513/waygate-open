@@ -1,11 +1,10 @@
 import type { LandingStatus } from '../data';
-import { formatGroup, formatPercentValue } from '../data';
 import { cssVars, DOT_COLOR, tlsLabel } from '../bits';
 import { formatTokens } from '../../lib/format';
 import { CopyButton } from '../CopyButton';
 import { accessBaseUrl } from '../../lib/accessUrl';
-
-const CAM = '{"x":0,"y":0,"z":0,"rx":0,"ry":0,"rz":0,"fog":0.16,"dim":0.90}';
+import CountUp from '../bits/CountUp.jsx';
+import { ScenePrism } from '../ScenePrism';
 
 /**
  * 部署片段 —— 与实际形态一致：Ubuntu + **systemd 服务**（不是容器），
@@ -41,7 +40,7 @@ export function Hero({ status }: { status: LandingStatus }) {
       });
 
   return (
-    <header className="hero" id="top" data-cam={CAM}>
+    <header className="hero" id="top">
       <div className="wrap">
         <div className="hero-grid">
           <div className="hero-inner">
@@ -60,14 +59,15 @@ export function Hero({ status }: { status: LandingStatus }) {
                 <span className="rv-line"><span style={cssVars({ '--i': 0 })}>把自己的订阅积分</span></span>
                 <span className="rv-line">
                   <span style={cssVars({ '--i': 1 })}>
-                    变成一个 <span className="mk grad-text">base_url</span>
+                    <em className="bridge">变成一个</em>{' '}
+                    <span className="mk lit">base_url</span>
                   </span>
                 </span>
               </h1>
               <div className="hero-flip" aria-hidden="true">
                 <h1 className="hero-h1 display-1">
                   把自己的订阅积分<br />
-                  变成一个 <span className="mk grad-text">base_url</span>
+                  <em className="bridge">变成一个</em> <span className="mk lit">base_url</span>
                 </h1>
               </div>
             </div>
@@ -100,33 +100,40 @@ export function Hero({ status }: { status: LandingStatus }) {
             </div>
           </div>
 
+          {/* [v5] 右栏从「接入卡」改为「棱镜装置」。
+              为什么：官网首屏最该被记住的是那个视觉（白光穿过玻璃散成七色），
+              而接入地址是可复制的文字 —— 它不需要占首屏的一半。
+              接入卡移到 Hero 下方（见 hero-access 段），信息一个没少。 */}
           <aside className="hero-side reveal" style={cssVars({ '--i': 2 })}>
-            <div className="glass access">
-              <div className="access-h">
-                <span className="eyebrow" style={cssVars({ '--c': 'var(--text-ghost)' })}>接入地址</span>
-                <span className={online ? 'pill pill-live' : 'pill pill-amber'}>
-                  <i className={online ? 'dot dot-live' : 'dot'} />
-                  {online ? '可用' : '离线'}
-                </span>
-              </div>
-              <div className="access-url">
-                <code>{baseUrl}</code>
-                <CopyButton className="copy" text={baseUrl} label="复制接入地址" />
-              </div>
-              <div className="access-note">把它填进任何支持 OpenAI 兼容协议的工具</div>
-              {/* [task#68] 这两行原先写的是「积分同步 30s」与「TLS 自签证书」，两句都不实：
-                  · 上游**没有**额度查询接口（#57：6 条候选路径全 404，轮询已改为 24h 低频重探），
-                    所以根本不存在「30s 同步」这个动作 —— 换成真实存在的能力（日志保留策略，
-                    默认 30 天，见 server/src/config/settings.defaults.ts）；
-                  · 证书按当前访问地址现算（域名=公共 CA / IP 直连=自签），详见 bits.tlsLabel。 */}
-              <dl className="kv">
-                <div><dt>协议</dt><dd>OpenAI v1 · Anthropic</dd></div>
-                <div><dt>日志保留</dt><dd>默认 30 天</dd></div>
-                <div><dt>TLS</dt><dd>{tlsLabel()}</dd></div>
-                <div><dt>部署形态</dt><dd>systemd + nginx</dd></div>
-              </dl>
+            <div className="hero-scene">
+              <ScenePrism variant="inline" />
             </div>
+            <p className="scene-note">一束白光穿过棱镜散成七色 —— 也正是三路订阅分给七个客户端的样子</p>
           </aside>
+        </div>
+
+        {/* [v5] 接入卡从右栏移到这里：它是有用的信息，但不是首屏的主角。
+            右栏让给棱镜装置（首屏最该被记住的视觉），地址/协议/TLS 读完
+            「这是什么」之后自然过渡到「怎么接」。信息一个没少。 */}
+        <div className="hero-access reveal" style={cssVars({ '--i': 6 })}>
+          <div className="access-h">
+            <span className="eyebrow" style={cssVars({ '--c': 'var(--text-ghost)' })}>接入地址</span>
+            <span className={online ? 'pill pill-live' : 'pill pill-amber'}>
+              <i className={online ? 'dot dot-live' : 'dot'} />
+              {online ? '可用' : '离线'}
+            </span>
+          </div>
+          <div className="access-url">
+            <code>{baseUrl}</code>
+            <CopyButton className="copy" text={baseUrl} label="复制接入地址" />
+          </div>
+          <div className="access-note">把它填进任何支持 OpenAI 兼容协议的工具</div>
+          <dl className="kv">
+            <div><dt>协议</dt><dd>OpenAI v1 · Anthropic</dd></div>
+            <div><dt>日志保留</dt><dd>默认 30 天</dd></div>
+            <div><dt>TLS</dt><dd>{tlsLabel()}</dd></div>
+            <div><dt>部署形态</dt><dd>systemd + nginx</dd></div>
+          </dl>
         </div>
 
         <div className="panel-wrap glass reveal" style={cssVars({ '--i': 6 })}>
@@ -184,19 +191,22 @@ export function Hero({ status }: { status: LandingStatus }) {
               <span className="pill pill-amber">待机</span>
             </div>
             <div className="panel-metrics">
+              {/* [v8] 数字滚动用 reactbits 的 CountUp（roll 模式：逐位滚轮 + 运动模糊）。
+                  compact format 自动给 tokens 出 K/M 单位，与原 formatTokens 同形。
+                  null（取不到）仍显示 —，不拿 0 冒充。 */}
               <div>
                 <div className="k">本窗口 tokens</div>
                 <div className="v num live" style={{ color: DOT_COLOR.live }}>
-                  {tokensText}
+                  {numbers.totalTokens == null ? '—' : <CountUp to={numbers.totalTokens} mode="roll" format="compact" duration={1.6} />}
                 </div>
               </div>
               <div>
                 <div className="k">缓存命中率</div>
-                <div className="v num">{formatPercentValue(numbers.cacheHitRate)}</div>
+                <div className="v num">{numbers.cacheHitRate == null ? '—' : <CountUp to={numbers.cacheHitRate * 100} mode="roll" duration={1.4} decimals={1} suffix="%" />}</div>
               </div>
               <div>
                 <div className="k">今日请求</div>
-                <div className="v num">{numbers.requestsToday == null ? '—' : formatGroup(numbers.requestsToday)}</div>
+                <div className="v num">{numbers.requestsToday == null ? '—' : <CountUp to={numbers.requestsToday} mode="roll" duration={1.8} separator="," />}</div>
               </div>
             </div>
           </div>

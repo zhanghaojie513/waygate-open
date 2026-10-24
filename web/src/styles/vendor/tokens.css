@@ -113,10 +113,10 @@
      §2 的雾与辉光负责），区块档整体抬亮，让「层级」由明度差直接表达。
      L 值为 WCAG 相对亮度，复算口径见头部 v4.4。
      ========================================================================== */
-  --bg-page:      #0B0A18;   /* L0 页面底 / 首屏 · L=0.0035（不变） */
-  --bg-section-a: #16132B;   /* L1 区块交替 · L=0.0081 */
-  --bg-section-b: #1D1A38;   /* L2 抬升区块 · L=0.0129 */
-  --bg-band:      #070611;   /* L3 数据带 / 页脚（不变） */
+  --bg-page:      #17110D;   /* L0 页面底 / 首屏 · 暖黑（v5：原紫黑 #0B0A18） */
+  --bg-section-a: #1F1813;   /* L1 区块交替 */
+  --bg-section-b: #271E18;   /* L2 抬升区块 */
+  --bg-band:      #120D0A;   /* L3 数据带 / 页脚 */
 
   /* v4.3 补的两级；v4.4 把 elevated 从「比 L2 再亮一档」提为**全屏最亮的面**
      （L=0.0518）—— 弹层/下拉/图表浮层要"浮在所有卡面之上"，
@@ -132,7 +132,7 @@
   /* 2.1 雾色：远处的物体不是变暗，而是**褪色到雾里**。
      这是真实大气的行为，也是「纵深」最容易被忽略、但最有效的一条。
      雾色必须比底色略亮、略带色相 —— 纯黑雾会把远景吃掉，读成「遮挡」。 */
-  --fog-far:   #1A1739;      /* 远景雾 · 贴近 L2（v4.4 随 L2 抬升） */
+  --fog-far:   #2A201A;      /* 远景雾 · 暖棕，贴近 L2 */
 
   /* 2.2 冷光七阶（v4.3 新增）
      v4.0 曾定义 violet / cyan / live 各三层共 9 个辉光令牌，服务的是
@@ -149,13 +149,15 @@
      光在深色底上的行为与"色"不同 —— 它是**高得多的明度 + 低得多的饱和**。
      把光当成品牌色的一个档位，会让品牌色被拉白，两边都会坏。
      所以牌面分家：品牌色负责"识别"，冷光负责"照亮"。 */
-  --glow-white:  #ECFCFF;    /* 冰白 · 光芯的核心 */
-  --glow-mist:   #F4F2FF;    /* 雾白 · 控制台最冷的一束 */
-  --glow-ice:    #DCF0FF;    /* 冷白 · 玻璃的掠射高光 */
-  --glow-frost:  #CEF4FF;    /* 霜青 · 光芯中段 */
-  --glow-cyan:   #BEF0FF;    /* 冷青 · 光柱与硬亮核 */
-  --glow-pale:   #E2DEFF;    /* 淡紫白 · 光芯上段 */
-  --glow-violet: #C4BAFF;    /* 淡紫 · 光晕外缘 */
+  /* v5：冷光七阶整体转暖。名字保留（消费方仍按"光"引用），
+     值从冰蓝转为暖白 —— 暖黑底上的冷光会读作"屏幕背光"，不是"玻璃"。 */
+  --glow-white:  #FFF8F0;    /* 暖白 · 光芯的核心 */
+  --glow-mist:   #FDF5EC;    /* 雾白 */
+  --glow-ice:    #FFEDDC;    /* 暖白 · 玻璃掠射高光 */
+  --glow-frost:  #FFE4CC;    /* 暖霜 */
+  --glow-cyan:   #FFDCC0;    /* 暖亮核 */
+  --glow-pale:   #F5E6D8;
+  --glow-violet: #E8CDBB;
 
   /* v4.1 的两档保持不变，只是改为**引用基色** ——
      从前它们是唯一两个自带 rgba 的令牌，于是"同一个色有多少种透明度"
@@ -186,18 +188,18 @@
 
   /* 卡面（v4.4 整体抬一档多，L 0.018–0.032 —— 见头部 v4.4 块）。
      deep 是卡面渐变的下端，抬得比上端少 —— 上下端差值本身就是"受光面"的错觉。 */
-  --bg-surface:          #2F295F;
+  --bg-surface:          #2B221B;
   /* v4.3 拆出来：它此前只作为 --bg-surface-grad 的第二个色标和 --glass-bg 的
      下端存在，本身没有名字。**只出现在复合值里的颜色，等于没有这个颜色** ——
      想用它的人只能再抄一遍字面量，于是抄出了第二个近似值。 */
-  --bg-surface-deep:     #232046;
+  --bg-surface-deep:     #221B15;
   --bg-surface-grad:     linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-surface-deep) 100%);
-  --bg-surface-2:        #312B5F;
+  --bg-surface-2:        #2E241D;
   /* v4.4：两个色标（#221B44/#16132C）是 v2.1 的手调值，卡面抬档后成了
      「在色板里找不到名字、又各只剩一处消费」的漂移源 —— 收敛为引用令牌。 */
   --bg-surface-2-grad:   linear-gradient(180deg, var(--bg-surface-2) 0%, var(--bg-surface-deep) 100%);
-  --bg-surface-3:        #2B2550;
-  --bg-code:             #171430;
+  --bg-surface-3:        #3B3026;
+  --bg-code:             #1E1712;
 
   /* 描边三级 */
   /* [注意] --iris：描边与分层用的紫罗兰基色。**这个令牌是补上的，不是新加的色。**
@@ -214,7 +216,7 @@
 
      新写法：`color-mix(in srgb, var(--iris) 12%, transparent)` ——
      不再为每个 alpha 建令牌，也不再手写 rgba。 */
-  --iris:           #8B7CFF;
+  --iris:           #E8584F;   /* v5：朱砂（描边/分层基色，深底需提亮一档才够 4.4:1） */
 
   /* 三个档位现在**引用 --iris**，而不是各自重复那串 RGB ——
      这样 --iris 才真的是"单一出处"：改它一处，三个档位一起动。
@@ -231,15 +233,17 @@
      只剩 3.45:1，六级整体上移后全部回到 AA 线上（正文 4.5:1），
      相邻档对比比 >= 1.17 保住层级。注：ghost 不用于浮层(--bg-elevated)上。
      ========================================================================== */
-  --text-primary:   #F2F4F8;   /* 卡面 11.91 */
-  --text-secondary: #D5DCEA;   /* 卡面  9.51 */
-  --text-tertiary:  #C1CBE2;   /* 卡面  8.05 */
-  --text-muted:     #B1BCD4;   /* 卡面  6.87 · 说明文字 */
-  --text-faint:     #A2ACC5;   /* 卡面  5.76 · 辅助信息 */
+  /* v5：冷灰 → 暖墨阶。全部按 --bg-surface(#2B221B) 复算：
+     13.76 / 10.54 / 8.43 / 6.76 / 5.71 —— 全部 ≥ AA，相邻档比 ≥1.2。 */
+  --text-primary:   #F5F0EA;   /* 卡面 13.76 */
+  --text-secondary: #DCD3C9;   /* 卡面 10.54 */
+  --text-tertiary:  #C8BDB0;   /* 卡面  8.43 */
+  --text-muted:     #B5A99A;   /* 卡面  6.76 · 说明文字 */
+  --text-faint:     #A69B8C;   /* 卡面  5.71 · 辅助信息 */
   /* [2026-10-17] 8E99B1(4.58) 贴 AA 线 —— 表头 th/侧栏分组/.td-sub 这些 11-11.5px
      小字全在用它，surface-2 卡面上实测 4.47 已破线。提亮半档恢复余量，
      仍保「全站最弱一级」的角色（与 faint 拉开 ≥1.15）。 */
-  --text-ghost:     #949FB8;   /* 卡面 4.79 · 标签 / 表头 / 页脚 */
+  --text-ghost:     #9D9383;   /* 卡面 5.15 · 标签 / 表头 / 页脚 */
 
   /* ==========================================================================
      5 · 品牌与语义色（沿用 v2.1，未改）
@@ -251,29 +255,71 @@
      ② 语义色用春薄荷与品牌紫构成双色相系统，非紫上叠紫；③ 棱镜场景层是独有识别物。
      防线（后来者不许做）：不在紫上再加辉光渐变按钮 / 霓虹 mesh / 紫渐变 CTA ——
      那会把 earned 打回 reflex。 */
-  --brand-500:      #6E5CFF;   /* 鸢尾紫 */
-  --brand-450:      #7C5CFF;   /* v4.3：品牌渐变的紫端 / 选中态的抬升底。
+  --brand-500:      #E8584F;   /* v5 朱砂。深底用提亮档：原版 #DA3A30 在暖黑上
+                                  只有 4.12:1（做文字不合格），提亮到 5.29:1。
+                                  浅色的原值在 theme.css 里重定义。 */
+  --brand-450:      #D94A41;   /* v4.3：品牌渐变的深端 / 选中态的抬升底。
                                  它不是新色 —— 它是 --gradient-brand 的第一个色标，
                                  控制台里还有 7 处在手写它（侧栏选中、弹层底、步骤高亮）。
                                  夹在 500 与 400 之间，所以占 450 这一档。 */
-  --brand-400:      #A79BFF;
+  --brand-400:      #F2837A;
   /* 主按钮 hover 底：比 500 亮一档。原来是裸字面量 #7E6DFF（tokens.css 的
      `.btn-primary:hover`），已是"有名字的颜色却没有令牌"的一处 —— 主题切换
      必须能改它（浅色下要**更深**而不是更亮），故补成令牌。
      深色值与旧字面量逐字相同，视觉零变化。 */
-  --brand-hover:    #7E6DFF;
+  --brand-hover:    #F0675E;   /* 深色 hover 更亮（6.06:1） */
   --brand-tint:     color-mix(in srgb, var(--brand-500) 16%, transparent);
-  --accent-cyan:    #3EDCFF;   /* 电光青 */
-  --accent-blue:    #7AA0FF;   /* v4.3：棱镜第五片的谱色。
+  --accent-cyan:    #FF9A6B;   /* v5：暖橙。原电光青在暖黑底上读作"屏幕背光" */
+  --accent-blue:    #7C8FE8;   /* v4.3：棱镜第五片的谱色。
                                 九个玻璃片各带一个 --tint，其中八个能引用既有令牌，
                                 只有这一个蓝没有对应色 —— 谱色不该为此新起一系，
                                 所以它作为 --accent-cyan 的邻居落在语义色里。 */
+  /* v5 新增 · 光谱七色
+     用途严格限定在「棱镜装置的九片玻璃」与「控制台的提供商身份色」两处。
+     **不进主按钮、不进强调文字** —— 那两件事归 --brand-* 和 --accent-*。
+     为什么需要它：原型首屏的核心叙事是「白光穿过棱镜散成七色」，
+     九片玻璃各取一色才读得出这个意思；此前只有 4 个色循环，
+     玻璃全挤在紫青两族里。
+     饱和度取满（不是灰调）：浅底玻璃靠 40% 染进白来压，深底直接读。 */
+  --spectrum-1:     #F2545B;   /* 红 */
+  --spectrum-2:     #F97A3D;   /* 橙 */
+  --spectrum-3:     #F7B32B;   /* 黄 */
+  --spectrum-4:     #5BC48C;   /* 绿 */
+  --spectrum-5:     #2FB6C9;   /* 青 */
+  --spectrum-6:     #4A7BE0;   /* 蓝 */
+  --spectrum-7:     #9B5BD6;   /* 紫 */
+
   --signal-live:    #35E08A;   /* 春薄荷 */
   --signal-live-track: color-mix(in srgb, var(--signal-live) 22%, transparent);   /* 状态点的轨道 / 描边 */
   --warn-amber:     #FFAA3B;
   --warn-amber-line: color-mix(in srgb, var(--warn-amber) 30%, transparent);
   --danger-red:     #FF6B6B;
-  --violet:         #A855F7;
+
+  /* [v7] 图表画布色（VChart 等 Canvas 渲染器用）。
+     Canvas 拿不到 var()，必须读计算值 —— 这几个令牌就是给它读的，
+     与 --brand-500 / --border-subtle / --bg-surface 同值，单独成对是为了
+     让"图表要读哪个色"这件事有个明确落点，而不是在 TSX 里散落 fallback。 */
+  --chart-line:     #E8584F;
+  --chart-grid:     rgba(245, 240, 234, .10);
+  --chart-surface:  #2B221B;
+  --chart-text:     #F5F0EA;
+  --chart-muted:    #A69B8C;
+
+  /* [v8] Arco 组件桥（深色侧）—— ArcoProvider 读这些值喂给 ConfigProvider。
+     与 --chart-* 同一理念：Arco 有自己的 CSS 变量体系（--color-primary-6 等），
+     默认是 Arco 蓝 + 冷灰白；这里给一套与本项目暖黑/朱砂同源的映射。 */
+  --arco-primary-5: #F0675E;
+  --arco-primary-6: #E8584F;
+  --arco-primary-7: #D94A41;
+  --arco-bg-2:      #2B221B;
+  --arco-bg-3:      #221B15;
+  --arco-text-1:    #F5F0EA;
+  --arco-text-2:    #DCD3C9;
+  --arco-text-3:    #B5A99A;
+  --arco-border-2:  #3B3026;
+  --arco-fill-2:    #2E241D;
+  --arco-fill-3:    #3B3026;
+  --violet:         #B07CD8;
 
   /* 渐变
      v4.3：能指向令牌的色标全部改为引用 ——
@@ -286,9 +332,8 @@
   --gradient-progress: linear-gradient(90deg, var(--accent-cyan) 0%, var(--signal-live) 100%);
   --gradient-banner:   linear-gradient(90deg, color-mix(in srgb, var(--brand-500) 18%, transparent) 0%, color-mix(in srgb, var(--accent-cyan) 5%, transparent) 100%);
   --gradient-avatar:   linear-gradient(135deg, var(--iris) 0%, var(--accent-cyan) 100%);
-  /* v4：标题上的渐变文字。三色停靠点与品牌渐变一致，
-     但加了 200% 宽度以便做扫光。 */
-  --gradient-text: linear-gradient(100deg, #FFFFFF 0%, #C9BFFF 28%, #7FD6FF 56%, #FFFFFF 78%, #C9BFFF 100%);
+  /* v5 删除 --gradient-text：全项目零 background-clip:text 消费方
+     （2026-10-17 检测器修时已改品牌纯色），留着只是失效变量。 */
 
   /* 阴影
      第三类（中性叠加）在这里也包括**纯黑**：投影与遮罩用的 rgba(0,0,0,α)
@@ -309,7 +354,12 @@
      不换字体是刻意的 —— 「不大众化」应该靠尺度、字距与版式张力达成，
      而不是靠换一款别人没见过的字体。换字体只改气质，不改结构。
      ========================================================================== */
-  --font-display: 'Sora', 'Noto Sans SC', system-ui, sans-serif;
+  /* v5：display 换 Manrope —— Sora 的几何感偏"科技"，Manrope 更中性，
+     配上思源宋体的品牌名才有「纸页 + 玻璃」的对照。 */
+  --font-display: 'Manrope', 'Noto Sans SC', system-ui, sans-serif;
+  /* 品牌名与标题里的一次衬线斜体（.bridge）。中文字体里唯一能承担
+     「人味」的一族 —— 全站只此一处，不做第二个用途。 */
+  --font-serif:   'Noto Serif SC', Georgia, 'Songti SC', serif;
   --font-body:    'Noto Sans SC', system-ui, -apple-system, sans-serif;
   --font-mono:    'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 
@@ -440,7 +490,7 @@
   /* 控制台布局三件（tokens.css / app.css 在用）。 */
   --content-width: 1200px;
   --page-gutter: 120px;
-  --dashboard-sidebar: 248px;
+  --dashboard-sidebar: 216px;
   /* 胶囊圆角：.pill / .tag 在用；v4 只给了 xs…2xl 阶梯，pill 是单独一档。 */
   --radius-pill: 999px;
 
@@ -725,7 +775,9 @@ a { color: inherit; text-decoration: none; }
 }
 .sb-item svg { flex: 0 0 18px; }
 .sb-item:hover { background: var(--wash-3); color: var(--text-secondary); }
-.sb-item.active { background: var(--brand-tint); color: var(--brand-400); }
+/* [v5] 选中态：底色 + 字重。文字色用 primary 而非 brand-400 ——
+   brand-400 是链接的语义，导航项不是链接，它是你在这里的指示。 */
+.sb-item.active { background: var(--brand-tint); color: var(--text-primary); font-weight: 600; }
 .sb-spacer { flex: 1; }
 .sb-account {
   display: flex; align-items: center; gap: 11px; padding: 12px;

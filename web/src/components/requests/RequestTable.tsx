@@ -1,4 +1,5 @@
 import type { RequestLogRow } from '../../types/api';
+import { providerColor } from '../../lib/providerColor';
 import {
   Activity, ChevronRight, Clock, Coins, Cpu, Gauge, Gem, Globe, KeyRound, Timer,
 } from 'lucide-react';
@@ -135,11 +136,11 @@ export function RequestTable({
                   <div className="td-mono" style={{ color: 'var(--text-ghost)' }}>{formatClock(r.ts)}</div>
                 </td>
 
-                {/* 令牌：这把请求用的是哪把密钥（掩码；全量只在创建时显示一次） */}
+                {/* 令牌：这把请求用的是哪把密钥（掩码；全量只在创建时显示一次）。
+                    不加 tooltip —— 列里显示的就是掩码，悬停再给一遍同样的字符串
+                    没有任何新信息，只是多一次浮层。 */}
                 <td className="td-mono" style={{ color: 'var(--text-tertiary)' }}>
-                  <Tooltip content={`密钥 ${r.keyHint}`} placement="below">
-                    <span>{r.keyHint}</span>
-                  </Tooltip>
+                  {r.keyHint}
                 </td>
 
                 {/* 模型 / 提供商：上模型名、下 [提供商药丸 ←→ 计价标签]（参考图的模型药丸样式）。
@@ -158,6 +159,16 @@ export function RequestTable({
                       content={`提供商：${providerOf(r) ?? resolveClientName(r)}（按本请求实际路由记录）`}
                     >
                       <span className="prov-pill">
+                        {/* [v5] 身份色点：同一家提供商在「提供商管理」表里也是这个颜色。
+                            这里按**名字**哈希（providerOf 返回名字不是 id）——
+                            两处 key 不同源，所以只保证「同一页面内一致」，
+                            不保证跨页逐字节相同。要严格一致需要 RequestLogRow
+                            带上 providerId（后端字段），那是另一件事。 */}
+                        <i
+                          className="prov-dot"
+                          style={{ background: providerColor(providerOf(r) ?? resolveClientName(r)) }}
+                          aria-hidden="true"
+                        />
                         {providerOf(r) ?? resolveClientName(r)}
                       </span>
                     </Tooltip>

@@ -12,8 +12,6 @@ import { consoleHref } from '../../lib/consoleRoute';
  *
  * 状态胶囊跟随 /healthz：离线时转琥珀，与首屏、接入卡保持同一套语义色。
  */
-const CAM = '{"x":0,"y":-50,"z":-370,"rx":4,"ry":0,"rz":0,"fog":0.66,"dim":0.26}';
-
 const BRAND_B: CSSProperties = {
   fontFamily: 'var(--font-display)',
   fontWeight: 700,
@@ -32,7 +30,7 @@ export function Footer({ status }: { status: LandingStatus }) {
   const pill = online ? 'pill pill-live' : 'pill pill-amber';
 
   return (
-    <footer className="footer" data-cam={CAM}>
+    <footer className="footer">
       <div className="wrap">
         <div className="foot-top">
           <div className="foot-brand">

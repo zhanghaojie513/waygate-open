@@ -8,7 +8,6 @@ import './landing.css';
 import './scope.css';
 import { useLandingStatus } from './data';
 import { initPage } from './page';
-import { ScenePrism } from './ScenePrism';
 import { Rail } from './Rail';
 import { NavBar } from './sections/NavBar';
 import { Hero } from './sections/Hero';
@@ -31,7 +30,7 @@ import { Footer } from './sections/Footer';
  *      控制台不挂它，因此控制台页面**不会**出现官网的滚动条与锚点行为。
  *   ② 页面行为是**命令式引擎**（page.ts，逐行移植自原型），在 useEffect 里
  *      挂载、返回 cleanup。StrictMode 会双跑 effect，引擎必须可重入 + 完整回收。
- *      场景引擎（scene.ts）由 `<ScenePrism />` 自己挂载（Spec §4.2 的约定），
+ *      场景引擎（scene.ts）由 Hero 里的 `<ScenePrism />` 自己挂载（Spec §4.2 的约定），
  *      它的 effect 是子组件的，先于本组件执行 —— 所以场景仍然先于页面行为就位。
  */
 const TITLE = 'Waygate — 把自己的订阅积分变成一个 base_url';
@@ -71,12 +70,14 @@ export function LandingPage() {
     };
   }, []);
 
-  /* ② 页面行为引擎：挂载 / 回收成对。（场景引擎由 <ScenePrism /> 挂载） */
+  /* ② 页面行为引擎：挂载 / 回收成对。（场景引擎由 Hero 内的 <ScenePrism /> 挂载） */
   useEffect(() => initPage(), []);
 
   return (
     <div className="landing">
-      <ScenePrism />
+      {/* [v5] 原来这里挂一个全屏 <ScenePrism />。装置改为 Hero 右栏的局部盒子后
+          由 <Hero> 自己渲染，这一处必须删掉 —— 否则同页两份装置：
+          全局那份还会以 position:relative 占住文档流顶部 361px，把内容压到折叠线以下。 */}
       <div className="progress" aria-hidden="true">
         <i />
       </div>

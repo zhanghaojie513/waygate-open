@@ -10,12 +10,11 @@ import { CopyButton } from '../CopyButton';
  * 此前显示的就是完整命令；`prefers-reduced-motion` 下 page.ts 直接不动它。
  * React 不会因此产生 diff：虚拟 DOM 里始终是同一个字符串，重渲染不会去改这段 textContent。
  */
-const CAM = '{"x":0,"y":-96,"z":-130,"rx":-3,"ry":0,"rz":0,"fog":0.30,"dim":0.92}';
 const CMD = 'git clone <仓库地址> && cd relay-station && npm ci && npm run build';
 
 export function Cta() {
   return (
-    <section className="cta" id="cta" data-cam={CAM}>
+    <section className="cta" id="cta">
       <div className="wrap">
         <h2 className="display-2 reveal">几步，起在你自己机器上</h2>
 

@@ -120,7 +120,7 @@
 <div class="page">
   <header>
     <h1>途关 Waygate · 功能架构</h1>
-    <span class="chip">v1.6.28</span>
+    <span class="chip">v1.10.0</span>
     <button class="theme-toggle" id="themeToggle" type="button">切换主题</button>
   </header>
   <p class="sub">五域能力地图：控制台 · 接入 · 多提供商 · 积分与领取 · 运行保障。每一条都对应已实现的代码路径。</p>
@@ -136,7 +136,7 @@
         <li><b>提供商管理</b> —— 提供商行（额度、健康、签到、官方授权导入）+ 密钥绑定与路由优先级</li>
         <li><b>API 密钥</b> —— 权限范围（全部 / 按族 / 按模型 / 按标签）、IP 上限与白名单、token 配额</li>
         <li><b>请求日志</b> —— 逐条留痕（含 SSE）、首字 / 耗时 / 输出速度、游标分页、按密钥筛选、一键取证 30 分钟、留存清理</li>
-        <li><b>设置</b> —— 8 组 26 项，含提供商策略、限额、日志、签到与危险操作</li>
+        <li><b>设置</b> —— 8 组 27 项，含提供商策略、限额、日志、签到与危险操作</li>
       </ul>
     </section>
 
@@ -154,11 +154,12 @@
 
     <section class="card c3">
       <h2><i></i>多提供商</h2>
-      <p class="tag">三家可同时生效 · 按模型 id 路由 · 凭证统一「官方授权导入」</p>
+      <p class="tag">多家可同时生效 · 按模型 id 路由 · 订阅走官方授权，OpenAI 兼容端点手填即接</p>
       <ul>
         <li><b>WorkBuddy</b> —— openai 方言 · 官方 OAuth 授权（v1.6.13 起 <code>ck_</code> 已退役）</li>
         <li><b>MiniMax Code</b> —— anthropic 方言 · OAuth 自动续期</li>
         <li><b>Qoder CN</b> —— COSY 协议 · 客户端登录态身份</li>
+        <li><b>自定义提供商</b>（v1.10.0）—— 任意 OpenAI 兼容端点：Base URL + API Key 手填即接；URL 智能解析（带不带 /v1 都行，表单实时预览）；清单拉 <code>/v1/models</code> 或手动补；出站纯 Bearer 透传（无指纹 / 不改写 / 无重试梯）；单次积分如实 <code>--</code>（不标定）</li>
         <li><b>凭证导入</b> —— 选客户端 → 跳官方授权页 → 回来自动落盘；「未授权」信号三家各不相同（业务码 / <code>authorization_pending</code> / 404）；私有状态只存服务端</li>
         <li><b>路由规则</b> —— 精确匹配（大小写敏感）→ 提供商内模糊回落；声明行优先于 observed</li>
       </ul>
@@ -183,7 +184,8 @@
         <li><b>并发闸</b> —— 槽位占用实时可观测（不泄漏、不单调上涨）</li>
         <li><b>断流重试</b> —— Qoder 零内容断流自动重试一次（客户端无感）</li>
         <li><b>渠道降级</b> —— 上游 11128 渠道校验自动降级重试</li>
-        <li><b>渠道熔断</b> —— 连续 3 次「降级也 11128」即开闸：阵发期未打上游、不占槽、不烧计费，毫秒级 502 + <code>retry-after</code>；只计渠道级信号，避免误伤</li>
+        <li><b>渠道熔断</b> —— 连续 3 次「降级也 11128」即判渠道级故障：后续请求毫秒级快速失败、不占并发槽（否则阵发期每个失败烧 65s，把槽占满并饿死其他提供商）；冷却 30s 起指数退避封顶 300s，到期半开放行探测</li>
+        <li><b>审计保行</b> —— 请求在途时密钥被删，落库撞外键即降级归属为 <code>NULL</code>、整行照常留存（note 标 <code>key_deleted_inflight</code>）</li>
         <li><b>留存与备份</b> —— 日志按天清理；SQLite <code>VACUUM INTO</code> 备份、冷热双份可回滚</li>
       </ul>
     </section>
@@ -191,7 +193,7 @@
   </div>
 
   <p class="foot">
-    图中每一条都对应已实现的代码路径，无规划项。版本 v1.6.28 ·
+    图中每一条都对应已实现的代码路径，无规划项。版本 v1.10.0 ·
     与 <code>server/src/version.ts</code> 同源。
   </p>
 </div>

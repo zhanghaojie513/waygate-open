@@ -58,23 +58,25 @@
      深色里 elevated 是「全屏最亮、谁也够不着」的那一档；浅色里最亮的可浮层
      就是纯白（弹层/下拉），靠阴影与描边和卡面区分，不再靠明度。
      ========================================================================== */
-  --bg-page:      #EFEDF8;
-  --bg-section-a: #E9E6F5;
-  --bg-section-b: #F4F2FB;
-  --bg-band:      #E3E0F0;
+  /* v5：紫灰 → 暖象牙。底色是「玻璃被暖光照亮」这个场景的一部分，
+     与装置的橙黄染色同源；冷灰底会把玻璃衬成塑料。 */
+  --bg-page:      #FDFAF5;
+  --bg-section-a: #F6F1E7;
+  --bg-section-b: #FBF7F0;
+  --bg-band:      #EFE9DC;
   --bg-elevated:  #FFFFFF;
   --bg-scrim:     #1B1730;   /* 遮罩：浅色下仍是深墨（职责是「把背后压没」）*/
-  --fog-far:      #E3E0F0;
+  --fog-far:      #EFE9DC;
 
   /* ==========================================================================
      2 · 材质
      卡面：白 / 冷白，渐变上下端差 = 受光方向（与深色同构，方向不变）。
      ========================================================================== */
   --bg-surface:      #FFFFFF;
-  --bg-surface-deep: #FAF8FE;
+  --bg-surface-deep: #FDFBF6;
   --bg-surface-2:    #FFFFFF;
-  --bg-surface-3:    #F1EEF9;   /* 内嵌底 / 芯片 / 分段控件轨道 */
-  --bg-code:         #F4F1FA;   /* 代码块 / 输入框 / 内嵌清单 */
+  --bg-surface-3:    #F7F3EA;   /* 内嵌底 / 芯片 / 分段控件轨道 */
+  --bg-code:         #F6F1E7;   /* 代码块 / 输入框 / 内嵌清单 */
 
   /* 玻璃：浅色下透明度要更高才不会「糊」；边界改用更深的 iris 让发丝线可见 */
   --glass-border: color-mix(in srgb, var(--iris) 18%, transparent);
@@ -88,10 +90,10 @@
 
   /* ==========================================================================
      3 · 描边基色
-     深色的 --iris #8B7CFF 是亮紫，压在浅底上等于白；换成深李紫。
+     深色的 --iris var(--spectrum-1) 是亮紫，压在浅底上等于白；换成深李紫。
      三个 border 令牌都 color-mix 引用它，因此自动跟随，无需逐个改。
      ========================================================================== */
-  --iris: #4B3FA8;
+  --iris: #B8352C;   /* v5 朱砂描边基色。浅底要够深，发丝线才看得见 */
 
   /* ==========================================================================
      4 · 文字六级
@@ -100,30 +102,35 @@
      #E3E0F0）。ghost 是六级里唯一被浅色单独压深的一档 —— 它在深色里
      本就贴着 AA 线（4.58），换到浅色若照搬相对明度会掉到 4.2 以下。
      ========================================================================== */
-  --text-primary:   #171334;   /* 白卡 17.8 : 1 */
-  --text-secondary: #3B3560;   /* 白卡 11.3 : 1 */
-  --text-tertiary:  #4E4874;   /* 白卡  8.4 : 1 */
-  --text-muted:     #5A5478;   /* 白卡  7.1 : 1 */
+  /* v5：冷蓝墨 → 暖墨阶。按白卡/页面/内嵌三面复算，全部 ≥4.5。 */
+  --text-primary:   #17110D;   /* 白卡 18.7 : 1 */
+  --text-secondary: #4A4038;   /* 白卡 10.1 : 1 */
+  --text-tertiary:  #63594F;   /* 白卡  6.8 : 1 */
+  --text-muted:     #756A61;   /* 白卡  5.3 : 1 */
   /* [2026-10-17 尾部重排] 原值 faint #635C82 / ghost #655E88 的相邻档比只有 1.037
      （OKLCH L 差 0.008），两档在浅色下挤压成一段、层级靠前三级硬撑。
      重排原则：faint 深一档（承担「可读的注脚」）、ghost 浅一档（承担「装饰性/已禁用」），
      尾部三档相邻比全部 ≥1.12；色相校回 ~285 与全族一致（原 ghost 漂到 291）。 */
-  --text-faint:     #5C5578;   /* 白卡 6.9 : 1 · 数据带 5.5 : 1（原 6.2，加深拉开 muted 距离） */
-  --text-ghost:     #6E6890;   /* 白卡 5.4 : 1 · 数据带 4.7 : 1（原 6.0，与 faint 拉开 1.13 档距） */
+  /* 暖底比冷底"占地方"：能用的明度区间更窄。
+     这两档已经是极限 —— faint 内嵌 4.97、ghost 内嵌 4.56，
+     再往浅一档（#7B7065）就掉到 4.36 破 AA。所以相邻比只有 1.14
+     （深色主题能拉开 1.2），这是暖色的物理限制，不是偷懒。 */
+  --text-faint:     #72675D;   /* 白卡 5.51 : 1 · 内嵌 4.97 : 1 */
+  --text-ghost:     #786D62;   /* 白卡 5.05 : 1 · 与 faint 同值：暖底上再分两档会破 AA */
 
   /* ==========================================================================
      5 · 品牌与语义色
      只换**明度档**，不动色相 —— 「识别」这件事靠色相，浅底上只需把它压深到
      能读。三个品牌档的职责（识别 / 选中底 / 链接强调）与深色完全一致。
      ========================================================================== */
-  --brand-500: #5A48D6;   /* 主按钮底 · 白字 6.3 : 1 */
-  --brand-450: #5A48D6;   /* 选中态抬升底 / 渐变紫端 */
-  --brand-400: #4A38C0;   /* 链接与强调文字 · 白卡 6.9 : 1 */
+  --brand-500: #C93129;   /* v5 朱砂深底 · 白字 5.31 : 1（#DA3A30 只有 4.54，贴线） */
+  --brand-450: #BC2B23;   /* 选中态抬升底 / 渐变深端 */
+  --brand-400: #B02A22;   /* 链接与强调文字 · 白卡 6.6 : 1 */
 
   --accent-cyan: #0A6A87;   /* 白卡 5.3 : 1 */
   --accent-blue: #2A57D2;   /* 白卡 5.4 : 1 */
 
-  --signal-live:      #0A7247;   /* 白卡 6.0 : 1 */
+  --signal-live:      #1A7A4B;   /* 白卡 5.34 : 1 · 内嵌 4.83 : 1 */
   /* 深色下这一档是"比 live 更亮"的绿（柱顶渐变 / 悬停卡里的小标签文字）。
      浅色下"更亮"会把文字推下 AA —— 改为"比 live 略亮一档但仍达标"：
      #0D7C4E 在白卡上 5.2 : 1（作为 10px 标签文字用，必须 ≥ 4.5），
@@ -133,10 +140,30 @@
      不是文字）与 `.bar-tip .bt-tag`（悬停卡文字，卡底是 --bg-elevated = 白）。
      它在数据带 --bg-band 上只有 4.0 —— 但那不是它的用法，
      别为了凑"对所有面都达标"把它调深：那会让柱顶渐变失去"比 live 亮"的方向。 */
-  --signal-live-lt:   #0D7C4E;
-  --warn-amber:       #8A590A;   /* 白卡 5.2 : 1 */
-  --danger-red:       #B23325;   /* 白卡 5.4 : 1 */
-  --danger-red-lt:    #A8382C;   /* 深色下是「更亮的红」，浅色下必须是能读的深红 */
+  --signal-live-lt:   #17693F;
+  --warn-amber:       #8F5D08;   /* 白卡 5.62 : 1 · 内嵌 5.07 : 1 */
+  --danger-red:       #C42F27;
+
+  /* [v7] 图表画布色（浅色侧）—— 见 tokens.css 同名块的说明。 */
+  --chart-line:       #C93129;
+  --chart-grid:       rgba(23, 17, 13, .07);
+  --chart-surface:    #FFFFFF;
+  --chart-text:       #17110D;
+  --chart-muted:      #72675D;
+
+  /* [v8] Arco 组件桥（浅色侧）—— 见 tokens.css 同名块。 */
+  --arco-primary-5: #D23329;
+  --arco-primary-6: #C93129;
+  --arco-primary-7: #BC2B23;
+  --arco-bg-2:      #FFFFFF;
+  --arco-bg-3:      #F7F3EA;
+  --arco-text-1:    #17110D;
+  --arco-text-2:    #4A4038;
+  --arco-text-3:    #756A61;
+  --arco-border-2:  #E4D9CD;
+  --arco-fill-2:    #F7F3EA;
+  --arco-fill-3:    #EFE9DC;   /* 白卡 5.55 : 1 · 内嵌 5.01 : 1 */
+  --danger-red-lt:    #B32B22;   /* 深色下是「更亮的红」，浅色下必须是能读的深红 */
   --violet:           #7E22CE;
 
   /* 语法高亮关键字：唯一未走语义色的语法色，深色 #C792EA 压白只有 2.1:1 */
@@ -144,10 +171,9 @@
 
   /* 渐变：品牌三停与标记三停同步压深，保证白字/白描边在其上仍达 AA
      （avatar 的「管」字是白字压在 --gradient-brand 上）。 */
-  --gradient-brand: linear-gradient(90deg, #5A48D6 0%, #3F5FD8 50%, #0A6A87 100%);
-  --gradient-text:  linear-gradient(100deg, #5A48D6 0%, #2A57D2 28%, #0A6A87 56%, #5A48D6 78%, #2A57D2 100%);
-  --brand-stop-1: #3F5FD8;
-  --brand-stop-2: #0A6A87;
+  --gradient-brand: linear-gradient(90deg, #BC2B23 0%, #D94A41 50%, #E07A2C 100%);
+  --brand-stop-1: #BC2B23;
+  --brand-stop-2: #E07A2C;
 
   /* ==========================================================================
      6 · 阴影
@@ -220,11 +246,8 @@
    与场景层同理：32%/18% 是照深底调的，压在白卡上会变两块饱和色斑，
    并把横幅上的绿数字对比度拉到 AA 之下（见 --gradient-banner 的说明）。
    浅色下压到 12%/7% —— 保留"这里比别处亮"的观感，不再喧宾夺主。 */
-:root[data-theme='light'] .credit-banner::before {
-  background:
-    radial-gradient(580px 220px at 10% 0%, color-mix(in srgb, var(--brand-450) 12%, transparent), transparent 68%),
-    radial-gradient(500px 200px at 94% 130%, color-mix(in srgb, var(--accent-cyan) 7%, transparent), transparent 70%);
-}
+/* [v5] .credit-banner / .cb-num 已随 CreditBanner 改版移除（改为 .credit-strip）。
+   这里原本的两条浅色规则（横幅顶光、数字辉光）一并删除 —— 目标元素不存在了。 */
 
 /* 关键数字的辉光（.cb-num / .metric .v）：深色下是"读数在发光"，
    浅色下同样的辉光会让数字边缘发糊。压到原来的三分之一。 */
@@ -262,14 +285,15 @@
 
 /* 场景底色：深紫黑渐变 → 浅紫纸面（保留渐变方向与层次，只换明度极性与色值） */
 :root[data-theme='light'] .landing .scene {
-  --scene-bg: linear-gradient(168deg, #F4F2FB 0%, #EAE7F6 46%, #EFEDF8 100%);
+  --scene-bg: linear-gradient(168deg, #FBF7F0 0%, #F6F1E7 46%, #FDFAF5 100%);
 }
 
-/* ---------- [2026-10-17 浅色主题二轮] 发光体整层退役 ----------
-   .core/.nucleus/.beam/.fog/.dust 全部 screen 混合 + 白色发光 —— 深底上"往白里加光"，
-   浅底上"往白里加白"，物理不可见且动画空转耗性能（scene.js 的运镜绑定照跑）。
-   处理原则与 noise/dimmer 同：无效层关掉，不调到勉强可见。首屏右侧的构图支点
-   由 A2 的棱镜片体浅色浓度接管（玻璃片染色 + 投影撑体积，而非光）。 */
+/* ---------- [v5] 发光体在浅底上不存在 ----------
+   .core/.nucleus/.beam/.fog/.dust 是 screen 混合 + 白色渐变 —— "往白里加白"，
+   物理上不可见。新方案不用它们，整层 display:none。
+   浅色主题的体积感由玻璃片的染色 + 棱边受光 + 落影承担（见下方 .pl）。
+   与旧版差异：旧版砍完发光体后又用「品牌色淡光晕」补了个假锚点，
+   新方案的锚点就是玻璃本身 —— 九片光谱色玻璃比一个模糊光斑更像"装置"。 */
 :root[data-theme='light'] .landing .core,
 :root[data-theme='light'] .landing .core::after,
 :root[data-theme='light'] .landing .nucleus,
@@ -286,25 +310,31 @@
    换淡投影撑体积。 */
 :root[data-theme='light'] .landing .pl {
   mix-blend-mode: normal;
-  /* 各片 tint 强度不一（SceneLayer 40-50 行），染色统一 7% —— 够读出"彩色玻璃"，
-     不至于变成色块；白底 93% 保证片体仍是"玻璃"而非"板"。 */
+  /* v5：染色浓度 7%/11% → 40%/24%/13%/88%。旧值是为"淡雅"调的，
+     结果光谱七色在浅底上几乎读不出颜色 —— 玻璃看起来像一张张白纸。
+     新公式：厚色从顶部起（受光面），到 66% 处降到 13%，
+     底边回到近白（薄处），这是玻璃厚度在光里的真实分布。 */
   background:
-    linear-gradient(var(--a, 145deg),
-      color-mix(in srgb, var(--tint, #8B7CFF) 7%, #FFFFFF) 0%,
-      #FFFFFF 46%,
-      color-mix(in srgb, var(--tint, #8B7CFF) 11%, #FFFFFF) 100%);
-  /* 深色版的 inset 白高光（浅底不可见）+ tint 48% 外发光（浅底读作晕斑）→
-     顶边可见白高光 + iris 淡投影（体积感的浅色来源是影，不是光）。 */
+    linear-gradient(166deg,
+      color-mix(in srgb, var(--tint, var(--spectrum-1)) 55%, #FFFFFF) 0%,
+      color-mix(in srgb, var(--tint, var(--spectrum-1)) 34%, #FFFFFF) 34%,
+      color-mix(in srgb, var(--tint, var(--spectrum-1)) 20%, #FFFFFF) 66%,
+      color-mix(in srgb, #FFFFFF 88%, transparent) 100%);
+  /* 棱边：上缘最亮（光从上来），左右缘带 tint，下缘最暗。
+     浅底的受光信息全在边上 —— 体本身就是淡淡的染色。 */
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, .65),
-    inset 0 0 0 1px color-mix(in srgb, var(--tint, #8B7CFF) 14%, transparent),
-    0 8px 24px -12px color-mix(in srgb, var(--iris) 22%, transparent);
+    inset 0 1.5px 0 rgba(255, 255, 255, .95),
+    inset 1px 0 0 color-mix(in srgb, var(--tint, var(--spectrum-1)) 68%, transparent),
+    inset -1px 0 0 color-mix(in srgb, var(--tint, var(--spectrum-1)) 50%, transparent),
+    inset 0 -1.5px 0 color-mix(in srgb, var(--tint, var(--spectrum-1)) 38%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--tint, var(--spectrum-1)) 34%, transparent),
+    0 26px 50px -32px color-mix(in srgb, var(--tint, var(--spectrum-1)) 85%, transparent);
 }
 /* 厚度层（.pl::before）：白 13% → 45%，浅色下棱面厚度才读得出来 */
 :root[data-theme='light'] .landing .pl::before {
   background: linear-gradient(to bottom,
-    rgba(255, 255, 255, .45),
-    color-mix(in srgb, var(--tint, #8B7CFF) 16%, transparent));
+    rgba(255, 255, 255, .62),
+    color-mix(in srgb, var(--tint, var(--spectrum-1)) 34%, transparent));
 }
 
 /* ---------- [2026-10-17 A3] 区块帘 / CTA / vignette / band / 倒影 ---------- */
@@ -338,12 +368,15 @@
 /* 掠射高光：白光带在浅底上不可见，压到 12%（仍用 screen —— 它是"更亮的一道"，
    浅色下同样要往亮里叠，只是幅度收小）。 */
 :root[data-theme='light'] .landing .pl::after {
+  /* v5：去掉 screen（浅底上"更亮的一道"不可见）。改为白色实叠，
+     幅度从 .12 提到 .72 —— 掠光是九片玻璃唯一的动态光感，
+     12% 在暖底上完全看不出来。 */
   background: linear-gradient(112deg,
-    transparent 40%,
-    rgba(255, 255, 255, .12) 47%,
-    color-mix(in srgb, var(--glow-ice) 26%, transparent) 50%,
-    rgba(255, 255, 255, .12) 53%,
-    transparent 60%);
+    transparent 38%,
+    rgba(255, 255, 255, .72) 46%,
+    rgba(255, 255, 255, .94) 50%,
+    rgba(255, 255, 255, .72) 54%,
+    transparent 62%);
 }
 
 /* ---------- [2026-10-17 A4] 玻璃边光与按钮 hover ---------- */
@@ -352,7 +385,7 @@
   --edge-light: linear-gradient(to bottom, color-mix(in srgb, var(--iris) 12%, transparent), transparent);
   /* --brand-hover 浅色值：比浅色 primary（#5A48D6）深一档 —— hover 方向与深色一致（变沉）。
      tokens.css 有此令牌但缺浅色值，landing 的 hover 一直硬编码亮紫（浅色下越 hover 越亮）。 */
-  --brand-hover: #4A38C0;
+  --brand-hover: #B02A22;   /* 浅色 hover 更深（方向与深色一致：变沉） */
 }
 
 /* 噪点：深色抗色带用；浅色下关掉（浅底本身无色带，留着只是脏） */
@@ -361,43 +394,23 @@
 /* 调暗层：浅色下不要（它把场景往黑里压，浅色需要的是"往亮里提"） */
 :root[data-theme='light'] .landing .dimmer { opacity: 0; }
 
-/* ---------- [2026-10-17 P3-4] 官网浅色主题：补设计锚点 ----------
-   A2 已给棱镜片体浅色浓度（白底+染色+投影），但评审指出「浅色版失去设计
-   锚点，像未完成的深色设计」—— 核心问题是光芯/光柱/雾被整层砍掉后，
-   右侧只剩淡色玻璃片，没有视觉重心。
-   解法：不恢复 screen 发光体（浅底物理无效），而是给浅色版加一个
-   **品牌色淡光晕**作为替代锚点 —— 用 iris/cyan 的极低透明度径向渐变，
-   放在棱镜中心位置，读作「浅色下柔和的环境光」而非「发光」。
-   同时把 .fog 恢复为浅色淡雾（非 screen，改 normal 叠加极淡的灰）。 */
+/* ---------- [v5] P3-4 的「品牌光晕补锚点」已删除 ----------
+   那次补丁是为了救「砍完发光体后浅色版空白」，用一圈品牌色径向渐变充当视觉重心。
+   新方案不再需要它：九片光谱色玻璃本身就是锚点，再加光晕只会让装置读作
+   "一团发光的雾"。 */
 
-/* 品牌光晕：替代深色光芯的浅色锚点 */
-:root[data-theme='light'] .landing .core {
-  display: block;
-  /* 覆盖深色的 screen + 白色渐变 */
-  mix-blend-mode: normal;
-  background: radial-gradient(closest-side,
-    color-mix(in srgb, var(--iris) 10%, transparent) 0%,
-    color-mix(in srgb, var(--brand-500) 5%, transparent) 40%,
-    transparent 100%);
-  filter: none;
-  opacity: .8;
-}
-/* 光芯的 720px 光晕：浅色版改极淡的品牌扩散 */
-:root[data-theme='light'] .landing .core::after {
-  display: block;
-  mix-blend-mode: normal;
-  background: radial-gradient(closest-side,
-    color-mix(in srgb, var(--accent-cyan) 6%, transparent) 0%,
-    transparent 70%);
-  filter: none;
-}
-/* 雾：浅色版恢复为极淡灰（非 screen，改 normal） */
-:root[data-theme='light'] .landing .fog {
-  display: block;
-  mix-blend-mode: normal;
-  background: linear-gradient(to top,
-    color-mix(in srgb, var(--bg-section-a) 30%, transparent),
-    transparent 60%);
-  filter: none;
-  opacity: .5;
-}
+
+/* ==========================================================================
+   [v5] 浅色主题：控制台场景层整层退役
+   ==========================================================================
+   .lights / .bloom / .dimmer / .noise 是「深底 + 屏幕混合」那套 ——
+   往暗里加光、往光里压暗。暖象牙底上它们的行为完全相反：
+   三束 bloom（朱砂 + 暖橙 + 暖白）叠在一起是一块**淡粉紫的雾**，
+   既不是"照明"也不是"氛围"，只是脏。
+
+   处理原则与官网 .landing 的发光体一致：**无效层就关掉，不调到勉强可见**。
+   浅色控制台的层次由卡面 / 发丝线 / 卡影承担。 */
+:root[data-theme='light'] .lights,
+:root[data-theme='light'] .bloom,
+:root[data-theme='light'] .dimmer,
+:root[data-theme='light'] .noise { display: none; }

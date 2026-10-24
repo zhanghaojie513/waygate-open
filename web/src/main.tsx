@@ -50,7 +50,7 @@ for (const rel of ['icon', 'apple-touch-icon']) {
   const link = document.createElement('link');
   link.rel = rel;
   link.type = 'image/svg+xml';
-  link.href = '/icon.svg?v=2';
+  link.href = '/icon.svg?v=3';  // v3: 配色随 [v5] 朱砂改版
   document.head.appendChild(link);
 }
 

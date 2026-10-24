@@ -26,46 +26,7 @@ function Card({ children, h }: { children: React.ReactNode; h?: number }) {
   );
 }
 
-/** KPI 瓦片骨架：图标芯片 + 标签行 + 大数字 + 副注 */
-function MetricSkeleton() {
-  return (
-    <div className="card metric">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 11 }}>
-        <div className="skeleton" style={{ width: 30, height: 30, borderRadius: 9 }} />
-        <Bar w={72} h={12} />
-      </div>
-      <Bar w={96} h={24} r='sm' />
-      <div style={{ marginTop: 8 }}>
-        <Bar w={130} h={10} />
-      </div>
-    </div>
-  );
-}
-
-/** 用量横幅骨架（.credit-banner 三栏：总 tokens 大数字 / 说明两行 / 缓存命中率） */
-function BannerSkeleton() {
-  return (
-    <div className="card panel">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 40, padding: '18px 20px' }}>
-        <div>
-          <Bar w={92} h={11} />
-          <div style={{ marginTop: 8 }}><Bar w={132} h={34} /></div>
-          <div style={{ marginTop: 8 }}><Bar w={156} h={10} /></div>
-        </div>
-        <div style={{ flex: 1 }}>
-          <Bar w='55%' h={12} />
-          <div style={{ marginTop: 10 }}><Bar w='100%' h={10} /></div>
-          <div style={{ marginTop: 6 }}><Bar w='92%' h={10} /></div>
-        </div>
-        <div style={{ textAlign: 'right' }}>
-          <Bar w={70} h={11} />
-          <div style={{ marginTop: 8 }}><Bar w={76} h={22} /></div>
-          <div style={{ marginTop: 8 }}><Bar w={112} h={10} /></div>
-        </div>
-      </div>
-    </div>
-  );
-}
+/* [v9] BannerSkeleton 已删 —— 概览横幅撤出页面后无使用者。 */
 
 /** 表格面板骨架：panel-head（标题 + 右上 pill）+ 表头 + N 数据行 + 可选底注。
  *  `head` 每项是该列的骨架宽（末列若是「分布」占比条，传 'track' 占位）。
@@ -122,19 +83,46 @@ function TablePanelSkeleton({
   );
 }
 
-/** 概览页骨架：横幅 → 3×2 KPI 瓦片 → 积分账本 → 客户端/模型用量摘要（v0.5.17 对齐当前布局） */
+/** 概览页骨架：[v9] 与当前结构同形 —— 四卡 → 活跃度 → 折线 → 两张摘要表。
+ *
+ *  [v9] 相对上一版的三处修正（页面已变、骨架没跟上，加载完成会连跳三次）：
+ *    ① 撤掉 BannerSkeleton —— 概览的横幅（CreditBanner）已删；
+ *    ② 撤掉「积分账本」表 —— v0.5.7 时代就移出了概览；
+ *    ③ 补上「活跃度」与「token 消耗折线」两个新面板。
+ *  热力图的占位用一格阵纹理（.ah-skel-grid，两层正交的 repeating-gradient），
+ *  不逐格渲染 91 个 div —— 骨架只承诺形状，不承诺格数。
+ */
 export function OverviewSkeleton() {
   return (
     <div className="view-body stack">
-      <BannerSkeleton />
+      <KpiRowSkeleton count={4} />
 
-      {/* KPI 瓦片（3 列 × 2 行） */}
-      <div className="metric-row">
-        {Array.from({ length: 6 }, (_, i) => <MetricSkeleton key={i} />)}
+      {/* 活跃度：面板头 + 格阵 + 统计行 */}
+      <div className="card panel">
+        <div className="panel-head">
+          <Bar w={72} h={15} />
+          <Bar w={132} h={20} r='pill' />
+        </div>
+        <div style={{ padding: '6px 20px 0' }}>
+          <div className="ah-skel-grid" />
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, paddingTop: 9, borderTop: '1px solid var(--border-subtle)' }}>
+            <Bar w={220} h={11} />
+            <Bar w={120} h={11} />
+          </div>
+        </div>
       </div>
 
-      {/* 积分账本（[v0.5.7]：提供商/剩余/已消耗/累计发放/最近过期，通常 1~2 行） */}
-      <TablePanelSkeleton head={[140, 80, 70, 84, 116]} rows={2} footer />
+      {/* token 消耗折线：面板头 + 图区（与图表同高 168）+ 脚注 */}
+      <div className="card panel">
+        <div className="panel-head">
+          <Bar w={110} h={15} />
+          <Bar w={90} h={20} r='pill' />
+        </div>
+        <div style={{ padding: '4px 20px 8px' }}>
+          <div className="skeleton" style={{ width: '100%', height: 168, borderRadius: 'var(--radius-md)' }} />
+          <Bar w={280} h={10} />
+        </div>
+      </div>
 
       {/* 提供商用量摘要（6 列 × 6 行，末列分布条） */}
       <TablePanelSkeleton head={[110, 72, 88, 76, 56, 'track']} rows={6} />
@@ -145,21 +133,31 @@ export function OverviewSkeleton() {
   );
 }
 
-/** 用量页骨架：横幅 → 统计条 → 趋势图 → 按模型明细 → 按提供商条形 → 数据来源（v0.5.17 对齐当前布局） */
+/** 用量页骨架：[v6] 三张卡 → 读数行 → 口径脚注 → 趋势图 → 明细。
+ *
+ *  必须跟最终结构同形状 —— 此前是「横幅 + 4 格统计条」，
+ *  而页面已经改成「3 张卡 + 读数带」，加载完成时会整块跳一次。
+ *  这里复用 KpiRowSkeleton(3) 与 .substats 的排版，
+ *  脚注也给一行灰条（它是常驻内容，不是加载态才有的）。 */
 export function UsageSkeleton() {
   return (
     <div className="view-body stack">
-      <BannerSkeleton />
+      <KpiRowSkeleton count={3} />
 
-      {/* 统计条（4 格） */}
-      <div className="statbar">
-        {Array.from({ length: 4 }, (_, i) => (
-          <div key={i} style={{ padding: '16px 20px' }}>
-            <Bar w={70} h={11} />
-            <div style={{ marginTop: 8 }}><Bar w={90} h={22} /></div>
-            <div style={{ marginTop: 8 }}><Bar w={168} h={9} /></div>
-          </div>
+      {/* 读数行：日均 / 可用天数 —— 与 .substats 同排版 */}
+      <div className="substats">
+        {[0, 1].map((i) => (
+          <span className="ss-cell" key={i}>
+            <Bar w={64} h={11} />
+            <Bar w={44} h={15} />
+          </span>
         ))}
+      </div>
+
+      {/* 口径脚注（两行灰字） */}
+      <div style={{ marginBottom: 22 }}>
+        <Bar w='88%' h={10} />
+        <div style={{ marginTop: 6 }}><Bar w='64%' h={10} /></div>
       </div>
 
       {/* 趋势图（标题 + 右侧口径切换 seg + 单位 pill；柱区 30 根） */}
@@ -243,7 +241,7 @@ export function RequestsSkeleton() {
 
       {/* [v0.6.5] 统计条（当前筛选命中 / 本页条数 / 当前页异常 / 上游访问密钥失效）——
           此前这部分不在骨架里，加载时显示一排 0；现在与真实布局同形状。 */}
-      <StatBarSkeleton />
+      <KpiRowSkeleton />
 
       {/* 表格 */}
       <Card>
@@ -272,17 +270,25 @@ export function RequestsSkeleton() {
 }
 
 /**
- * [v0.6.5] 统计条骨架（4 格，每格：标签 + 大数字 + 副注）。
- * 用于 API Keys / 提供商管理 —— 这两页顶部都是同一形状的 `.statbar`。
+ * [v5] 指标卡骨架（4 张等宽卡）。
+ *
+ * 形状必须跟 `.kpi-row-grid + .kpi` 一致 —— 左右两栏（图标列 + 内容列），
+ * 否则加载完成后会有一次"读数行 → 卡片"的跳变。
+ * 用于 API Keys / 用量 / 请求日志 / 提供商管理。
  */
-function StatBarSkeleton() {
+function KpiRowSkeleton({ count = 4 }: { count?: number }) {
   return (
-    <div className="statbar">
-      {Array.from({ length: 4 }, (_, i) => (
-        <div key={i} style={{ padding: '16px 20px' }}>
-          <Bar w={70} h={11} />
-          <div style={{ marginTop: 8 }}><Bar w={90} h={22} /></div>
-          <div style={{ marginTop: 8 }}><Bar w={120} h={10} /></div>
+    <div className="kpi-row-grid" data-count={count}>
+      {Array.from({ length: count }, (_, i) => (
+        <div className="kpi" key={i}>
+          <div className="kpi-side">
+            <div className="skeleton" style={{ width: 30, height: 30, borderRadius: 'var(--radius-sm)' }} />
+          </div>
+          <div className="kpi-body">
+            <Bar w={72} h={11} />
+            <div style={{ marginTop: 7 }}><Bar w={104} h={23} /></div>
+            <div style={{ marginTop: 6 }}><Bar w={132} h={10} /></div>
+          </div>
         </div>
       ))}
     </div>
@@ -296,7 +302,7 @@ function StatBarSkeleton() {
 export function KeysSkeleton() {
   return (
     <div className="view-body stack">
-      <StatBarSkeleton />
+      <KpiRowSkeleton />
       <div className="card panel">
         <div className="panel-head">
           <Bar w={80} h={15} />

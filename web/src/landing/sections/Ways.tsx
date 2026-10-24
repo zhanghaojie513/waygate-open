@@ -9,14 +9,12 @@ import { cssVars } from '../bits';
  * 原型写死了电光青的十六进制值；这里改用 currentColor + `--accent-cyan` 令牌，
  * 满足「组件样式零色值字面量」（铁律 A：换一次品牌色，它必须跟着动）。
  */
-const CAM = '{"x":-118,"y":-38,"z":-310,"rx":5,"ry":7,"rz":-1.5,"fog":0.44,"dim":0.40}';
-
 const ICON: CSSProperties = { color: 'var(--accent-cyan)' };
 const S = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.6 } as const;
 
 export function Ways() {
   return (
-    <section className="section" id="ways" data-cam={CAM}>
+    <section className="section" id="ways">
       <div className="wrap">
         <div className="split">
           <div className="split-l reveal">

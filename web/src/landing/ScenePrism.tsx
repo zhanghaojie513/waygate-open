@@ -18,10 +18,19 @@ import './scene.css';
  *     （rAF / scroll·resize·pointer 监听 / 注入的星尘节点都会回收），
  *     所以这里只需把 cleanup 原样交还 React。
  *
- * 场景挂在页面根下，故 host 传 `document`（即 §4.2 的 `mountScene(root)`）。
+ * [v5] 新增 `variant`：
+ *   · `'inline'`（默认）—— 装置是 Hero 右栏里的一个盒子。**不挂载引擎**：
+ *     滚动运镜整套已随全屏背景一起退役（见 scene.ts 头注释），
+ *     而星尘在浅底上也不可见（白点在暖白上等于没有）。
+ *     这里的组件因此退化成纯 DOM 渲染 —— 装置的自转/掠光全由 CSS 承担。
+ *   · `'fixed'` —— 保留旧的全屏背景语义（挂载引擎）。当前无消费方，
+ *     留作回退口：如果日后要恢复滚动运镜，把 variant 改回来即可。
  */
-export function ScenePrism() {
-  useEffect(() => mountScene(document), []);
+export function ScenePrism({ variant = 'inline' }: { variant?: 'inline' | 'fixed' }) {
+  useEffect(() => {
+    if (variant !== 'fixed') return;
+    return mountScene(document);
+  }, [variant]);
+
   return <SceneLayer />;
 }
-// @zbiti-ai:f:22:3e2cfcbe

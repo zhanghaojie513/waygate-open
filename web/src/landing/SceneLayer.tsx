@@ -36,17 +36,29 @@ interface Plate {
   soft?: boolean;
 }
 
-/* 内壳 5 片（锐）+ 外壳 4 片（虚一档）—— 9 片，参数照抄原型 */
+/* 内壳 5 片（锐）+ 外壳 4 片（虚一档）—— 9 片。
+ *
+ * [v5] 两处根本变化：
+ *   ① tint 改用光谱七色循环 —— 装置本身就是「白光被拆成七色」那件事。
+ *      此前只用 4 个品牌色循环，九片玻璃全挤在紫青两族里，
+ *      读不出"色散"，只读得出"一堆紫色玻璃"。
+ *   ② 尺寸按局部盒子重算（半径缩到原 1/3、片缩到 2/5）——
+ *      装置从全屏背景变成 Hero 右栏的一个盒子，绝对像素值必须跟着缩，
+ *      否则玻璃会溢出盒子。
+ *
+ * --e / --hot 在生产版保留（原型没有）：它们让每片的棱边亮度与顶面高光
+ * 能逐片微调，九片才不会读成"复制粘贴"。
+ */
 const PLATES: Plate[] = [
-  { tint: 'var(--iris)', a: '0deg', r: '430px', y: '-40px', w: '300px', h: '520px', z: '-18deg', x: '16deg', o: '.95', e: '.70', hot: '.26', dof: '0px', dur: '15s', delay: '0s' },
-  { tint: 'var(--accent-cyan)', a: '72deg', r: '448px', y: '10px', w: '255px', h: '470px', z: '12deg', x: '-22deg', o: '.82', e: '.18', hot: '.05', dof: '0px', dur: '19s', delay: '3s' },
-  { tint: 'var(--brand-500)', a: '144deg', r: '424px', y: '-60px', w: '325px', h: '560px', z: '-24deg', x: '19deg', o: '.90', e: '.52', hot: '.18', dof: '0px', dur: '17s', delay: '6.5s' },
-  { tint: 'var(--brand-400)', a: '216deg', r: '456px', y: '20px', w: '270px', h: '490px', z: '16deg', x: '-14deg', o: '.76', e: '.14', hot: '.04', dof: '0px', dur: '21s', delay: '10s' },
-  { tint: 'var(--accent-blue)', a: '288deg', r: '436px', y: '-30px', w: '310px', h: '535px', z: '-14deg', x: '24deg', o: '.88', e: '.30', hot: '.12', dof: '0px', dur: '18s', delay: '13.5s' },
-  { tint: 'var(--brand-500)', a: '36deg', r: '860px', y: '40px', w: '400px', h: '560px', z: '-22deg', x: '26deg', o: '.62', e: '.20', hot: '.06', dof: '2.6px', dur: '26s', delay: '2s', soft: true },
-  { tint: 'var(--accent-cyan)', a: '126deg', r: '900px', y: '-20px', w: '360px', h: '520px', z: '18deg', x: '-28deg', o: '.52', e: '.10', hot: '.03', dof: '2.6px', dur: '30s', delay: '9s', soft: true },
-  { tint: 'var(--iris)', a: '216deg', r: '840px', y: '60px', w: '440px', h: '620px', z: '-28deg', x: '20deg', o: '.58', e: '.30', hot: '.09', dof: '2.6px', dur: '24s', delay: '15s', soft: true },
-  { tint: 'var(--brand-400)', a: '306deg', r: '890px', y: '-10px', w: '380px', h: '540px', z: '14deg', x: '-24deg', o: '.48', e: '.08', hot: '.03', dof: '2.6px', dur: '33s', delay: '19s', soft: true },
+  { tint: 'var(--spectrum-1)', a: '0deg',   r: '128px', y: '-14px', w: '96px',  h: '196px', z: '-16deg', x: '15deg',  o: '.94', e: '.70', hot: '.26', dof: '0px', dur: '16s', delay: '0s' },
+  { tint: 'var(--spectrum-2)', a: '72deg',  r: '138px', y: '6px',   w: '86px',  h: '178px', z: '11deg',  x: '-20deg', o: '.82', e: '.18', hot: '.05', dof: '0px', dur: '21s', delay: '3s' },
+  { tint: 'var(--spectrum-3)', a: '144deg', r: '124px', y: '-20px', w: '104px', h: '210px', z: '-22deg', x: '18deg',  o: '.90', e: '.52', hot: '.18', dof: '0px', dur: '18s', delay: '6.5s' },
+  { tint: 'var(--spectrum-4)', a: '216deg', r: '142px', y: '8px',   w: '90px',  h: '186px', z: '14deg',  x: '-14deg', o: '.78', e: '.14', hot: '.04', dof: '0px', dur: '23s', delay: '10s' },
+  { tint: 'var(--spectrum-5)', a: '288deg', r: '132px', y: '-12px', w: '100px', h: '200px', z: '-13deg', x: '22deg',  o: '.88', e: '.30', hot: '.12', dof: '0px', dur: '20s', delay: '13.5s' },
+  { tint: 'var(--spectrum-6)', a: '36deg',  r: '218px', y: '14px',  w: '132px', h: '200px', z: '-20deg', x: '25deg',  o: '.58', e: '.20', hot: '.06', dof: '2.1px', dur: '28s', delay: '2s', soft: true },
+  { tint: 'var(--spectrum-7)', a: '126deg', r: '228px', y: '-11px', w: '120px', h: '186px', z: '16deg',  x: '-26deg', o: '.50', e: '.10', hot: '.03', dof: '2.1px', dur: '32s', delay: '9s', soft: true },
+  { tint: 'var(--spectrum-1)', a: '216deg', r: '222px', y: '18px',  w: '146px', h: '216px', z: '-26deg', x: '20deg',  o: '.56', e: '.30', hot: '.09', dof: '2.1px', dur: '26s', delay: '15s', soft: true },
+  { tint: 'var(--spectrum-4)', a: '306deg', r: '224px', y: '-6px',  w: '126px', h: '192px', z: '13deg',  x: '-22deg', o: '.46', e: '.08', hot: '.03', dof: '2.1px', dur: '35s', delay: '19s', soft: true },
 ];
 
 export function SceneLayer() {
