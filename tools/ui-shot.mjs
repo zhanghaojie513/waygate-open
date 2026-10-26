@@ -11,14 +11,34 @@
  */
 
 import { spawn } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
+/**
+ * [v1.10.2] 自动探测本机 playwright chromium —— 目录名带版本号（chromium-1243 →
+ * chromium-1248），硬编码必然在 playwright 升级后过期（本次实测 ENOENT）。
+ * 取 ms-playwright 下**版本号最大**的 chromium-*；探测失败回落旧路径（报错可见）。
+ */
+function resolveChrome() {
+  const root = 'C:/Users/haiha/AppData/Local/ms-playwright';
+  try {
+    const dirs = readdirSync(root)
+      .filter((d) => /^chromium-\d+$/.test(d))
+      .sort((a, b) => Number(b.replace('chromium-', '')) - Number(a.replace('chromium-', '')));
+    if (dirs.length === 0) throw new Error('无 chromium-*');
+    const exe = join(root, dirs[0], 'chrome-win64', 'chrome.exe');
+    if (!existsSync(exe)) throw new Error(`${exe} 不存在`);
+    return exe;
+  } catch (err) {
+    console.warn(`[ui-shot] chromium 自动探测失败（${String(err && err.message ? err.message : err)}），回落占位路径`);
+    return 'C:/Users/haiha/AppData/Local/ms-playwright/chromium-UNKNOWN/chrome.exe';
+  }
+}
+
 const CHROME =
-  process.env.CHROME_PATH ??
-  'C:/Users/haiha/AppData/Local/ms-playwright/chromium-1243/chrome-win64/chrome.exe';
+  process.env.CHROME_PATH ?? resolveChrome();
 
 const [url, outPath, stepsRaw] = process.argv.slice(2);
 const steps = stepsRaw ? JSON.parse(stepsRaw) : [];

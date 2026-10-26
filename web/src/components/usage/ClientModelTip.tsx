@@ -1,7 +1,27 @@
 import type { BreakdownItem } from '../../types/api';
 import { formatCredits, formatInt, formatPercent, formatTokens } from '../../lib/format';
 
-export function ClientModelTip({ row }: { row: BreakdownItem }) {
+/**
+ * 入参取「本组件真正读到的字段」而非整个 BreakdownItem ——
+ * [v1.10.2] 概览的 byProvider 行也复用本组件（悬停「按模型消耗」），
+ * 它没有 model/displayName/share 这些模型维字段；按结构化子集收窄，
+ * 两类调用方都类型安全。
+ */
+export type ClientModelTipRow = Pick<BreakdownItem, 'tokens' | 'credits'> & {
+  /** 桶的显示名（byClient = 客户端名；byProvider = 提供商名）。 */
+  client?: string | null;
+  models?: Array<{
+    model: string;
+    displayName: string | null;
+    requests: number;
+    tokens: number;
+    /* byProvider 切片的 credits 可空（整模型未回报 → `--`，与 byClient 同口径）。 */
+    credits: number | null;
+  }>;
+  modelCount?: BreakdownItem['modelCount'];
+};
+
+export function ClientModelTip({ row }: { row: ClientModelTipRow }) {
   const models = row.models ?? [];
   const rest = Math.max(0, (row.modelCount ?? models.length) - models.length);
   const totalTokens = Math.max(0, row.tokens ?? 0);

@@ -86,7 +86,6 @@ function ConsoleApp() {
     <AppShell
       route={route}
       navigate={navigate}
-      expiresAt={session.expiresAt}
       onLogout={() => void session.logout()}
     >
       {/* Suspense 必须放在 AppShell **内侧**：包在外侧会让切路由时整个壳

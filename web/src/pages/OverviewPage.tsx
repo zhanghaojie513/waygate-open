@@ -15,6 +15,8 @@ import { TokenTrend } from '../components/overview/TokenTrend';
 import { ActivityHeat } from '../components/overview/ActivityHeat';
 import { Banner } from '../components/ui/Banner';
 import { ClientMetricTip } from '../components/usage/ClientMetricTip';
+import { ClientModelTip } from '../components/usage/ClientModelTip';
+import { Tooltip } from '../components/ui/Tooltip';
 import { formatInt, formatCacheHitRate, formatCredits, formatPercent, formatRelative, formatTokens, formatRate } from '../lib/format';
 import { WINDOW_LABEL } from '../lib/console';
 
@@ -254,8 +256,12 @@ export function OverviewPage({ navigate }: { navigate: (r: Route) => void }) {
                         return (
                         <tr key={p.providerId ?? '__unattributed__'}>
                           <td className="td-strong">
-                            {/* providerId=null = 目录外模型（请求日志「提供商」列同口径显示 —） */}
-                            <span>{p.provider ?? '未归属'}</span>
+                            {/* providerId=null = 目录外模型（请求日志「提供商」列同口径显示 —）
+                                [v1.10.2] 悬停恢复「按模型消耗」—— 用量页「按提供商消耗」同款
+                                （数据是 v1.10.2 起服务端随 byProvider 带的 models 切片）。 */}
+                            <Tooltip content={<ClientModelTip row={{ ...p, client: p.provider }} />}>
+                              <span>{p.provider ?? '未归属'}</span>
+                            </Tooltip>
                           </td>
                           <td className="r td-mono">{formatInt(p.requests)}</td>
                           <td className="r td-mono">{formatTokens(p.tokens ?? 0)}</td>

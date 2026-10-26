@@ -614,10 +614,12 @@ export class OverviewService {
     /* [v0.6.0] byProvider：按**目录归属的提供商**聚合用量 —— 提供商表那一行
        「请求次数 / 消耗积分 / 最后活跃」需要的是这个，而不是按客户端求和。
        与 byClient 同一个 (client_id, model) 粒度查询、同一套 providerByModel 归因：
-       模型查不到 provider 的行归到 `null` 桶（前端显示为「未归属」），不冒充任何一家。 */
+       模型查不到 provider 的行归到 `null` 桶（前端显示为「未归属」），不冒充任何一家。
+       [v1.10.2] 桶里同时收集 models 切片（byClient 同构）：概览提供商表悬停要显示
+       该提供商的按模型消耗 —— 此前那版 tooltip 被删，根因就是 byProvider 没这个数据。 */
     const providerBucket = new Map<
       string | null,
-      { providerId: string | null; provider: string | null; requests: number; tokens: number; credits: number | null; knownCount: number; lastSeenAt: number | null }
+      { providerId: string | null; provider: string | null; requests: number; tokens: number; credits: number | null; knownCount: number; lastSeenAt: number | null; models: Map<string, { model: string; requests: number; tokens: number; credits: number | null; knownCount: number }> }
     >();
     /* provider 显示名 → id 反查：**只给老行兜底**用（老行只有目录反解出的名字）。
        新行直接有 providerId，不需要这一趟往返。 */
@@ -629,7 +631,7 @@ export class OverviewService {
       const key = pId;
       let bucket = providerBucket.get(key);
       if (!bucket) {
-        bucket = { providerId: pId, provider: pName, requests: 0, tokens: 0, credits: null, knownCount: 0, lastSeenAt: null };
+        bucket = { providerId: pId, provider: pName, requests: 0, tokens: 0, credits: null, knownCount: 0, lastSeenAt: null, models: new Map() };
         providerBucket.set(key, bucket);
       }
       bucket.requests += row.requests;
@@ -638,6 +640,24 @@ export class OverviewService {
       if (row.knownCount > 0) {
         bucket.credits = (bucket.credits ?? 0) + (row.credits ?? 0);
         bucket.knownCount += row.knownCount;
+      }
+      /* [v1.10.2] models 切片（与 byClient 完全同构 —— 同一批行按 provider 键归并）。 */
+      const pm = bucket.models.get(row.model);
+      if (pm) {
+        pm.requests += row.requests;
+        pm.tokens += row.tokens;
+        if (row.knownCount > 0) {
+          pm.credits = (pm.credits ?? 0) + (row.credits ?? 0);
+          pm.knownCount += row.knownCount;
+        }
+      } else {
+        bucket.models.set(row.model, {
+          model: row.model,
+          requests: row.requests,
+          tokens: row.tokens,
+          credits: row.knownCount > 0 ? row.credits ?? 0 : null,
+          knownCount: row.knownCount,
+        });
       }
     }
     /* lastSeenAt：取「该提供商名下所有模型」的 MAX(ts)（lastSeenByModel 来自主聚合，无需再扫一遍）。 */
@@ -659,11 +679,27 @@ export class OverviewService {
       credits: b.credits === null ? null : round2(b.credits),
       /** epoch ms；该提供商名下所有模型最近一次请求时刻。null = 无数据。 */
       lastSeenAt: b.lastSeenAt,
+      /* [v1.10.2] 按 tokens 前 5 的模型切片（悬停「按模型消耗」用；完整明细在模型摘要表）。
+         displayName 在下方统一补（displayByModel 构造在此之后）。 */
+      models: [...b.models.values()]
+        .sort((x, y) => y.tokens - x.tokens)
+        .slice(0, 5)
+        .map((m) => ({
+          model: m.model,
+          displayName: null as string | null,
+          requests: m.requests,
+          tokens: m.tokens,
+          credits: m.credits === null ? null : round2(m.credits),
+        })),
     }));
 
     /* 模型 id → 显示名（与 byModel 同源：目录里的官方名，缺则回落 id）。
        悬停提示要显示的是**能认出来的模型名**，不是裸 id。 */
     const displayByModel = new Map(modelRows.map((m) => [m.model, m.displayName]));
+    /* [v1.10.2] 补 byProvider.models 的 displayName（切片构造在 displayByModel 之前，这里回填）。 */
+    for (const pr of providerRows) {
+      for (const m of pr.models) m.displayName = displayByModel.get(m.model) ?? m.model;
+    }
 
     const creditsUsed = round2(totals.credits);
     /* [v0.6.4] modelSum 保持「未知不计入」口径（NULL 当 0）—— 与 creditsUsed 同源，

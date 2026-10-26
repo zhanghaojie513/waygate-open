@@ -7,13 +7,12 @@ import { readToken } from './chartTheme';
 
 type Row = {
   bucket?: string;
+  /** [v1.10.1] 本行属于哪家 —— tooltip 的 key 从它取（多系列下 content 会被
+     按系列重复调用，硬编码 key 会让每行都显示同一个名字，实测就是「tokens」×3）。 */
   provider?: string;
   tokens?: number;
   requests?: number;
   errors?: number;
-  tokensText?: string;
-  requestsText?: string;
-  errorsText?: string;
 };
 
 const str = (v: unknown): string => (typeof v === 'string' ? v : '');
@@ -89,7 +88,9 @@ export function TokenTrend({ points, windowLabel }: { points: TrendPoint[]; wind
       return {
         key,
         name: nameById.get(key) ?? key,
-        data: buckets.map((b) => ({ bucket: b, tokens: byBucket.get(b) ?? 0 })),
+        /* provider 进数据行：dimension tooltip 的 content 回调按系列各调一次，
+           行里必须自带名字（见 Row.provider 注）。 */
+        data: buckets.map((b) => ({ bucket: b, provider: nameById.get(key) ?? key, tokens: byBucket.get(b) ?? 0 })),
       };
     });
     return { series, providerNames: order, nameById };
@@ -165,16 +166,27 @@ export function TokenTrend({ points, windowLabel }: { points: TrendPoint[]; wind
         },
       },
     },
-    tooltip: {
-      visible: true,
-      activeType: 'dimension' as const,
-      dimension: {
+      tooltip: {
         visible: true,
-        title: { value: (d: unknown) => str((d as Row)?.bucket) },
-        content: [
-          { key: 'tokens', hasShape: true, value: (d: unknown) => str((d as Row)?.tokensText) },
-        ],
-      },
+        activeType: 'dimension' as const,
+        dimension: {
+          visible: true,
+          title: { value: (d: unknown) => str((d as Row)?.bucket) },
+          /* [v1.10.1] 多系列：content 会被按系列各调一次，key/value 都从**行数据**取。
+             旧实现 key 硬编码 'tokens'、value 读从未赋值的 tokensText ——
+             实测三行全显示「tokens」且数值为空（用户报障截图）。
+             色块（hasShape）自动跟随各系列身份色，无需显式指定。 */
+          content: [
+            {
+              key: (d: unknown) => str((d as Row)?.provider) || 'tokens',
+              hasShape: true,
+              value: (d: unknown) => {
+                const t = (d as Row)?.tokens;
+                return typeof t === 'number' ? formatTokens(t) : '--';
+              },
+            },
+          ],
+        },
       style: {
         panel: {
           backgroundColor: c.surface,

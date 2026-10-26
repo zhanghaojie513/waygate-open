@@ -232,7 +232,9 @@ export interface OverviewData {
    * 与 byClient 是两个正交维度：这是「流量最终由哪家承接」，byClient 是「哪把密钥进来的」。
    * [2026-10-18] `credits` 可空：该提供商名下**全部**请求都未回报费用时为 `null`（未知），
    * 前端显示 `--`；只要有一条回报过就是已知部分之和。与 byModel 同口径。 */
-  byProvider: Array<{ providerId: string | null; provider: string | null; requests: number; tokens: number; credits: number | null; lastSeenAt: string | null }>;
+  byProvider: Array<{ providerId: string | null; provider: string | null; requests: number; tokens: number; credits: number | null; lastSeenAt: string | null;
+    /** [v1.10.2] 该提供商按 tokens 前 5 的模型切片（悬停「按模型消耗」用，与 byClient.models 同构）。 */
+    models: Array<{ model: string; displayName: string | null; requests: number; tokens: number; credits: number | null }>; }>;
   /** [2026-10-08] 按「请求来自哪个工具」聚合（从 `ua` 现解析）。见 `ToolBreakdownItem`。 */
   byTool: ToolBreakdownItem[];
   /**

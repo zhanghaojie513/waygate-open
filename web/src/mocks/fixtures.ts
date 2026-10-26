@@ -768,7 +768,8 @@ export function makeOverview(win: MockWindow = 'today', nowMs: number = Date.now
   }));
   const creditsCenti = sum(byClient, (r) => cents(r.credits ?? 0));
   /* [2026-10-17] byProvider（概览「提供商用量摘要」改用此维度）：与 byClient 同源分账，
-     但按提供商桶（CLIENT_MIX 一桶=一家提供商），providerId 取各家真实 id 前缀对齐 mock。 */
+     但按提供商桶（CLIENT_MIX 一桶=一家提供商），providerId 取各家真实 id 前缀对齐 mock。
+     [v1.10.2] 补 models 切片（与 byClient 同构）—— 概览表悬停「按模型消耗」的演示数据。 */
   const byProvider = CLIENT_MIX.map((m, i) => ({
     providerId: 'p_mock_' + i,
     provider: providerBucketName(m.clientId),
@@ -776,6 +777,14 @@ export function makeOverview(win: MockWindow = 'today', nowMs: number = Date.now
     tokens: clientTokens[i],
     credits: cents(clientReqs[i] * m.rate) / 100,
     lastSeenAt: new Date(Date.now() - (i + 1) * 3600_000).toISOString(),
+    /* 每桶按固定比例给 5 个模型（演示值；合计 = 桶 tokens，比例和为 1）。 */
+    models: [0.42, 0.27, 0.16, 0.1, 0.05].map((share, j) => ({
+      model: `${m.clientId}-model-${j + 1}`,
+      displayName: `${providerBucketName(m.clientId)} 模型 ${j + 1}`,
+      requests: Math.round(clientReqs[i] * share),
+      tokens: Math.round(clientTokens[i] * share),
+      credits: cents(clientReqs[i] * m.rate * share) / 100,
+    })),
   }));
 
   /* 趋势的 credits **反向**从积分总额分账而来（权重 = 各桶请求数）。

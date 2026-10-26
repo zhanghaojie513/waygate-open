@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import type { TrendPoint } from '../../types/api';
 import { formatInt } from '../../lib/format';
 import { useChartColors } from './chartTheme';
@@ -46,6 +46,12 @@ interface Cell {
 
 export function ActivityHeat({ points }: { points: TrendPoint[] }) {
   const c = useChartColors();
+
+  /* [v1.10.2] 正方形 + 铺满的两半：x 轴不钉死（列均分面板宽），y 轴行高取
+     「容器宽 ÷ 列数」—— 两个轴同一个步长，格子恒为正方形且铺满面板。
+     测量用 ResizeObserver（容器随窗口变），首帧未测到时回落 13px。 */
+  const hostRef = useRef<HTMLDivElement>(null);
+  const [bandStep, setBandStep] = useState<number | null>(null);
 
   const model = useMemo(() => {
     if (points.length === 0) return null;
@@ -113,6 +119,24 @@ export function ActivityHeat({ points }: { points: TrendPoint[] }) {
     };
   }, [points]);
 
+  useEffect(() => {
+    const el = hostRef.current;
+    if (!el || !model || model.weeks <= 0) return;
+    const measure = () => {
+      /* 可用绘图宽 ≈ 容器宽 − 左侧星期标签区（26，与 spec.padding.left 一致）− 右 padding（4）。 */
+      const usable = el.clientWidth - 26 - 4;
+      const step = Math.floor(usable / model.weeks);
+      /* 钳在 9–20px：太窄读不出色阶，太宽超过贡献图的密度惯例。 */
+      setBandStep(Math.max(9, Math.min(20, step)));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+    /* deps 只认 weeks：el / 图表高度变化走 ResizeObserver，不进 deps。
+       （上游原注释引用了未配置的 react-hooks/exhaustive-deps 规则导致 lint 红，改写为普通说明。） */
+  }, [model?.weeks]);
+
   if (!model) return null;
   const { cells, levels, weekLabels } = model;
 
@@ -135,9 +159,10 @@ export function ActivityHeat({ points }: { points: TrendPoint[] }) {
     axes: [
       {
         orient: 'bottom' as const,
-        /* 格子**不许被拉成横条**：band 上限 13px，面板再宽也只是轴变长、
-           格间空隙微涨 —— 与参考图（贡献图）同一形态。 */
-        maxBandSize: 13,
+        /* [v1.10.2] 正方形格 + 铺满面板：x 轴**不钉死** band（让 52 列均分可用宽度），
+           y 轴的 bandSize 由外层按「面板宽 ÷ 列数」算出同一值传入 —— 两个轴用同一个
+           步长，格子恒为正方形，且时间轴铺满面板（不再右侧留白）。
+           此前双向钉死 13px：格是方的，但 52 列只占面板 2/3，右侧空一大段（用户报障）。 */
         bandPadding: 0.18,
         label: {
           style: { fill: c.muted, fontSize: 11 },
@@ -151,15 +176,22 @@ export function ActivityHeat({ points }: { points: TrendPoint[] }) {
       },
       {
         orient: 'left' as const,
-        /* 行高钉死：7×13px 小方块 */
-        bandSize: 13,
+        /* [v1.10.2] 行高 = x 步长（由外层测量后传入）：正方形的另一半。
+           ⚠️ autoRegionSize 是关键（读 band-axis.js 源码得出）：bandSize 固定后，
+           只有它为 true 时 VChart 才把 region 高度撑到「bandSize × 行数」；
+           缺省时 region 高由容器总高均分 —— y 轴被压进剩余窄条，格高 7px 横竖不等。 */
+        bandSize: bandStep ?? 13,
+        maxBandSize: bandStep ?? 13,
+        maxExtent: bandStep ? bandStep * 7 : 91,
+        autoRegionSize: true,
         bandPadding: 0.18,
         label: {
           style: { fill: c.muted, fontSize: 11 },
-          /* 只标 一 / 四 / 日（贡献图惯例）—— 七个字会挤成一列 */
+          /* [v1.10.2] 七天全标（周一–周日）。此前只标 一/四/日 是防挤 ——
+             七行各有行内空间，不会挤。用户口径「Y 轴要显示全周一-周五」。 */
           formatMethod: (v: string | string[]) => {
             const n = Number(Array.isArray(v) ? v[0] : v);
-            return n === 0 ? '一' : n === 3 ? '四' : n === 6 ? '日' : '';
+            return ['一', '二', '三', '四', '五', '六', '日'][n] ?? '';
           },
         },
         domainLine: { visible: false },
@@ -172,6 +204,11 @@ export function ActivityHeat({ points }: { points: TrendPoint[] }) {
         fill: c.line,
         fillOpacity: (d: unknown) => opacityFor((d as Cell).requests),
         cornerRadius: 2,
+        /* [v1.10.2] 正方形闸门（读 heatmap.js 源码定案）：cell 的 size 来自
+           series 级 `[x带宽, y带宽]` —— y 轴 region 被布局压窄时格就变扁。
+           用户级 style 覆盖它：size 显式给 `[步长×0.82, 步长×0.82]`（0.82 = 剥
+           bandPadding 0.18 后的净格宽），恒为正方形，不再依赖任何轴的布局行为。 */
+        size: [bandStep ? Math.floor(bandStep * 0.82) : 11, bandStep ? Math.floor(bandStep * 0.82) : 11],
       },
       state: { hover: { stroke: c.line, lineWidth: 1 } },
     },
@@ -190,9 +227,10 @@ export function ActivityHeat({ points }: { points: TrendPoint[] }) {
   };
 
   return (
-    <div className="activity-heat">
+    <div className="activity-heat" ref={hostRef}>
       <Suspense fallback={<div className="activity-heat-loading" aria-hidden="true" />}>
-        <VChart spec={spec} style={{ width: '100%', height: 150 }} />
+        {/* 行高随测得的步长走（7 行 × step + 轴留白）—— 否则步长变大时格子溢出固定高。 */}
+        <VChart spec={spec} style={{ width: '100%', height: (bandStep ?? 13) * 7 + 32 }} />
       </Suspense>
       <p className="ah-foot">
         <span className="ah-stat">

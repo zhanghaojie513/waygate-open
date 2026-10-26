@@ -11,7 +11,6 @@ import { BrandMark } from './BrandMark';
 import { ThemeToggle } from './ThemeToggle';
 import { ROUTES } from '../hooks/useHashRoute';
 import type { Route } from '../hooks/useHashRoute';
-import { formatRelative } from '../lib/format';
 import { rememberConsoleRoute } from '../lib/consoleRoute';
 import { LogOut, LayoutGrid, ChartColumn, Cable, KeyRound, ScrollText, SlidersHorizontal, Menu } from 'lucide-react';
 import { Tooltip } from './ui/Tooltip';
@@ -28,13 +27,11 @@ const NAV: Array<{ route: Route; label: string; icon: ReactNode }> = [
 export function AppShell({
   route,
   navigate,
-  expiresAt,
   onLogout,
   children,
 }: {
   route: Route;
   navigate: (r: Route) => void;
-  expiresAt: string | null;
   onLogout: () => void;
   children: ReactNode;
 }) {
@@ -182,23 +179,24 @@ export function AppShell({
         {/* 外壳外观开关：主题属于「这一个应用怎么显示」，不属于任何一页的设置 ——
             放侧栏页脚（随外壳常驻）才不会变成"只有某一页能切"。
             与账号卡分两行：账号卡只有约 216px 宽，再塞一枚 32px 按钮会把
-            「会话有效 · …到期」压成省略号（那是真实信息，不能拿去换一个图标）。 */}
+            版本号挤成省略号（版本是常读信息，不能拿去换一个图标）。 */}
         <div className="sb-tools">
           <span className="sb-tools-lb">外观</span>
           <ThemeToggle />
         </div>
         {/* 账号区 = 侧栏页脚：身份是**真实数据**，不编人名。本产品是自托管单管理员，
             没有「人名」这回事 —— 原型 console-views.js 里那个演示人名是假数据，照抄就是假数据上屏。
-            退出登录并进这张卡（原来是卡外一个漂着的裸按钮，还带绕开设计系统的内联样式）。 */}
+            退出登录并进这张卡（原来是卡外一个漂着的裸按钮，还带绕开设计系统的内联样式）。
+            [v1.10.2] 不再显示「多久到期」：会话过期由服务端强制失效（到期即 401 退到登录页），
+            倒计时对操作没有决策价值，只占位置（用户裁决移除）。 */}
         <div className="sb-account">
           <div className="avatar">管</div>
           <div className="meta">
             <b>管理员</b>
             {/* [v6] 版本号并入这行次要信息 —— 原先它挤在「途关 Waygate」后面，
                 而品牌行在 216px 侧栏里只有 168px 可用，版本号把 logo 挤成 7px 宽
-                （flex 压缩 SVG）。这里与「会话有效」同级：11px、等宽、极淡。
+                （flex 压缩 SVG）。11px、等宽、极淡。
                 仍是 /healthz 的运行时版本（唯一真相），失败回落构建期版本。 */}
-            <i>{expiresAt ? `${formatRelative(expiresAt)}到期` : '本机管理员'}</i>
             <span className="acct-ver">v{runtimeVersion ?? __APP_VERSION__}</span>
           </div>
           <Tooltip content="退出登录">
