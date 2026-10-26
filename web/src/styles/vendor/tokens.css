@@ -288,6 +288,11 @@
   --spectrum-5:     #2FB6C9;   /* 青 */
   --spectrum-6:     #4A7BE0;   /* 蓝 */
   --spectrum-7:     #9B5BD6;   /* 紫 */
+  /* [v1.10.3] 8-10 号：堆叠图 >7 家时续用（哈希法在此之前的撞色是报障根因）。
+     粉/洋红/蓝紫补位 —— 与前 7 色的明度带一致，浅深两主题都可读。 */
+  --spectrum-8:     #E56AA8;   /* 粉 */
+  --spectrum-9:     #D64F8E;   /* 洋红 */
+  --spectrum-10:    #6E7BE8;   /* 蓝紫 */
 
   --signal-live:    #35E08A;   /* 春薄荷 */
   --signal-live-track: color-mix(in srgb, var(--signal-live) 22%, transparent);   /* 状态点的轨道 / 描边 */

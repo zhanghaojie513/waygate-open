@@ -2,7 +2,7 @@ import { lazy, Suspense, useMemo } from 'react';
 import type { TrendPoint } from '../../types/api';
 import { formatBucket, formatTokens } from '../../lib/format';
 import { useChartColors } from './chartTheme';
-import { providerColor } from '../../lib/providerColor';
+import { providerColor, spectrumByIndex } from '../../lib/providerColor';
 import { readToken } from './chartTheme';
 
 type Row = {
@@ -117,14 +117,14 @@ export function TokenTrend({ points, windowLabel }: { points: TrendPoint[]; wind
       id: `area-${s.key}`,
       line: {
         style: {
-          stroke: canvasColor(s.key),
+          stroke: canvasColor(spectrumByIndex(i)),
           lineWidth: 2,
           curveType: 'monotoneX',
         },
       },
       area: {
         style: {
-          fill: canvasColor(s.key),
+          fill: canvasColor(spectrumByIndex(i)),
           fillOpacity: 0.45,
         },
       },
@@ -208,11 +208,13 @@ export function TokenTrend({ points, windowLabel }: { points: TrendPoint[]; wind
       <Suspense fallback={<div className="token-trend-loading" aria-hidden="true" />}>
         <VChart spec={spec} style={{ width: '100%', height: 220 }} />
       </Suspense>
-      {/* [v8] 图例：按全窗口 tokens 降序（与堆叠层次一致），色点用同一身份色。 */}
+      {/* [v8] 图例：按全窗口 tokens 降序（与堆叠层次一致）。
+          [v1.10.3] 色点与线同源 —— 按系列序取色（spectrumByIndex），
+          否则图例（哈希色）与线（序号色）对不上。跨页身份色仍由别处 providerColor 提供。 */}
       <div className="tt-legend">
-        {providerNames.map((n) => (
+        {providerNames.map((n, i) => (
           <span className="tt-legend-item" key={n}>
-            <i style={{ background: providerColor(n) }} />
+            <i style={{ background: spectrumByIndex(i) }} />
             {nameById.get(n) ?? n}
           </span>
         ))}

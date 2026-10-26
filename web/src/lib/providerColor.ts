@@ -20,7 +20,19 @@ const SPECTRUM = [
   'var(--spectrum-5)',
   'var(--spectrum-6)',
   'var(--spectrum-7)',
+  /* [v1.10.3] 8-10 号补位：哈希 % 7 在 3+ 家时撞色概率很高（生日悖论，4 家 ~35%）,
+     扩到 10 显著降低；图表内另按系列序分配（spectrumByIndex），哈希只服务跨页身份。 */
+  'var(--spectrum-8)',
+  'var(--spectrum-9)',
+  'var(--spectrum-10)',
 ] as const;
+
+/** [v1.10.3] 按序取色（循环）—— 图表专用：同屏系列各取各的序号，**同屏必不同色**。
+ *  哈希法在同一页面撞色是用户报障根因（折线图 3+ 家出现同色）。
+ *  序号 = 图表数据归并时的排名（tokens 降序），同页稳定；跨页身份仍走 providerColor(id)。 */
+export function spectrumByIndex(i: number): string {
+  return SPECTRUM[((i % SPECTRUM.length) + SPECTRUM.length) % SPECTRUM.length];
+}
 
 /** 稳定哈希 → 光谱色 CSS 变量引用。 */
 export function providerColor(id: string): string {

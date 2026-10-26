@@ -120,7 +120,7 @@
 <div class="page">
   <header>
     <h1>途关 Waygate · 功能架构</h1>
-    <span class="chip">v1.10.2</span>
+    <span class="chip">v1.10.3</span>
     <button class="theme-toggle" id="themeToggle" type="button">切换主题</button>
   </header>
   <p class="sub">五域能力地图：控制台 · 接入 · 多提供商 · 积分与领取 · 运行保障。每一条都对应已实现的代码路径。</p>
@@ -159,7 +159,7 @@
         <li><b>WorkBuddy</b> —— openai 方言 · 官方 OAuth 授权（v1.6.13 起 <code>ck_</code> 已退役）</li>
         <li><b>MiniMax Code</b> —— anthropic 方言 · OAuth 自动续期</li>
         <li><b>Qoder CN</b> —— COSY 协议 · 客户端登录态身份</li>
-        <li><b>自定义提供商</b>（v1.10.2）—— 任意 OpenAI 兼容端点：Base URL + API Key 手填即接；URL 智能解析（带不带 /v1 都行，表单实时预览）；清单拉 <code>/v1/models</code> 或手动补；出站纯 Bearer 透传（无指纹 / 不改写 / 无重试梯）；单次积分如实 <code>--</code>（不标定）</li>
+        <li><b>自定义提供商</b>（v1.10.3）—— 任意 OpenAI 兼容端点：Base URL + API Key 手填即接；URL 智能解析（带不带 /v1 都行，表单实时预览）；清单拉 <code>/v1/models</code> 或手动补；出站纯 Bearer 透传（无指纹 / 不改写 / 无重试梯）；单次积分如实 <code>--</code>（不标定）</li>
         <li><b>凭证导入</b> —— 选客户端 → 跳官方授权页 → 回来自动落盘；「未授权」信号三家各不相同（业务码 / <code>authorization_pending</code> / 404）；私有状态只存服务端</li>
         <li><b>路由规则</b> —— 精确匹配（大小写敏感）→ 提供商内模糊回落；声明行优先于 observed</li>
       </ul>
@@ -193,7 +193,7 @@
   </div>
 
   <p class="foot">
-    图中每一条都对应已实现的代码路径，无规划项。版本 v1.10.2 ·
+    图中每一条都对应已实现的代码路径，无规划项。版本 v1.10.3 ·
     与 <code>server/src/version.ts</code> 同源。
   </p>
 </div>

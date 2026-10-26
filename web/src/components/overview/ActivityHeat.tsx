@@ -97,7 +97,10 @@ export function ActivityHeat({ points }: { points: TrendPoint[] }) {
       ? { l1: Math.max(1, q(0.25)), l2: Math.max(2, q(0.6)) }
       : { l1: 1, l2: 2 };
 
-    /* x 轴月份标签：每列取首日，月份变化的那列才标（其余空串）。 */
+    /* [v1.10.3] x 轴 12 个月全标（用户口径）：每个**月的第一列**都标月份。
+       12 个月 ≈ 52 列，月均 4.4 列 —— 一个标签宽度内不会再遇到下一个标签，全标不挤。
+       跨年时（11 月、12 月属于去年）首两个月写「去年 11 月」式短前缀容易与图例混淆，
+       保持纯「11月」—— 顺序本身（左旧右新）已消除歧义。 */
     const weekLabels: string[] = [];
     let lastMonth = -1;
     for (let w = 0; w < weeks; w++) {
@@ -203,7 +206,8 @@ export function ActivityHeat({ points }: { points: TrendPoint[] }) {
       style: {
         fill: c.line,
         fillOpacity: (d: unknown) => opacityFor((d as Cell).requests),
-        cornerRadius: 2,
+        /* [v1.10.3] 圆角方块（用户裁决）：正方形 + 3px 圆角，贡献图主流观感。 */
+        cornerRadius: 3,
         /* [v1.10.2] 正方形闸门（读 heatmap.js 源码定案）：cell 的 size 来自
            series 级 `[x带宽, y带宽]` —— y 轴 region 被布局压窄时格就变扁。
            用户级 style 覆盖它：size 显式给 `[步长×0.82, 步长×0.82]`（0.82 = 剥
